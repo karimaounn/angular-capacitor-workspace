@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-ui-lib",
+  "title": "Design-system library skeleton",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Library name.",
+      "default": "ui",
+      "$default": { "$source": "argv", "index": 0 },
+      "x-prompt": "What name should the design-system library have?"
+    },
+    "prefix": {
+      "type": "string",
+      "description": "Component selector prefix. Defaults to the library name.",
+      "pattern": "^[a-zA-Z][.0-9a-zA-Z]*(-[.0-9a-zA-Z]*)*$"
+    },
+    "storybook": {
+      "type": "boolean",
+      "description": "Wire up Storybook with Compodoc argument resolution.",
+      "default": true
+    }
+  },
+  "additionalProperties": false
+}

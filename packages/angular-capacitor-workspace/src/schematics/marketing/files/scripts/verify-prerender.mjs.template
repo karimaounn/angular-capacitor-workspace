@@ -1,0 +1,117 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// Fails the build if a prerendered app would ship pages a crawler cannot use.
+//
+// A failed prerender still produces a build that looks fine — an empty shell
+// per route — and ranks for nothing. And pages that share a title or
+// description get treated as duplicates and ignored. Neither shows up anywhere
+// but a search console, weeks later, so this checks every page now:
+//
+//   • exactly one <h1>         zero means the render fell back to a shell
+//   • no data-theme on <html>  something pinned a colour scheme at build time,
+//                              overriding every visitor's OS setting
+//   • one <title> and one description, neither shared with any other page
+//   • a canonical pointing at the page's own path — or, for a noindex page,
+//     no canonical at all
+//   • sitemap.xml lists exactly the indexable pages, and robots.txt points at it
+//
+// Runs as the last postbuild:<app> step.
+//
+//   node scripts/verify-prerender.mjs <app>
+// ─────────────────────────────────────────────────────────────────────────────
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { browserDir, inspect, isNoindex, pages } from './prerendered.mjs';
+
+/** What the generator writes when it is given no origin. RFC 2606 reserves it. */
+const PLACEHOLDER_HOST = 'example.com';
+
+const dir = browserDir('verify-prerender.mjs');
+const failures = [];
+const fail = (where, message) => failures.push(`${where}: ${message}`);
+
+const seen = { title: new Map(), description: new Map() };
+const indexable = [];
+const origins = new Set();
+
+const all = pages(dir);
+if (all.length === 0) {
+  fail('output', 'no prerendered pages — did every route fall back to the client?');
+}
+
+for (const page of all) {
+  const head = inspect(fs.readFileSync(page.file, 'utf8'));
+  const where = page.path;
+
+  if (head.h1Count !== 1) fail(where, `${head.h1Count} <h1> elements, expected 1`);
+  if ('data-theme' in head.html)
+    fail(where, `<html data-theme="${head.html['data-theme']}"> is pinned`);
+
+  for (const [key, values] of [
+    ['title', head.titles],
+    ['description', head.descriptions],
+  ]) {
+    if (values.length !== 1 || !values[0].trim()) {
+      fail(where, `${values.length} ${key} tags, expected 1 non-empty`);
+      continue;
+    }
+    const other = seen[key].get(values[0]);
+    if (other) fail(where, `same ${key} as ${other}: "${values[0]}"`);
+    else seen[key].set(values[0], where);
+  }
+
+  if (isNoindex(head)) {
+    if (head.canonicals.length) fail(where, 'noindex page has a canonical');
+    continue;
+  }
+
+  indexable.push(page.path);
+  if (head.canonicals.length !== 1) {
+    fail(where, `${head.canonicals.length} canonicals, expected 1`);
+    continue;
+  }
+  const canonical = new URL(head.canonicals[0]);
+  origins.add(canonical.origin);
+  if (canonical.pathname !== page.path) fail(where, `canonical points at ${canonical.pathname}`);
+}
+
+if (origins.size > 1) fail('canonicals', `span several origins: ${[...origins].join(', ')}`);
+const [origin] = origins;
+
+const sitemapFile = path.join(dir, 'sitemap.xml');
+if (!fs.existsSync(sitemapFile)) {
+  fail('sitemap.xml', 'missing — generate-sitemap.mjs must run first');
+} else {
+  const listed = [...fs.readFileSync(sitemapFile, 'utf8').matchAll(/<loc>([^<]*)<\/loc>/g)].map(
+    (m) => new URL(m[1]).pathname,
+  );
+  const want = new Set(indexable);
+  const got = new Set(listed);
+  for (const p of want) if (!got.has(p)) fail('sitemap.xml', `missing ${p}`);
+  for (const p of got)
+    if (!want.has(p)) fail('sitemap.xml', `lists ${p}, which is not an indexable page`);
+}
+
+const robotsFile = path.join(dir, 'robots.txt');
+const robots = fs.existsSync(robotsFile) ? fs.readFileSync(robotsFile, 'utf8') : '';
+if (origin && !robots.includes(`Sitemap: ${origin}/sitemap.xml`)) {
+  fail('robots.txt', `no "Sitemap: ${origin}/sitemap.xml" line`);
+}
+
+if (failures.length) {
+  console.error(`verify-prerender: ${failures.length} problem(s) in ${all.length} pages\n`);
+  for (const f of failures) console.error(`  ✗ ${f}`);
+  process.exit(1);
+}
+
+// A warning, not a failure: a fresh workspace should build. But a site deployed
+// like this tells every crawler that its pages live on someone else's domain.
+if (origin && new URL(origin).hostname === PLACEHOLDER_HOST) {
+  console.warn(
+    `verify-prerender: canonical URLs point at ${origin}, the generator's placeholder. ` +
+      'Set SITE_ORIGIN in src/app/site.ts and the Sitemap line in public/robots.txt ' +
+      'to the production origin before deploying.',
+  );
+}
+console.log(`verify-prerender: ${all.length} pages OK (${indexable.length} indexable)`);

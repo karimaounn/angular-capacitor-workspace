@@ -1,0 +1,109 @@
+@use 'sass:list';
+@use 'sass:map';
+@use 'ref';
+
+/// Layer 2 — semantic tokens.
+///
+/// The only layer that knows both raw values and intent. Everything above this
+/// file reads CSS custom properties; everything below is raw Sass. That split
+/// is what makes theming a runtime concern: a theme swap rewrites custom
+/// properties on an ancestor element, and no component has to re-render or know
+/// it happened.
+///
+/// Emits both modes from one map so a token cannot exist in light and go
+/// missing in dark — the commonest theming bug, and one that only shows up for
+/// the subset of users who have dark mode on.
+
+/// name: (light-step, dark-step) against the active palette.
+$surface-tokens: (
+  'surface': (0, 950),
+  'surface-raised': (0, 900),
+  'surface-sunken': (50, 1000),
+  'surface-hover': (100, 800),
+  // Decorative separators. Not held to 3:1 — WCAG 1.4.11 governs boundaries
+  // that identify a control, and those use `border-strong`.
+  'border': (200, 800),
+  // Interactive boundaries: input outlines, selected states. Held to 3:1, which
+  // is what fixes these two steps rather than taste.
+  'border-strong': (500, 400),
+  'text': (900, 50),
+  'text-muted': (600, 300),
+  'text-inverse': (0, 950),
+);
+
+/// Accents read from the status ramps, which do not flip with the palette.
+$status-tokens: ('success', 'warning', 'danger', 'info');
+
+/// Emits one mode's tokens. `$index` is 1 for light, 2 for dark.
+///
+/// Public because `check-contrast.mjs` compiles it directly, once per palette
+/// per mode, to get the real resolved values rather than re-deriving them by
+/// parsing Sass. A checker that reimplements the token logic can agree with
+/// itself while disagreeing with what ships.
+@mixin mode($palette, $index) {
+  @each $name, $steps in $surface-tokens {
+    --#{$name}: #{ref.palette($palette, list.nth($steps, $index))};
+  }
+
+  // The 500 step carries the accent; 300/700 give a lighter and a darker
+  // partner for borders and hover states. Which of the two is "subtle" flips
+  // between modes, because subtle means "closer to the surface" and the
+  // surface has moved.
+  $subtle: 300;
+  $strong: 700;
+  @if $index == 2 {
+    $subtle: 700;
+    $strong: 300;
+  }
+
+  @each $name in $status-tokens {
+    --#{$name}: #{ref.status($name, 500)};
+    --#{$name}-subtle: #{ref.status($name, $subtle)};
+    --#{$name}-strong: #{ref.status($name, $strong)};
+  }
+
+  // Text and icons on a filled accent — white in both modes, unlike
+  // `--text-inverse`, which flips.
+  //
+  // The two are easy to confuse and the confusion is expensive: `text-inverse`
+  // is near-black in dark mode, and near-black on a blue button is 4.1:1, which
+  // fails. An accent that carries white text in light mode carries white text in
+  // dark mode too; the surface flipped, the button did not.
+  --on-accent: #{ref.palette($palette, 0)};
+}
+
+/// Applies the token set for `$palette` to the current selector.
+///
+/// `:root` gets light, `[data-theme='dark']` gets dark, and the
+/// `prefers-color-scheme` block covers users who never touch a toggle. The
+/// explicit attribute wins over the media query in both directions, so a
+/// toggle can force light on a dark-mode device.
+@mixin theme($palette: 'default') {
+  @include mode($palette, 1);
+
+  @media (prefers-color-scheme: dark) {
+    &:not([data-theme='light']) {
+      @include mode($palette, 2);
+    }
+  }
+
+  &[data-theme='dark'] {
+    @include mode($palette, 2);
+  }
+}
+
+/// Non-colour tokens. These do not vary by mode, so they are emitted once.
+@mixin scales() {
+  @each $name, $value in ref.$font-size {
+    --font-size-#{$name}: #{$value};
+  }
+  @each $name, $value in ref.$space {
+    --space-#{$name}: #{$value};
+  }
+  @each $name, $value in ref.$radius {
+    --radius-#{$name}: #{$value};
+  }
+  @each $name, $value in ref.$duration {
+    --duration-#{$name}: #{$value};
+  }
+}

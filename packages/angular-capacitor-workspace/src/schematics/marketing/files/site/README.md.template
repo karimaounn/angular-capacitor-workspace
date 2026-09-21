@@ -1,0 +1,70 @@
+# <%= siteName %>
+
+A site that is prerendered at build time: `outputMode: "static"` renders every
+route to its own HTML file, and a static host serves those files. There is no
+server, so nothing has to run between a request and the page.
+
+```bash
+npm run start:<%= name %>   # http://localhost:<%= port %>
+npm run build:<%= name %>   # dist/<%= name %>/browser, then the checks below
+npm run test:<%= name %><% if (e2e) { %>
+npm run e2e:<%= name %>     # hydration, the 404 page, and AXE on every page in both colour schemes<% } %>
+```
+
+## Pages
+
+Each route in `src/app/app.routes.ts` carries `data.seo`: a title, and a
+description unique across the site. `PageMetaStrategy`
+(`src/app/seo/page-meta.ts`) writes the title, description, canonical, robots,
+Open Graph and JSON-LD tags from it on every navigation. That includes
+navigations during prerender, so the tags end up in the static HTML that
+crawlers read.
+
+A new page also needs a link from an existing one. Crawlers find pages that
+way, and so does the e2e accessibility check.
+
+## After the build
+
+`build:<%= name %>` runs `postbuild:<%= name %>` afterwards:
+
+1. `scripts/generate-sitemap.mjs` writes `sitemap.xml` from the prerendered
+   pages, using each page's canonical and skipping noindex pages. The sitemap
+   is built from the output, so it cannot fall out of step with it.
+2. `scripts/verify-prerender.mjs` fails the build when a page has no `<h1>`
+   (a prerender that fell back to an empty shell), a title or description that
+   another page also uses, a canonical pointing somewhere else, or a
+   `data-theme` pinned on `<html>`. It also fails when the sitemap or
+   robots.txt does not match the pages.
+
+## The origin
+
+Canonical URLs are absolute. The origin is `SITE_ORIGIN` in `src/app/site.ts`,
+and the `Sitemap:` line in `public/robots.txt` repeats it. The postbuild check
+fails the build if the two disagree<% if (placeholderOrigin) { %>, and warns on
+every build while the origin is still the example.com placeholder<% } %>.
+
+## Hosting
+
+Upload `dist/<%= name %>/browser` to any static host. A few settings decide
+whether search engines treat the site correctly:
+
+- **Real 404s.** Serve `404/index.html` with status 404 for any path that has
+  no file of its own. Do not rewrite unknown paths to `/index.html`, which is
+  the usual single-page-app setting. That turns every dead link into a 200
+  page, and search engines report those as soft 404s.
+- **`index.csr.html`** is Angular's client-side rendering fallback. A fully
+  prerendered site never serves it, so it can be left out of the upload.
+- **Upload order.** Upload the hashed files (`*.js`, `*.css`, `media/`) first
+  and never delete them, so a tab that is still open can load the chunks it was
+  built against. Then upload the HTML, `sitemap.xml` and `robots.txt`, deleting
+  whatever is gone.
+- **Caching.** Give hashed files a long, immutable cache lifetime and HTML a
+  short one.
+
+## Scale
+
+Every route is prerendered, and a route with parameters lists its values in
+`getPrerenderParams` in `app.routes.server.ts`. That works for hundreds of
+pages. At tens of thousands, build time and output size become the problem;
+those routes should then move to `RenderMode.Server`, which needs a host that
+can run a server.

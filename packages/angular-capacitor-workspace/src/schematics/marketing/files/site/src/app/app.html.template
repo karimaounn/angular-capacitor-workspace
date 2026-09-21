@@ -1,0 +1,15 @@
+<!-- `href="#main"` alone resolves against <base href="/"> and would navigate to
+     the home page, so the click handler moves focus itself. The href stays so it
+     is still a link to assistive technology. -->
+<a class="skip-link" href="#main" (click)="$event.preventDefault(); main.focus()">
+  Skip to content
+</a>
+<header>
+  <a routerLink="/">{{ siteName }}</a>
+</header>
+<main id="main" tabindex="-1" #main>
+  <router-outlet />
+</main>
+<footer>
+  <p>{{ siteName }}</p>
+</footer>

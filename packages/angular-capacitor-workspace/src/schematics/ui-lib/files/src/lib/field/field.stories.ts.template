@@ -1,0 +1,37 @@
+import type { Meta, StoryObj } from '@storybook/angular';
+import { Field } from './field';
+
+const meta: Meta<Field> = {
+  title: 'Forms/Field',
+  component: Field,
+  tags: ['autodocs'],
+  args: {
+    label: 'Email address',
+    placeholder: 'you@example.com',
+  } as never,
+};
+
+export default meta;
+type Story = StoryObj<Field>;
+
+export const Default: Story = {};
+
+export const WithHint: Story = {
+  args: { hint: 'We will only use this to send you receipts.' } as never,
+};
+
+/** The error replaces the hint and is announced, not merely coloured. */
+export const Invalid: Story = {
+  args: {
+    hint: 'We will only use this to send you receipts.',
+    error: 'That address is not valid.',
+  } as never,
+};
+
+export const Required: Story = {
+  args: { required: true } as never,
+};
+
+export const Disabled: Story = {
+  args: { disabled: true, value: 'locked@example.com' } as never,
+};

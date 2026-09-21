@@ -1,0 +1,41 @@
+{
+  "name": "angular-capacitor-workspace-monorepo",
+  "version": "22.0.0",
+  "private": true,
+  "description": "Monorepo for the angular-capacitor-workspace generator and its create-* bootstrap.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=11.6.0"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "clean": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo",
+    "test": "npm run build && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b packages/angular-capacitor-workspace packages/create-angular-capacitor-workspace --pretty",
+    "e2e": "node e2e/matrix.mjs",
+    "e2e:minimal": "node e2e/matrix.mjs --row minimal",
+    "sweep": "node e2e/sweep.mjs",
+    "sync-versions": "node scripts/sync-versions.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.9.8",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
+  "overrides": {
+    "sockjs": {
+      "uuid": "^11.1.1"
+    }
+  }
+}

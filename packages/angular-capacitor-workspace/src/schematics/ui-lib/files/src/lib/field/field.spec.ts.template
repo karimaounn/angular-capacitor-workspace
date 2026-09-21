@@ -1,0 +1,69 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { Field } from './field';
+
+describe('Field', () => {
+  let fixture: ComponentFixture<Field>;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [Field] }).compileComponents();
+    fixture = TestBed.createComponent(Field);
+    fixture.componentRef.setInput('label', 'Email address');
+  });
+
+  function input(): HTMLInputElement {
+    return fixture.nativeElement.querySelector('input');
+  }
+
+  it('associates the label with the control', () => {
+    fixture.detectChanges();
+
+    const label = fixture.nativeElement.querySelector('label') as HTMLLabelElement;
+    // `htmlFor` resolving to the input is what makes clicking the label focus
+    // the field, and what lets assistive technology announce the name.
+    expect(label.htmlFor).toBe(input().id);
+    expect(label.textContent).toContain('Email address');
+  });
+
+  it('writes user input back through the model', () => {
+    fixture.detectChanges();
+
+    input().value = 'someone@example.com';
+    input().dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.value()).toBe('someone@example.com');
+  });
+
+  it('describes the field with its hint', () => {
+    fixture.componentRef.setInput('hint', 'We will not share this.');
+    fixture.detectChanges();
+
+    const describedBy = input().getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(fixture.nativeElement.querySelector(`#${describedBy}`).textContent).toContain(
+      'We will not share this.',
+    );
+  });
+
+  it('announces an error rather than only colouring the border', () => {
+    fixture.componentRef.setInput('error', 'That address is not valid.');
+    fixture.detectChanges();
+
+    expect(input().getAttribute('aria-invalid')).toBe('true');
+
+    const description = fixture.nativeElement.querySelector('.description');
+    expect(description.getAttribute('role')).toBe('alert');
+    expect(description.textContent).toContain('That address is not valid.');
+  });
+
+  it('shows the error instead of the hint, never both', () => {
+    fixture.componentRef.setInput('hint', 'We will not share this.');
+    fixture.componentRef.setInput('error', 'That address is not valid.');
+    fixture.detectChanges();
+
+    const descriptions = fixture.nativeElement.querySelectorAll('.description');
+    expect(descriptions.length).toBe(1);
+    expect(descriptions[0].textContent).toContain('not valid');
+  });
+});

@@ -1,0 +1,42 @@
+/**
+ * The facts about the site that more than one file needs. Canonical URLs, the
+ * sitemap and the JSON-LD all have to agree on the origin, so it is written
+ * once here — and once more in public/robots.txt, which the postbuild check
+ * compares against the canonicals.
+ */
+export const SITE_NAME = '<%= siteName %>';
+
+/**
+ * Production origin, no trailing slash. Canonical URLs are absolute and always
+ * point here, whichever host served the page.<% if (placeholderOrigin) { %>
+ *
+ * example.com is a placeholder: the site was generated without an origin. The
+ * postbuild check warns on every build until this and public/robots.txt name
+ * the real one.<% } %>
+ */
+export const SITE_ORIGIN = '<%= origin %>';
+
+/** Absolute URL for a site path — `/about` → `<%= origin %>/about`. */
+export function siteUrl(path: string): string {
+  return path === '/' ? `${SITE_ORIGIN}/` : `${SITE_ORIGIN}${path}`;
+}
+
+/**
+ * The schema.org nodes every page carries. `PageMetaStrategy` puts them in each
+ * page's JSON-LD graph, ahead of whatever the page adds through `PageSeo.jsonLd`.
+ */
+export const SITE_JSON_LD: readonly Record<string, unknown>[] = [
+  {
+    '@type': 'Organization',
+    '@id': `${SITE_ORIGIN}/#organization`,
+    name: SITE_NAME,
+    url: `${SITE_ORIGIN}/`,
+  },
+  {
+    '@type': 'WebSite',
+    '@id': `${SITE_ORIGIN}/#website`,
+    name: SITE_NAME,
+    url: `${SITE_ORIGIN}/`,
+    publisher: { '@id': `${SITE_ORIGIN}/#organization` },
+  },
+];

@@ -1,0 +1,107 @@
+@use 'sass:map';
+
+/// Layer 1 — reference tokens.
+///
+/// Raw values with no opinion about where they are used. A reference token
+/// answers "what colours exist"; it must never answer "what colour is a
+/// button". Nothing outside `_semantic.scss` should read from this file.
+///
+/// Palettes are generated as perceptually even ramps. Keeping every hue on the
+/// same lightness scale is what lets `_semantic.scss` swap one palette for
+/// another without re-checking every contrast pair by hand — and what lets
+/// `check-contrast.mjs` verify a whole palette from its endpoints.
+
+$ramp-steps: (0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950, 1000);
+
+/// The one palette this skeleton ships. Add siblings with the same step keys and
+/// `check-contrast.mjs` will pick them up without further wiring.
+$palettes: (
+  'default': (
+    0: #ffffff,
+    50: #f6f7f9,
+    100: #eceef2,
+    200: #d5dae2,
+    300: #b3bcca,
+    400: #8b97ab,
+    500: #6b7890,
+    600: #556177,
+    700: #454e60,
+    800: #3b4251,
+    900: #343a45,
+    950: #22262e,
+    1000: #000000,
+  ),
+);
+
+/// Semantic accent ramps, kept separate so a palette swap does not silently
+/// change what "danger" looks like.
+///
+/// The 500 step is deliberately darker than the usual "vivid" choice. It is the
+/// step that carries white text on a filled button, and white on a mid-bright
+/// blue is about 3.9:1 — under the 4.5:1 that body-sized text needs. Picking
+/// the pretty value and discovering that later means either re-theming every
+/// filled control or shipping unreadable buttons; `check-contrast.mjs` is what
+/// stops that decision from being made by accident.
+$status: (
+  'success': (300: #6ee7b7, 500: #047857, 700: #064e3b),
+  'warning': (300: #fcd34d, 500: #b45309, 700: #78350f),
+  'danger': (300: #fca5a5, 500: #dc2626, 700: #991b1b),
+  'info': (300: #93c5fd, 500: #2563eb, 700: #1e40af),
+);
+
+/// Type scale, in rem. A ratio rather than a list of sizes someone will add to.
+$font-size: (
+  'xs': 0.75rem,
+  'sm': 0.875rem,
+  'md': 1rem,
+  'lg': 1.125rem,
+  'xl': 1.375rem,
+  '2xl': 1.75rem,
+  '3xl': 2.25rem,
+);
+
+/// Spacing, in rem, on a 4px grid at the default root size.
+$space: (
+  0: 0,
+  1: 0.25rem,
+  2: 0.5rem,
+  3: 0.75rem,
+  4: 1rem,
+  5: 1.5rem,
+  6: 2rem,
+  7: 3rem,
+  8: 4rem,
+);
+
+$radius: (
+  'sm': 4px,
+  'md': 8px,
+  'lg': 16px,
+  'full': 9999px,
+);
+
+$duration: (
+  'fast': 120ms,
+  'base': 200ms,
+  'slow': 320ms,
+);
+
+@function palette($name, $step) {
+  $found: map.get($palettes, $name);
+  @if $found == null {
+    @error 'Unknown palette "#{$name}". Known: #{map.keys($palettes)}.';
+  }
+  $value: map.get($found, $step);
+  @if $value == null {
+    @error 'Palette "#{$name}" has no step #{$step}.';
+  }
+  @return $value;
+}
+
+@function status($name, $step: 500) {
+  $found: map.get($status, $name);
+  @if $found == null {
+    @error 'Unknown status "#{$name}". Known: #{map.keys($status)}.';
+  }
+  @return map.get($found, $step);
+}

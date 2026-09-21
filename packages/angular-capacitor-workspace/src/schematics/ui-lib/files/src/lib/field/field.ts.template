@@ -1,0 +1,55 @@
+import { ChangeDetectionStrategy, Component, computed, input, model } from '@angular/core';
+
+let nextId = 0;
+
+/**
+ * A labelled text field with hint and error text.
+ *
+ * The second example, and the one that proves the accessibility wiring: a
+ * label bound to its control by id, hint and error text referenced through
+ * `aria-describedby`, and invalidity announced by `aria-invalid` rather than by
+ * colour alone. Colour-only error states are the most common accessibility
+ * defect in a design system, and the easiest to avoid at the point the pattern
+ * is established.
+ */
+@Component({
+  selector: '<%= prefix %>-field',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './field.html',
+  styleUrl: './field.scss',
+  host: {
+    '[attr.data-invalid]': 'invalid() || null',
+  },
+})
+export class Field {
+  /** Visible label. Required — a field without one is not usable. */
+  readonly label = input.required<string>();
+
+  /** Two-way bound value: `[(value)]="name"`. */
+  readonly value = model<string>('');
+
+  readonly type = input<'text' | 'email' | 'password' | 'search' | 'tel' | 'url'>('text');
+
+  readonly placeholder = input<string>('');
+
+  readonly disabled = input(false);
+
+  readonly required = input(false);
+
+  /** Supporting text. Hidden while `error` is present, to avoid two messages. */
+  readonly hint = input<string | undefined>(undefined);
+
+  /** Error text. Its presence is what makes the field invalid. */
+  readonly error = input<string | undefined>(undefined);
+
+  protected readonly id = `<%= prefix %>-field-${nextId++}`;
+  protected readonly describedById = `${this.id}-description`;
+
+  protected readonly invalid = computed(() => this.error() !== undefined);
+
+  protected readonly description = computed(() => this.error() ?? this.hint());
+
+  protected onInput(event: Event): void {
+    this.value.set((event.target as HTMLInputElement).value);
+  }
+}

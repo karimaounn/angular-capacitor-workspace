@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.e2e-work/
+coverage/
+
+# Schematic templates are EJS, not valid TS/JSON until rendered.
+packages/*/src/schematics/**/files/

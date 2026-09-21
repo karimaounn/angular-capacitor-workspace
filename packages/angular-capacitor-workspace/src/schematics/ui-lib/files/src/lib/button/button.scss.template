@@ -1,0 +1,100 @@
+@use '../../styles/components' as c;
+
+// Every value here is a token. A literal colour, radius or duration in a
+// component file is a token that has not been named yet — and one the contrast
+// checker will never see.
+@layer components {
+  :host {
+    display: inline-flex;
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+
+    padding-inline: var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+
+    font: inherit;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+
+    @include c.touch-target;
+    @include c.focus-ring;
+    @include c.transition(background-color, border-color, color, opacity);
+  }
+
+  :host([data-size='sm']) button {
+    padding-inline: var(--space-3);
+    font-size: var(--font-size-sm);
+    min-block-size: 36px;
+  }
+
+  :host([data-size='lg']) button {
+    padding-inline: var(--space-5);
+    font-size: var(--font-size-lg);
+    min-block-size: 52px;
+  }
+
+  :host([data-variant='primary']) button {
+    background: var(--info);
+    color: var(--on-accent);
+  }
+
+  :host([data-variant='secondary']) button {
+    background: var(--surface-raised);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+
+  :host([data-variant='ghost']) button {
+    background: transparent;
+    color: var(--text);
+  }
+
+  :host([data-variant='danger']) button {
+    background: var(--danger);
+    color: var(--on-accent);
+  }
+
+  button:hover:not(:disabled) {
+    filter: brightness(0.94);
+  }
+
+  button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  // Loading is not `disabled` — see button.ts — so it needs its own affordance.
+  :host([data-loading]) button {
+    cursor: progress;
+  }
+
+  .spinner {
+    inline-size: 1em;
+    block-size: 1em;
+    border: 2px solid currentColor;
+    border-block-start-color: transparent;
+    border-radius: var(--radius-full);
+    animation: spin var(--duration-slow) linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      // Still communicates "busy", without the rotation.
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+}

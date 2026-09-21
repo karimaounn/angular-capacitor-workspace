@@ -1,0 +1,9 @@
+<!--
+  The design tokens, compiled by `npm run styles:tokens` into ./static and
+  served by `staticDirs` in main.ts.
+
+  Linked here rather than imported from preview.ts because @storybook/angular's
+  SCSS rule produces a raw string for Angular's component-style pipeline and
+  never reaches css-loader — correct for components, fatal for a global sheet.
+-->
+<link rel="stylesheet" href="./tokens.css" />

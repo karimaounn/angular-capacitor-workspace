@@ -1,0 +1,44 @@
+{
+  "$schema": "../node_modules/@angular-devkit/schematics/collection-schema.json",
+  "schematics": {
+    "ng-add": {
+      "description": "Add the workspace overlay and dependency policy to an existing Angular workspace.",
+      "factory": "./schematics/ng-add/index#ngAdd",
+      "schema": "./schematics/ng-add/schema.json",
+      "aliases": ["install"]
+    },
+    "workspace": {
+      "description": "Root-level overlay: tsconfig paths, Playwright base, house rules, docs.",
+      "factory": "./schematics/workspace/index#workspaceOverlay",
+      "schema": "./schematics/workspace/schema.json",
+      "aliases": ["overlay"]
+    },
+    "app": {
+      "description": "A client-rendered application, optionally with a Capacitor mobile sibling.",
+      "factory": "./schematics/app/index#app",
+      "schema": "./schematics/app/schema.json",
+      "aliases": ["application"]
+    },
+    "marketing": {
+      "description": "A statically prerendered marketing site. No Node server.",
+      "factory": "./schematics/marketing/index#marketing",
+      "schema": "./schematics/marketing/schema.json"
+    },
+    "ui-lib": {
+      "description": "A design-system library: ng-packagr, Storybook, Vitest browser mode, SCSS layering and a contrast checker.",
+      "factory": "./schematics/ui-lib/index#uiLib",
+      "schema": "./schematics/ui-lib/schema.json",
+      "aliases": ["ui"]
+    },
+    "mobile": {
+      "description": "A Capacitor sibling for an existing application.",
+      "factory": "./schematics/mobile/index#mobile",
+      "schema": "./schematics/mobile/schema.json"
+    },
+    "codegen": {
+      "description": "OpenAPI client generation with orval, wired into the pre* hooks.",
+      "factory": "./schematics/codegen/index#codegen",
+      "schema": "./schematics/codegen/schema.json"
+    }
+  }
+}

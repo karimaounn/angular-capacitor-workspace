@@ -1,0 +1,102 @@
+import { DOCUMENT, inject, Injectable } from '@angular/core';
+import { Meta, Title } from '@angular/platform-browser';
+import { ActivatedRouteSnapshot, RouterStateSnapshot, TitleStrategy } from '@angular/router';
+
+import { SITE_JSON_LD, SITE_NAME, siteUrl } from '../site';
+
+/**
+ * What a route says about itself to a crawler, in its `data.seo`. A route whose
+ * text depends on the URL can return it from a `seo` resolver instead, which
+ * lands in the same place.
+ */
+export interface PageSeo {
+  /** The page's own title. The site name is appended, except on the home page. */
+  readonly title: string;
+  /** Must be unique across the site — pages that share one are treated as duplicates. */
+  readonly description: string;
+  /** Kept out of the index and the sitemap, and given no canonical. */
+  readonly noindex?: boolean;
+  /** Page-specific JSON-LD nodes, written after the sitewide ones in `SITE_JSON_LD`. */
+  readonly jsonLd?: readonly Record<string, unknown>[];
+}
+
+export const PAGE_LD_ID = 'page-ld';
+
+/**
+ * Writes every per-page tag from the deepest route's `seo` data: title,
+ * description, canonical, robots, Open Graph and JSON-LD.
+ *
+ * A `TitleStrategy` because that is the hook the router already calls once per
+ * navigation, after resolvers have run — on the server during prerender, so the
+ * tags are in the static HTML, and again on the client, where every write finds
+ * the element the server left behind and updates it rather than adding a second
+ * one.
+ *
+ * A route without `seo` leaves the previous page's tags in place. The postbuild
+ * check catches such a page in the build: it has no canonical, and it shares the
+ * fallback title from index.html.
+ */
+@Injectable()
+export class PageMetaStrategy extends TitleStrategy {
+  private readonly title = inject(Title);
+  private readonly meta = inject(Meta);
+  private readonly document = inject(DOCUMENT);
+
+  override updateTitle(state: RouterStateSnapshot): void {
+    const seo = deepest(state.root).data['seo'] as PageSeo | undefined;
+    if (!seo) return;
+
+    const path = state.url.split(/[?#]/)[0] || '/';
+    const title = path === '/' ? seo.title : `${seo.title} | ${SITE_NAME}`;
+    const canonical = seo.noindex ? null : siteUrl(path);
+
+    this.title.setTitle(title);
+    this.meta.updateTag({ name: 'description', content: seo.description });
+    this.meta.updateTag({ property: 'og:title', content: seo.title });
+    this.meta.updateTag({ property: 'og:description', content: seo.description });
+
+    if (canonical) {
+      this.meta.updateTag({ property: 'og:url', content: canonical });
+      this.meta.removeTag('name="robots"');
+    } else {
+      this.meta.removeTag('property="og:url"');
+      this.meta.updateTag({ name: 'robots', content: 'noindex' });
+    }
+
+    this.setCanonical(canonical);
+    this.setJsonLd([...SITE_JSON_LD, ...(seo.jsonLd ?? [])]);
+  }
+
+  private setCanonical(href: string | null): void {
+    let link = this.document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (!href) {
+      link?.remove();
+      return;
+    }
+    if (!link) {
+      link = this.document.createElement('link');
+      link.setAttribute('rel', 'canonical');
+      this.document.head.appendChild(link);
+    }
+    link.setAttribute('href', href);
+  }
+
+  private setJsonLd(nodes: readonly Record<string, unknown>[]): void {
+    let script = this.document.getElementById(PAGE_LD_ID);
+    if (!script) {
+      script = this.document.createElement('script');
+      script.id = PAGE_LD_ID;
+      script.setAttribute('type', 'application/ld+json');
+      this.document.head.appendChild(script);
+    }
+    // `<` escaped so no string in the content can close the script element.
+    script.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': nodes,
+    }).replace(/</g, '\\u003c');
+  }
+}
+
+function deepest(route: ActivatedRouteSnapshot): ActivatedRouteSnapshot {
+  return route.firstChild ? deepest(route.firstChild) : route;
+}

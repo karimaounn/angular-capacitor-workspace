@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # The dependency job is worth running on a clock as well as on commits:
+    # an advisory can land in a dependency you have not touched in months.
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # --strict-allow-scripts fails the build when a dependency wants to run an
+      # install script that `allowScripts` in package.json does not cover.
+      # A new transitive postinstall becomes a decision someone makes, rather
+      # than code that quietly ran on every machine in the team.
+      - run: npm ci --strict-allow-scripts
+
+      # The same gate that ran when this workspace was generated.
+      - run: npm run audit:policy
+
+      # Reports drift from the policy shipped by the installed generator
+      # version. Non-blocking: a newer policy is information, not a failure —
+      # `npx angular-capacitor-workspace doctor --fix` applies it.
+      - run: npm run doctor
+        continue-on-error: true
+
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --strict-allow-scripts
+<% if (uiLib) { %>
+      # Component tests run in a real browser engine. The headless shell is a
+      # separate download from `chromium`; installing only one leaves the test
+      # runner failing on a path that does not exist.
+      - run: npx playwright install --with-deps chromium chromium-headless-shell
+
+      # Libraries are consumed from dist/, and nothing else builds them.
+      - run: npm run build:libs
+
+      - run: npm run check:contrast
+<% } %>
+      - run: npm run build
+
+      - run: npm test
+<% if (e2e === 'playwright') { %>
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --strict-allow-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+<% } %>

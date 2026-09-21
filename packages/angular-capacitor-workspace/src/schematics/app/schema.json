@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-app",
+  "title": "Client-rendered application",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Application name.",
+      "$default": { "$source": "argv", "index": 0 },
+      "x-prompt": "What name should the application have?"
+    },
+    "mobile": {
+      "type": "array",
+      "description": "Capacitor platforms to add as a mobile sibling.",
+      "items": { "type": "string", "enum": ["android", "ios"] },
+      "default": []
+    },
+    "e2e": {
+      "oneOf": [
+        { "type": "string", "enum": ["playwright"] },
+        { "type": "boolean", "enum": [false] }
+      ],
+      "default": false
+    },
+    "port": {
+      "type": "number",
+      "description": "Dev-server port. Defaults to the next free port from 4200."
+    },
+    "prefix": {
+      "type": "string",
+      "description": "Component selector prefix.",
+      "default": "app"
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

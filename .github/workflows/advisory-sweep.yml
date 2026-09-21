@@ -1,0 +1,97 @@
+name: Advisory sweep
+
+on:
+  schedule:
+    # 06:00 UTC daily. Advisories land on the registry's schedule, not on ours.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sweep:
+    name: Audit every matrix row against the live registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --strict-allow-scripts
+      - run: npm run build
+
+      - name: Sweep
+        id: sweep
+        run: node e2e/sweep.mjs --issue "$RUNNER_TEMP/issue.md"
+        continue-on-error: true
+
+      - name: Open or update an issue
+        if: steps.sweep.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const body = fs.readFileSync(process.env.RUNNER_TEMP + '/issue.md', 'utf8');
+            const title = 'Advisory sweep: unhandled advisories in generated workspaces';
+
+            // Update the existing issue rather than opening a new one each day.
+            // A tracker that files a duplicate every morning is a tracker people
+            // mute, and a muted tracker is the same as no tracker.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'advisory-sweep',
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Still failing as of ${new Date().toISOString().slice(0, 10)}.\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['advisory-sweep'],
+              });
+            }
+
+      - name: Fail the run when the sweep found something
+        if: steps.sweep.outcome == 'failure'
+        run: exit 1
+
+  matrix:
+    name: Full matrix (${{ matrix.row }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        row: [minimal, full, multi-app, lib-only]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --strict-allow-scripts
+      - run: npm run build
+
+      # Browser-mode component tests need the engines on disk, and the headless
+      # shell is a download separate from `chromium`.
+      - run: npx playwright install --with-deps chromium chromium-headless-shell
+
+      - run: node e2e/matrix.mjs --row ${{ matrix.row }}

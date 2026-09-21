@@ -1,0 +1,20 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { RouterLink, RouterOutlet } from '@angular/router';
+
+import { SITE_NAME } from './site';
+
+/**
+ * The shell every page shares: landmarks and a skip link. The page's one `<h1>`
+ * belongs to the page, never to the shell — the postbuild check fails a page
+ * with more than one.
+ */
+@Component({
+  selector: '<%= prefix %>-root',
+  imports: [RouterOutlet, RouterLink],
+  templateUrl: './app.html',
+  styleUrl: './app.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class App {
+  protected readonly siteName = SITE_NAME;
+}

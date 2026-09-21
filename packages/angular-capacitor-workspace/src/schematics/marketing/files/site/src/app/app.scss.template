@@ -1,0 +1,39 @@
+// Footer pinned to the bottom on short pages.
+:host {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100dvh;
+}
+
+header,
+main,
+footer {
+  padding: 1rem;
+}
+
+main {
+  flex: 1;
+
+  // Focusable only so the skip link can land here; it is not a control.
+  &:focus {
+    outline: none;
+  }
+}
+
+// Off-screen until focused. Keyboard users meet it first; nobody else sees it.
+// System colours, so it holds its contrast in either colour scheme without
+// depending on a design system.
+.skip-link {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: Canvas;
+  color: CanvasText;
+  outline: 2px solid CanvasText;
+  transform: translateY(-200%);
+
+  &:focus {
+    transform: none;
+  }
+}

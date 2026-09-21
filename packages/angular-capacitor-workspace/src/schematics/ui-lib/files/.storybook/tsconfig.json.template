@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.lib.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // documentation.json is generated build output, imported by preview.ts.
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["../src/**/*.stories.ts", "*.ts"],
+  "exclude": ["../src/**/*.spec.ts"]
+}

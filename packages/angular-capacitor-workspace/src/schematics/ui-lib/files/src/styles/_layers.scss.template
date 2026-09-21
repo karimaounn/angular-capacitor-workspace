@@ -1,0 +1,18 @@
+/// Layer 3 — cascade layers.
+///
+/// Declared in one place, in priority order, before anything writes into them.
+/// A `@layer` statement that appears after a rule that uses the layer creates
+/// the layer at *that* point in the cascade instead, which is how a stylesheet
+/// ends up with correct-looking rules that lose to the wrong neighbour.
+///
+/// The order below is the whole contract:
+///
+/// - `reset`      — normalisation. Loses to everything.
+/// - `tokens`     — custom property declarations.
+/// - `base`       — bare element styling.
+/// - `components` — the design system.
+/// - `utilities`  — single-purpose overrides. Beats components by design.
+///
+/// Anything unlayered beats all of these, which is the escape hatch for
+/// third-party CSS you cannot move.
+@layer reset, tokens, base, components, utilities;

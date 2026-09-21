@@ -1,0 +1,138 @@
+openapi: 3.0.3
+info:
+  title: Sample API
+  version: 1.0.0
+  description: >
+    A minimal but non-trivial spec for the codegen matrix row. It exists to
+    prove the generated client compiles — so it covers the shapes that break
+    generation: a path parameter, a query parameter, a request body, an enum, a
+    nullable field, an array response and a non-2xx response.
+
+servers:
+  - url: /api
+
+paths:
+  /widgets:
+    get:
+      operationId: listWidgets
+      summary: List widgets
+      tags: [widgets]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WidgetStatus'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: The widgets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Widget'
+    post:
+      operationId: createWidget
+      summary: Create a widget
+      tags: [widgets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WidgetDraft'
+      responses:
+        '201':
+          description: The created widget.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+        '422':
+          description: The draft was not valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /widgets/{widgetId}:
+    get:
+      operationId: getWidget
+      summary: Fetch one widget
+      tags: [widgets]
+      parameters:
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The widget.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+        '404':
+          description: No such widget.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+components:
+  schemas:
+    WidgetStatus:
+      type: string
+      enum: [draft, active, retired]
+
+    WidgetDraft:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/WidgetStatus'
+
+    Widget:
+      type: object
+      required: [id, name, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/WidgetStatus'
+        createdAt:
+          type: string
+          format: date-time
+        retiredAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        title:
+          type: string
+        status:
+          type: integer
+          format: int32
+        detail:
+          type: string

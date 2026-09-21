@@ -1,0 +1,64 @@
+import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
+
+/**
+ * Shared Playwright configuration for every app in this workspace.
+ *
+ * Each app keeps its own `playwright.config.ts` that delegates here, so a
+ * change to retry policy, reporters or CI behaviour is made once. Apps supply
+ * only what genuinely differs: which Angular project to serve, and on which
+ * port.
+ */
+export interface AngularAppE2eOptions {
+  /** The Angular project name, as it appears in angular.json. */
+  project: string;
+  /** Dev-server port. Give each app its own so suites can run in parallel. */
+  port: number;
+  /** Test directory, relative to the app's config file. Default: './e2e'. */
+  testDir?: string;
+  /** Extra projects — a mobile viewport, a second browser engine. */
+  projects?: PlaywrightTestConfig['projects'];
+}
+
+export function defineAngularAppE2eConfig(options: AngularAppE2eOptions): PlaywrightTestConfig {
+  const { project, port, testDir = './e2e' } = options;
+  const baseURL = `http://localhost:${port}`;
+  const isCI = !!process.env['CI'];
+
+  return defineConfig({
+    testDir,
+    fullyParallel: true,
+
+    // A `test.only` that reaches CI silently shrinks the suite to one test and
+    // still reports green. Failing the run is the only honest response.
+    forbidOnly: isCI,
+
+    retries: isCI ? 2 : 0,
+    workers: isCI ? 1 : undefined,
+    reporter: isCI ? [['github'], ['html', { open: 'never' }]] : [['list']],
+
+    use: {
+      baseURL,
+      trace: 'on-first-retry',
+      screenshot: 'only-on-failure',
+    },
+
+    projects: options.projects ?? [
+      { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    ],
+
+    webServer: {
+      // Libraries are consumed from dist/, and `ng serve` does not build them.
+      // The root `pree2e` script runs `build:libs` first; this command assumes
+      // it has.
+      command: `npx ng serve ${project} --port ${port} --configuration development`,
+      url: baseURL,
+      // Locally, reuse a server the developer already has running. In CI there
+      // is never one to reuse, and silently attaching to a stale process is how
+      // a suite passes against last week's build.
+      reuseExistingServer: !isCI,
+      timeout: 180_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  });
+}

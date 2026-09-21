@@ -1,0 +1,71 @@
+# House rules
+
+Conventions for this workspace. They are Angular <%= angularLine %> defaults plus the few
+choices this layout makes for itself.
+
+## Components
+
+- Standalone. No `NgModule` — the CLI has not generated one since v17, and this
+  workspace has none.
+- `ChangeDetectionStrategy.OnPush` everywhere. With signals it is the only
+  strategy that is both correct and cheap.
+- `inject()` over constructor parameter injection. It works in field
+  initialisers, functions and `inject`-context helpers, and it does not fight
+  inheritance.
+- Inputs and outputs as `input()`, `input.required()`, `output()` and
+  `model()`. Not the decorators.
+- Built-in control flow (`@if`, `@for`, `@switch`, `@defer`). `*ngIf` and
+  `*ngFor` are legacy here. `@for` requires `track` — use a stable id, not
+  `$index`, unless the list is genuinely positional.
+
+## State
+
+- Signals for synchronous state. `computed()` for anything derived: a derived
+  value held in a plain field is a value that can go stale.
+- `resource()` / `httpResource()` for async reads.
+- `effect()` sparingly, and never to write state another signal could compute.
+  An effect that assigns to a signal is usually a `computed()` that has not been
+  recognised yet.
+
+## Styles
+
+- SCSS. Component styles are scoped by default; leave them that way.
+- Consume design tokens from the shared layer rather than restating colours.
+  A hex code in a component is a token that does not exist yet.
+
+## Libraries
+
+Libraries are consumed **from `dist/`**, not from source. `tsconfig.json` maps
+each library's import name at its build output, which means the app compiles
+against the library's real public API — an export missing from `public-api.ts`
+fails at the app, where it should, instead of resolving silently through a
+source path.
+
+The cost is one extra step: **`ng serve` does not build workspace libraries.**
+A fresh clone must run `npm run build:libs` once. The `prestart` and `pretest`
+hooks cover the common entry points; a bare `ng serve` or `ng test` bypasses
+them and will fail to resolve library imports until you have built once.
+
+## Testing
+
+- Unit tests run on Vitest through `@angular/build:unit-test`.
+- Component tests for the design system run in **browser mode** against a real
+  engine, not jsdom. A component library whose tests never touch a layout
+  engine has not been tested.
+- End-to-end tests are Playwright, one config per app delegating to
+  `playwright.base.ts`.
+- Prefer testing behaviour through the rendered DOM over asserting on component
+  internals. Queries by role and label survive refactors; queries by CSS class
+  do not.
+
+## Dependencies
+
+This workspace carries a dependency policy. Before adding a package:
+
+- `npx angular-capacitor-workspace audit` runs the same gate that ran at
+  generation — resolve a lockfile, audit it, fail on anything unaccounted for.
+- `npx angular-capacitor-workspace doctor` reports drift from the current
+  policy, and `--fix` applies it.
+- `allowScripts` in `package.json` is an allowlist: a dependency that wants to
+  run an install script needs a deliberate entry. Adding one is a decision, not
+  a formality.

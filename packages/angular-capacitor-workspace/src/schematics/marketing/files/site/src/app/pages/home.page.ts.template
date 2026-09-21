@@ -1,0 +1,19 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+
+import { SITE_NAME } from '../site';
+
+/** The home page. Its title and description sit beside its route, in app.routes.ts. */
+@Component({
+  selector: '<%= prefix %>-home-page',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <h1>{{ siteName }}</h1>
+    <p>
+      This page is prerendered to static HTML when the site is built. Replace it in
+      <code>src/app/pages/home.page.ts</code>.
+    </p>
+  `,
+})
+export class HomePage {
+  protected readonly siteName = SITE_NAME;
+}

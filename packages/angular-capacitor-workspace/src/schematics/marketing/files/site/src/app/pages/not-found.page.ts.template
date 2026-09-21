@@ -1,0 +1,19 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { RouterLink } from '@angular/router';
+
+/**
+ * Prerendered once, at `/404`. The host serves that file, with a real 404
+ * status, for every URL that has no file of its own — and because the router
+ * sends any unknown path here too, hydration finds the markup it expects.
+ */
+@Component({
+  selector: '<%= prefix %>-not-found-page',
+  imports: [RouterLink],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <h1>Page not found</h1>
+    <p>The link may be out of date, or the address may have a typo.</p>
+    <p><a routerLink="/">Go to the home page</a></p>
+  `,
+})
+export class NotFoundPage {}

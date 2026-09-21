@@ -1,0 +1,83 @@
+import { createRequire } from 'node:module';
+
+import { expect, test, type Page } from '@playwright/test';
+
+const axeSource = createRequire(__filename).resolve('axe-core/axe.min.js');
+
+/**
+ * Where the crawl starts. Every other page is found by following links from
+ * these, so a new page is covered as soon as something links to it — and a page
+ * nothing links to is one crawlers cannot find either.
+ */
+const ENTRY_POINTS = ['/', '/404'];
+
+/** A ceiling, so a link generator gone wrong fails the test instead of hanging it. */
+const MAX_PAGES = 200;
+
+interface AxeResult {
+  violations: { id: string; nodes: { target: string[] }[] }[];
+}
+
+/**
+ * AXE against every reachable page, in both colour schemes. Component tests
+ * cover components in isolation; this covers the page markup around them.
+ */
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`every page passes AXE in the ${colorScheme} scheme`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme });
+
+    const queue = [...ENTRY_POINTS];
+    const seen = new Set(queue);
+    const violations: Record<string, string[]> = {};
+
+    while (queue.length > 0) {
+      const path = queue.shift()!;
+      // The timeout grows with the site rather than being guessed up front.
+      testInfo.setTimeout(testInfo.timeout + 10_000);
+
+      await test.step(path, async () => {
+        await page.goto(path);
+        const found = await audit(page);
+        if (found.length > 0) violations[path] = found;
+
+        for (const link of await sameOriginPaths(page)) {
+          if (seen.has(link)) continue;
+          expect(
+            seen.size,
+            `more than ${MAX_PAGES} pages — is a link generator looping?`,
+          ).toBeLessThan(MAX_PAGES);
+          seen.add(link);
+          queue.push(link);
+        }
+      });
+    }
+
+    expect(violations).toEqual({});
+  });
+}
+
+async function audit(page: Page): Promise<string[]> {
+  await page.addScriptTag({ path: axeSource });
+  return page.evaluate(async () => {
+    const axe = (window as unknown as { axe: { run: (...args: unknown[]) => Promise<AxeResult> } })
+      .axe;
+    const result = await axe.run(document, {
+      runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'],
+    });
+    return result.violations.map(
+      (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`,
+    );
+  });
+}
+
+/** Paths of the pages this page links to on the same origin — not files, not fragments. */
+async function sameOriginPaths(page: Page): Promise<string[]> {
+  const origin = new URL(page.url()).origin;
+  const hrefs = await page
+    .locator('a[href]')
+    .evaluateAll((links) => links.map((link) => (link as HTMLAnchorElement).href));
+  return hrefs
+    .map((href) => new URL(href))
+    .filter((url) => url.origin === origin && !/\.[a-z0-9]+$/i.test(url.pathname))
+    .map((url) => url.pathname);
+}

@@ -1,0 +1,70 @@
+import type { Meta, StoryObj } from '@storybook/angular';
+import { Button } from './button';
+
+/**
+ * Argument types are not declared here.
+ *
+ * Storybook resolves them from Compodoc's documentation.json — see
+ * `.storybook/preview.ts`. That means the controls panel is generated from the
+ * component's own TSDoc and input types, and cannot drift from them: a renamed
+ * input changes the control, and a stale `argTypes` block cannot survive
+ * because there is no `argTypes` block.
+ */
+const meta: Meta<Button> = {
+  title: 'Primitives/Button',
+  component: Button,
+  tags: ['autodocs'],
+  render: (args) => ({
+    props: args,
+    template: `<<%= prefix %>-button
+      [variant]="variant"
+      [size]="size"
+      [disabled]="disabled"
+      [loading]="loading"
+    >{{ label }}</<%= prefix %>-button>`,
+  }),
+  args: {
+    variant: 'primary',
+    size: 'md',
+    disabled: false,
+    loading: false,
+    label: 'Continue',
+  } as never,
+};
+
+export default meta;
+type Story = StoryObj<Button>;
+
+export const Primary: Story = {};
+
+export const Secondary: Story = {
+  args: { variant: 'secondary' } as never,
+};
+
+export const Danger: Story = {
+  args: { variant: 'danger' } as never,
+};
+
+/** Busy, but still focusable and still announced. */
+export const Loading: Story = {
+  args: { loading: true } as never,
+};
+
+export const Disabled: Story = {
+  args: { disabled: true } as never,
+};
+
+/** Every size beside every variant — the view that catches spacing drift. */
+export const Matrix: Story = {
+  render: () => ({
+    template: `
+      <div style="display: grid; gap: 1rem; grid-template-columns: repeat(3, max-content);">
+        @for (variant of ['primary', 'secondary', 'ghost', 'danger']; track variant) {
+          @for (size of ['sm', 'md', 'lg']; track size) {
+            <<%= prefix %>-button [variant]="variant" [size]="size">{{ variant }} {{ size }}</<%= prefix %>-button>
+          }
+        }
+      </div>
+    `,
+  }),
+};

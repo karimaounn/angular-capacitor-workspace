@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+/**
+ * Runs orval, or explains why it did not.
+ *
+ * Two callers with different needs:
+ *
+ * - `npm run codegen` — you asked for it. Missing configuration is an error.
+ * - `npm run codegen:optional`, from the `pre*` hooks — you asked to build.
+ *   Missing configuration is a fact about the machine, not a mistake, and
+ *   failing here would make `npm start` impossible on a fresh clone of a
+ *   workspace whose API contract lives somewhere the clone cannot see.
+ *
+ * The second case is the one that matters. A `pre*` hook that fails is a
+ * workspace where nothing runs, and "clone the repo, `npm start` fails" is a
+ * worse first impression than a generated client that is briefly absent.
+ */
+import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+
+const optional = process.argv.includes('--optional');
+const spec = process.env['<%= specEnvVar %>'];
+
+if (!spec) {
+  const message =
+    `<%= specEnvVar %> is not set, so there is no OpenAPI document to generate from.\n` +
+    `\n` +
+    `  <%= specEnvVar %>=../api/openapi.yaml npm run codegen\n` +
+    `  <%= specEnvVar %>=https://api.example.com/openapi.json npm run codegen\n`;
+
+  if (optional) {
+    console.log(`codegen: skipped — ${message}`);
+    process.exit(0);
+  }
+
+  console.error(`codegen: ${message}`);
+  process.exit(1);
+}
+
+// A path that does not exist is worth catching here rather than inside orval,
+// which reports it as a parse failure several frames down.
+if (!/^https?:\/\//.test(spec) && !existsSync(spec)) {
+  console.error(`codegen: <%= specEnvVar %> points at "${spec}", which does not exist.`);
+  process.exit(optional ? 0 : 1);
+}
+
+const result = spawnSync('npx', ['orval', '--config', 'orval.config.ts'], {
+  stdio: 'inherit',
+  shell: process.platform === 'win32',
+});
+
+process.exit(result.status ?? 1);

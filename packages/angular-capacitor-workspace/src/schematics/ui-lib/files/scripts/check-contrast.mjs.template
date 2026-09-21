@@ -1,0 +1,199 @@
+#!/usr/bin/env node
+/**
+ * Verifies that every declared colour pairing meets WCAG contrast, for every
+ * palette, in both light and dark mode.
+ *
+ * The values are obtained by compiling the real Sass — once per palette per
+ * mode — rather than by re-deriving them in JavaScript. A checker that
+ * reimplements the token logic will happily agree with itself while disagreeing
+ * with what ships, and the disagreement surfaces as a bug report about text
+ * nobody can read.
+ *
+ * Run: `npm run check:contrast`
+ */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as sass from 'sass';
+
+const libRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+const stylesDir = join(libRoot, 'src', 'styles');
+
+/**
+ * The pairings that must hold.
+ *
+ * Extend this table when you add a token pair that carries meaning. A token
+ * that never appears here is a token whose contrast nobody has checked.
+ *
+ * Levels come from WCAG 2.2:
+ *   4.5  normal body text (AA)
+ *   3.0  large text (>= 24px, or >= 18.66px bold) and UI component boundaries
+ */
+const PAIRINGS = [
+  { fg: 'text', bg: 'surface', min: 4.5, label: 'body text on the page' },
+  { fg: 'text', bg: 'surface-raised', min: 4.5, label: 'body text on a card' },
+  { fg: 'text', bg: 'surface-sunken', min: 4.5, label: 'body text on a well' },
+  { fg: 'text-muted', bg: 'surface', min: 4.5, label: 'secondary text' },
+  { fg: 'text-muted', bg: 'surface-raised', min: 4.5, label: 'secondary text on a card' },
+
+  // Filled controls. `on-accent`, not `text-inverse` — see _semantic.scss.
+  { fg: 'on-accent', bg: 'info', min: 4.5, label: 'text on a primary button' },
+  { fg: 'on-accent', bg: 'danger', min: 4.5, label: 'text on a destructive button' },
+  { fg: 'on-accent', bg: 'success', min: 4.5, label: 'text on a success button' },
+  { fg: 'on-accent', bg: 'warning', min: 4.5, label: 'text on a warning button' },
+
+  // Boundaries that identify a control — input outlines, selected states.
+  // WCAG 1.4.11, 3:1.
+  { fg: 'border-strong', bg: 'surface', min: 3.0, label: 'interactive boundary' },
+  { fg: 'border-strong', bg: 'surface-raised', min: 3.0, label: 'interactive boundary on a card' },
+
+  // `border` is deliberately absent. It is a decorative separator — a card
+  // edge, a list divider — and 1.4.11 governs boundaries that identify a
+  // control, not every line on the page. Holding decoration to 3:1 produces a
+  // heavy, over-ruled interface and, worse, trains people to add exemptions to
+  // this table. If a border ever *is* the affordance, it should use
+  // `border-strong`, which is checked.
+];
+
+const MODES = [
+  { name: 'light', index: 1 },
+  { name: 'dark', index: 2 },
+];
+
+/** Compiles one palette in one mode and returns its custom properties. */
+function tokensFor(palette, modeIndex) {
+  const source = `
+    @use 'semantic';
+    .probe { @include semantic.mode('${palette}', ${modeIndex}); }
+  `;
+  const { css } = sass.compileString(source, { loadPaths: [stylesDir] });
+
+  const tokens = {};
+  for (const [, name, value] of css.matchAll(/--([\w-]+):\s*([^;]+);/g)) {
+    tokens[name] = value.trim();
+  }
+  return tokens;
+}
+
+/** Every palette name declared in _ref.scss. */
+function paletteNames() {
+  const source = readFileSync(join(stylesDir, '_ref.scss'), 'utf8');
+  const block = source.match(/\$palettes:\s*\(([\s\S]*?)\n\);/);
+  if (!block) {
+    throw new Error(
+      'Could not find the $palettes map in _ref.scss. If it was renamed, update ' +
+        'this script — silently checking zero palettes would be worse.',
+    );
+  }
+  return [...block[1].matchAll(/^\s*'([^']+)':\s*\(/gm)].map(([, name]) => name);
+}
+
+function parseColor(value) {
+  const hex = value.trim().replace(/^#/, '');
+  if (!/^[0-9a-f]{3}$|^[0-9a-f]{6}$/i.test(hex)) {
+    return undefined;
+  }
+  const full =
+    hex.length === 3
+      ? hex
+          .split('')
+          .map((char) => char + char)
+          .join('')
+      : hex;
+  return [
+    parseInt(full.slice(0, 2), 16),
+    parseInt(full.slice(2, 4), 16),
+    parseInt(full.slice(4, 6), 16),
+  ];
+}
+
+/** WCAG 2.2 relative luminance. */
+function luminance([r, g, b]) {
+  const channel = (value) => {
+    const srgb = value / 255;
+    return srgb <= 0.03928 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrast(a, b) {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+const failures = [];
+const skipped = [];
+let checked = 0;
+
+for (const palette of paletteNames()) {
+  for (const mode of MODES) {
+    const tokens = tokensFor(palette, mode.index);
+
+    for (const pairing of PAIRINGS) {
+      const fgRaw = tokens[pairing.fg];
+      const bgRaw = tokens[pairing.bg];
+
+      if (fgRaw === undefined || bgRaw === undefined) {
+        skipped.push(
+          `${palette}/${mode.name}: ${pairing.fg} on ${pairing.bg} — token not emitted`,
+        );
+        continue;
+      }
+
+      const fg = parseColor(fgRaw);
+      const bg = parseColor(bgRaw);
+      if (!fg || !bg) {
+        // A non-hex token (a gradient, a colour-mix) cannot be checked this
+        // way. Reported rather than dropped: an unchecked pairing that looks
+        // checked is the failure mode this whole script exists to prevent.
+        skipped.push(
+          `${palette}/${mode.name}: ${pairing.fg} on ${pairing.bg} — not a plain colour (${fgRaw} / ${bgRaw})`,
+        );
+        continue;
+      }
+
+      checked++;
+      const ratio = contrast(fg, bg);
+      if (ratio < pairing.min) {
+        failures.push({
+          palette,
+          mode: mode.name,
+          pairing,
+          ratio,
+          fgRaw,
+          bgRaw,
+        });
+      }
+    }
+  }
+}
+
+for (const failure of failures) {
+  console.error(
+    `FAIL  ${failure.palette}/${failure.mode}  ${failure.pairing.fg} on ${failure.pairing.bg}\n` +
+      `      ${failure.pairing.label}\n` +
+      `      ${failure.ratio.toFixed(2)}:1, needs ${failure.pairing.min}:1  ` +
+      `(${failure.fgRaw} on ${failure.bgRaw})`,
+  );
+}
+
+for (const note of skipped) {
+  console.warn(`SKIP  ${note}`);
+}
+
+console.log(
+  `\nchecked ${checked} pairing(s) across ${paletteNames().length} palette(s) × ${MODES.length} mode(s)`,
+);
+
+if (failures.length > 0) {
+  console.error(`\n${failures.length} contrast failure(s).`);
+  process.exit(1);
+}
+
+if (skipped.length > 0) {
+  // Skips are not failures, but a table that quietly checks nothing is not a
+  // passing table.
+  console.warn(`${skipped.length} pairing(s) could not be checked.`);
+}
+
+console.log('All declared pairings meet their contrast requirement.');

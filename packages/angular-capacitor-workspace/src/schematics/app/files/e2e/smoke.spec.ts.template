@@ -1,0 +1,20 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * A smoke test that proves the whole chain works: the dev server starts, the
+ * app bootstraps, and Angular has rendered something into the DOM.
+ *
+ * It exists so the e2e wiring is exercised from the first commit. A suite with
+ * no tests in it is a suite nobody notices is broken.
+ */
+test('the app boots and renders', async ({ page }) => {
+  await page.goto('/');
+
+  // The root component having children is the narrowest possible assertion
+  // that bootstrapping succeeded — it fails on a template error, a provider
+  // error or a failed library resolution, and it does not depend on any markup
+  // you are about to replace.
+  const root = page.locator('<%= prefix %>-root');
+  await expect(root).toBeAttached();
+  await expect(root.locator(':scope > *').first()).toBeVisible();
+});

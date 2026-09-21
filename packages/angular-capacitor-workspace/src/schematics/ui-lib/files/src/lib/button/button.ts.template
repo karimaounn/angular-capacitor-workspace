@@ -1,0 +1,64 @@
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonSize = 'sm' | 'md' | 'lg';
+
+/**
+ * A button.
+ *
+ * Exists mostly to prove the pattern end to end: tokens resolve, Storybook
+ * picks up the argument types from Compodoc, the contrast checker has real
+ * pairings to check, and the browser-mode test suite has something to render.
+ * Replace it with your own; keep the shape.
+ */
+@Component({
+  selector: '<%= prefix %>-button',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './button.html',
+  styleUrl: './button.scss',
+  host: {
+    // Styling hooks as data attributes rather than classes: they cannot collide
+    // with a consumer's utility classes, and they read as state in devtools.
+    '[attr.data-variant]': 'variant()',
+    '[attr.data-size]': 'size()',
+    '[attr.data-loading]': 'loading() || null',
+  },
+})
+export class Button {
+  /** Visual weight. `primary` is the page's single main action. */
+  readonly variant = input<ButtonVariant>('primary');
+
+  readonly size = input<ButtonSize>('md');
+
+  readonly disabled = input(false);
+
+  /**
+   * Shows a busy indicator and blocks activation.
+   *
+   * Kept distinct from `disabled` because they mean different things to a
+   * screen reader: `aria-busy` says "this is working", `disabled` says "this is
+   * not available to you".
+   */
+  readonly loading = input(false);
+
+  /** Native button type. Defaults to `button` — not `submit`. */
+  readonly type = input<'button' | 'submit' | 'reset'>('button');
+
+  /** Accessible name, when the button's content is an icon alone. */
+  readonly ariaLabel = input<string | undefined>(undefined);
+
+  readonly activated = output<MouseEvent>();
+
+  protected readonly inactive = computed(() => this.disabled() || this.loading());
+
+  protected handleClick(event: MouseEvent): void {
+    if (this.inactive()) {
+      // A loading button is not `disabled`, so the browser will still dispatch
+      // the click. Swallowing it here is what stops a double submit.
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    this.activated.emit(event);
+  }
+}

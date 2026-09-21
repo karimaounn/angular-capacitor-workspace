@@ -1,0 +1,71 @@
+{
+  "name": "angular-capacitor-workspace",
+  "version": "22.0.0",
+  "description": "Schematics, dependency policy and audit gate for an Angular workspace that ships as a web app, a Capacitor mobile app, a prerendered marketing site and shared libraries.",
+  "keywords": [
+    "angular",
+    "schematics",
+    "capacitor",
+    "storybook",
+    "playwright",
+    "npm-audit",
+    "generator"
+  ],
+  "license": "MIT",
+  "author": "Karim Aoun",
+  "homepage": "https://github.com/karimaounn/angular-capacitor-workspace/tree/main/packages/angular-capacitor-workspace#readme",
+  "bugs": {
+    "url": "https://github.com/karimaounn/angular-capacitor-workspace/issues"
+  },
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./policy": {
+      "types": "./dist/policy/index.d.ts",
+      "default": "./dist/policy/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "angular-capacitor-workspace": "./dist/cli/index.js"
+  },
+  "schematics": "./dist/collection.json",
+  "ng-add": {
+    "save": "devDependencies"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=11.6.0"
+  },
+  "scripts": {
+    "build": "tsc -b && node ./scripts/copy-assets.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@angular-devkit/core": "^22.1.8",
+    "@angular-devkit/schematics": "^22.1.8",
+    "@schematics/angular": "^22.1.8",
+    "jsonc-parser": "^3.3.1",
+    "semver": "^7.6.3"
+  },
+  "peerDependencies": {
+    "@angular/core": "^22.0.0"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.5.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karimaounn/angular-capacitor-workspace.git",
+    "directory": "packages/angular-capacitor-workspace"
+  }
+}

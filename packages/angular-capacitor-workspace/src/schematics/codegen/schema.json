@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-codegen",
+  "title": "OpenAPI client generation",
+  "type": "object",
+  "properties": {
+    "apps": {
+      "type": "array",
+      "description": "Applications to generate a client for.",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "specEnvVar": {
+      "type": "string",
+      "description": "Environment variable holding the OpenAPI spec location.",
+      "default": "OPENAPI_SPEC"
+    }
+  },
+  "additionalProperties": false
+}

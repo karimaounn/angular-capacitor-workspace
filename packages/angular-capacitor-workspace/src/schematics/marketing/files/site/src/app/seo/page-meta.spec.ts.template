@@ -1,0 +1,103 @@
+import { Component, DOCUMENT } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter, Routes, TitleStrategy } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+
+import { SITE_JSON_LD, SITE_NAME, siteUrl } from '../site';
+import { PAGE_LD_ID, PageMetaStrategy, PageSeo } from './page-meta';
+
+@Component({ template: '' })
+class Blank {}
+
+const seo = (value: PageSeo) => ({ seo: value });
+
+const routes: Routes = [
+  { path: '', component: Blank, data: seo({ title: 'Home', description: 'The home page.' }) },
+  {
+    path: 'faq',
+    component: Blank,
+    data: seo({
+      title: 'FAQ',
+      description: 'Questions.',
+      jsonLd: [{ '@type': 'FAQPage', name: '</script><b>' }],
+    }),
+  },
+  { path: 'about', component: Blank, data: seo({ title: 'About', description: 'About us.' }) },
+  {
+    path: 'missing',
+    component: Blank,
+    data: seo({ title: 'Page not found', description: 'Gone.', noindex: true }),
+  },
+];
+
+describe('PageMetaStrategy', () => {
+  let harness: RouterTestingHarness;
+  let doc: Document;
+
+  const meta = (selector: string) =>
+    doc.head.querySelector(`meta[${selector}]`)?.getAttribute('content');
+  const canonical = () => doc.head.querySelector('link[rel="canonical"]')?.getAttribute('href');
+  const graph = () => JSON.parse(doc.getElementById(PAGE_LD_ID)!.textContent!)['@graph'];
+
+  beforeEach(async () => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter(routes), { provide: TitleStrategy, useClass: PageMetaStrategy }],
+    });
+    doc = TestBed.inject(DOCUMENT);
+    harness = await RouterTestingHarness.create();
+  });
+
+  afterEach(() => {
+    doc.head.querySelectorAll('meta, link, script').forEach((el) => el.remove());
+  });
+
+  it('leaves the home title bare and appends the site name everywhere else', async () => {
+    await harness.navigateByUrl('/');
+    expect(doc.title).toBe('Home');
+
+    await harness.navigateByUrl('/about');
+    expect(doc.title).toBe(`About | ${SITE_NAME}`);
+    expect(meta('name="description"')).toBe('About us.');
+    expect(meta('property="og:title"')).toBe('About');
+    expect(meta('property="og:description"')).toBe('About us.');
+  });
+
+  it('points the canonical and og:url at the path alone', async () => {
+    await harness.navigateByUrl('/about?utm_source=x#team');
+    expect(canonical()).toBe(siteUrl('/about'));
+    expect(meta('property="og:url"')).toBe(siteUrl('/about'));
+
+    await harness.navigateByUrl('/');
+    expect(canonical()).toBe(siteUrl('/'));
+  });
+
+  it('updates tags in place instead of adding more on every navigation', async () => {
+    await harness.navigateByUrl('/about');
+    await harness.navigateByUrl('/faq');
+    expect(doc.head.querySelectorAll('meta[name="description"]').length).toBe(1);
+    expect(doc.head.querySelectorAll('link[rel="canonical"]').length).toBe(1);
+    expect(doc.head.querySelectorAll(`script#${PAGE_LD_ID}`).length).toBe(1);
+  });
+
+  it('marks a noindex page, drops its canonical, and restores both on the way out', async () => {
+    await harness.navigateByUrl('/missing');
+    expect(meta('name="robots"')).toBe('noindex');
+    expect(canonical()).toBeUndefined();
+    expect(meta('property="og:url"')).toBeUndefined();
+
+    await harness.navigateByUrl('/about');
+    expect(meta('name="robots"')).toBeUndefined();
+    expect(canonical()).toBe(siteUrl('/about'));
+  });
+
+  it('writes the sitewide and page JSON-LD in a script that nothing can close early', async () => {
+    await harness.navigateByUrl('/faq');
+    const script = doc.getElementById(PAGE_LD_ID);
+    expect(script?.getAttribute('type')).toBe('application/ld+json');
+    expect(script?.textContent).not.toContain('</script>');
+    expect(graph()).toEqual([...SITE_JSON_LD, { '@type': 'FAQPage', name: '</script><b>' }]);
+
+    await harness.navigateByUrl('/about');
+    expect(graph()).toEqual(SITE_JSON_LD);
+  });
+});

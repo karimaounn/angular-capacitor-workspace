@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-marketing",
+  "title": "Prerendered marketing site",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the marketing application.",
+      "$default": { "$source": "argv", "index": 0 },
+      "x-prompt": "What name should the marketing site have?"
+    },
+    "e2e": {
+      "oneOf": [
+        { "type": "string", "enum": ["playwright"] },
+        { "type": "boolean", "enum": [false] }
+      ],
+      "default": false
+    },
+    "port": {
+      "type": "number",
+      "description": "Dev-server port."
+    },
+    "prefix": {
+      "type": "string",
+      "default": "site"
+    },
+    "origin": {
+      "type": "string",
+      "description": "Production origin (scheme and host, no path). Canonical URLs, the sitemap and robots.txt are built from it. Omitted, it is https://example.com, and every build warns until it is replaced.",
+      "pattern": "^https?://[^/?#\\s]+/?$",
+      "default": "https://example.com",
+      "x-prompt": "What is the site's production URL? (canonical links and the sitemap use it)"
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

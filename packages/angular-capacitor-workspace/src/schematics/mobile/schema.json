@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-mobile",
+  "title": "Capacitor mobile sibling",
+  "type": "object",
+  "properties": {
+    "app": {
+      "type": "string",
+      "description": "The application this mobile target wraps.",
+      "$default": { "$source": "argv", "index": 0 },
+      "x-prompt": "Which application should this wrap?"
+    },
+    "platforms": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["android", "ios"] },
+      "default": ["android"]
+    },
+    "appId": {
+      "type": "string",
+      "description": "Reverse-DNS application id, e.g. com.example.myapp.",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$"
+    },
+    "appName": {
+      "type": "string",
+      "description": "Display name shown under the launcher icon."
+    }
+  },
+  "required": ["app"],
+  "additionalProperties": false
+}

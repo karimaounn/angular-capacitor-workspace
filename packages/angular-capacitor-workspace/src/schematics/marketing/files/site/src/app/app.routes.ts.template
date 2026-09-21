@@ -1,0 +1,44 @@
+import { Routes } from '@angular/router';
+
+import { PageSeo } from './seo/page-meta';
+import { SITE_NAME } from './site';
+
+const NOT_FOUND_SEO: PageSeo = {
+  title: 'Page not found',
+  description: 'There is no page at this address. The link may be out of date.',
+  noindex: true,
+};
+
+/**
+ * Every page is lazy, and every page states its own title and description in
+ * `data.seo`. `PageMetaStrategy` turns that into head tags, and prerendering
+ * bakes them into each page's HTML.
+ *
+ * A new page also needs a link from a page that already exists: that is how
+ * crawlers find it, and how the e2e accessibility check does.
+ */
+export const routes: Routes = [
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./pages/home.page').then((m) => m.HomePage),
+    data: {
+      seo: {
+        title: SITE_NAME,
+        description: `${SITE_NAME}: replace this with a sentence or two about the site. It is what search results show under the title.`,
+      } satisfies PageSeo,
+    },
+  },
+  {
+    // The one prerendered copy of the 404 page. The host serves this file, with
+    // a 404 status, for any URL that has no file of its own.
+    path: '404',
+    loadComponent: () => import('./pages/not-found.page').then((m) => m.NotFoundPage),
+    data: { seo: NOT_FOUND_SEO },
+  },
+  {
+    path: '**',
+    loadComponent: () => import('./pages/not-found.page').then((m) => m.NotFoundPage),
+    data: { seo: NOT_FOUND_SEO },
+  },
+];

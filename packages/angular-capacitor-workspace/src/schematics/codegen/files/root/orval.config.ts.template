@@ -1,0 +1,51 @@
+import { defineConfig } from 'orval';
+
+/**
+ * OpenAPI client generation.
+ *
+ * The spec location comes from `<%= specEnvVar %>` rather than being committed,
+ * because the spec belongs to the API and moves at the API's pace. A local
+ * path, a URL, or a file checked out beside the repo all work:
+ *
+ *   <%= specEnvVar %>=../api/openapi.yaml npm run codegen
+ *   <%= specEnvVar %>=https://api.example.com/openapi.json npm run codegen
+ *
+ * Output is gitignored. Generated code in version control produces review
+ * diffs nobody reads and merge conflicts everybody resolves wrongly; the
+ * `pre*` hooks regenerate it before every build, serve and test, so a fresh
+ * clone never sees it missing.
+ */
+const spec = process.env['<%= specEnvVar %>'];
+
+if (!spec) {
+  throw new Error(
+    'Set <%= specEnvVar %> to the OpenAPI document before running codegen — ' +
+      'a path, or a URL. Generating against a stale committed copy is exactly ' +
+      'what this setup exists to avoid.',
+  );
+}
+
+export default defineConfig({<% for (const app of apps) { %>
+  <%= camelize(app) %>: {
+    input: { target: spec },
+    output: {
+      mode: 'tags-split',
+      target: '<%= appRoots[app] %>/src/api/generated/index.ts',
+      schemas: '<%= appRoots[app] %>/src/api/generated/model',
+      client: 'angular',
+      clean: true,
+      override: {
+        // Every generated call routes through this factory, which is where an
+        // interceptor, a base URL or auth headers get attached. Generated code
+        // should never be edited; this is the seam that means you never need to.
+        mutator: {
+          path: '<%= appRoots[app] %>/src/api/api-client.ts',
+          name: 'apiClient',
+        },
+      },
+    },
+    hooks: {
+      afterAllFilesWrite: 'prettier --write',
+    },
+  },<% } %>
+});

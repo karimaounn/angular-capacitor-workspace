@@ -1,0 +1,24 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+/**
+ * Capacitor wraps the *built* web app, so `webDir` points at the browser output
+ * of the `<%= app %>` build target — not at its source.
+ *
+ * Nothing rebuilds that for you. `npm run sync:<%= app %>` builds first and then
+ * syncs; running `npx cap sync` by hand copies whatever happens to be in
+ * `dist/` from last time, which is the single most common way to spend an hour
+ * debugging a change that was never in the bundle.
+ */
+const config: CapacitorConfig = {
+  appId: '<%= appId %>',
+  appName: '<%= appName %>',
+  webDir: '<%= webDir %>',
+
+  server: {
+    // Capacitor serves from a custom scheme rather than file://, which keeps
+    // localStorage, cookies and CORS behaving like a real origin.
+    androidScheme: 'https',
+  },
+};
+
+export default config;

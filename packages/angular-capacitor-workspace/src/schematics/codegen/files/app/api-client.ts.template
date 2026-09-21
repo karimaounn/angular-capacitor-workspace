@@ -1,0 +1,52 @@
+import type { HttpClient, HttpContext, HttpHeaders } from '@angular/common/http';
+import type { Observable } from 'rxjs';
+
+/**
+ * The single seam between generated API code and this application.
+ *
+ * orval routes every generated operation through this function, so the base
+ * URL, auth headers, interceptor context and error mapping are configured in
+ * one place that regeneration never overwrites. Generated code should never be
+ * edited; this is the seam that means you never need to.
+ *
+ * The `http` parameter is supplied by the caller — orval's Angular client marks
+ * each generated service `@Injectable`, injects `HttpClient` there, and passes
+ * it in. So this must not call `inject()` itself: it is invoked from the
+ * service's method body, which is not an injection context.
+ */
+export interface ApiRequest {
+  url: string;
+  method: 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options' | string;
+  params?: Record<string, string | number | boolean | ReadonlyArray<string | number | boolean>>;
+  headers?: HttpHeaders | Record<string, string | string[]>;
+  data?: unknown;
+  responseType?: 'json' | 'text' | 'blob' | 'arraybuffer';
+  context?: HttpContext;
+  withCredentials?: boolean;
+}
+
+/**
+ * Base URL for the API.
+ *
+ * A literal, so it shows up in a search for configuration that still needs
+ * doing. Replace it with whatever your configuration story is — an
+ * `InjectionToken`, an `environment.ts`, a runtime config fetch — or leave it
+ * relative and let a reverse proxy own the question.
+ */
+const BASE_URL = '<%= baseUrlPlaceholder %>';
+
+export const apiClient = <TData>(request: ApiRequest, http: HttpClient): Observable<TData> => {
+  return http.request<TData>(request.method, `${BASE_URL}${request.url}`, {
+    body: request.data,
+    params: request.params,
+    headers: request.headers,
+    // Cast because HttpClient's overloads narrow the return type on the literal
+    // 'json'; every other responseType returns something other than TData, and
+    // the generated code only ever asks for JSON.
+    responseType: (request.responseType ?? 'json') as 'json',
+    context: request.context,
+    withCredentials: request.withCredentials,
+  });
+};
+
+export default apiClient;

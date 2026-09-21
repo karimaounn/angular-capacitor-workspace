@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same PR makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Build, typecheck and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # --strict-allow-scripts turns an install script that is not on this
+      # repo's allowlist into a hard failure rather than a warning nobody reads.
+      # The generator argues for this posture; it should hold itself to it.
+      - run: npm ci --strict-allow-scripts
+
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run format:check
+      - run: npm test
+
+  minimal-row:
+    name: Generate, install, build and audit (minimal)
+    runs-on: ubuntu-latest
+    # Slower than the unit job by minutes, but it is the only job that can
+    # notice Angular changing its output. Only the minimal row runs per PR; the
+    # rest of the matrix runs nightly, because what it catches — upstream drift
+    # and new advisories — arrives on wall-clock time, not on commits.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --strict-allow-scripts
+      - run: npm run build
+
+      - run: node e2e/matrix.mjs --row minimal
+
+      - name: Keep the generated workspace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-minimal
+          path: /tmp/acw-minimal-*
+          retention-days: 3

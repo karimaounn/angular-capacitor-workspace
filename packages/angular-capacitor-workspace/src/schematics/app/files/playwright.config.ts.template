@@ -1,0 +1,8 @@
+import { defineAngularAppE2eConfig } from '<%= pathToRoot %>playwright.base';
+
+// Everything shared lives in the workspace base config. If you find yourself
+// adding a second option here, it probably belongs there instead.
+export default defineAngularAppE2eConfig({
+  project: '<%= name %>',
+  port: <%= port %>,
+});

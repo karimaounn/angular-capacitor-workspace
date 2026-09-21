@@ -1,0 +1,86 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared by the postbuild scripts of a prerendered app: where its output is,
+// which files are pages, and what each page's <head> says about itself.
+//
+// Reading our own build output, not arbitrary HTML — Angular's serializer
+// writes attributes in a stable, double-quoted form — so a regex is enough and
+// no parser dependency is needed.
+// ─────────────────────────────────────────────────────────────────────────────
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/** `dist/<app>/browser`, or exits with usage if the app or its build is missing. */
+export function browserDir(script) {
+  const app = process.argv[2];
+  if (!app) {
+    console.error(`usage: node scripts/${script} <app>`);
+    process.exit(2);
+  }
+  const dir = path.join(ROOT, 'dist', app, 'browser');
+  if (!fs.existsSync(dir)) {
+    console.error(`${script}: ${path.relative(ROOT, dir)} does not exist — build ${app} first.`);
+    process.exit(2);
+  }
+  return dir;
+}
+
+/**
+ * Every prerendered page: each `index.html` under the output, with the site
+ * path it is served at. `index.csr.html` is the client-rendering fallback, not
+ * a page, and is skipped by name.
+ */
+export function pages(dir) {
+  return fs
+    .readdirSync(dir, { recursive: true })
+    .filter((file) => path.basename(file) === 'index.html')
+    .map((file) => {
+      const rel = path.dirname(file).split(path.sep).join('/');
+      return {
+        file: path.join(dir, file),
+        path: rel === '.' ? '/' : `/${rel}`,
+      };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+const decode = (value) =>
+  value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+function attributes(tag) {
+  const attrs = {};
+  for (const [, name, value] of tag.matchAll(/([\w:-]+)(?:="([^"]*)")?/g)) {
+    attrs[name] = value === undefined ? '' : decode(value);
+  }
+  return attrs;
+}
+
+/** The parts of a page the SEO checks care about. */
+export function inspect(html) {
+  const head = html.slice(0, html.indexOf('</head>'));
+  const tags = (name) =>
+    [...head.matchAll(new RegExp(`<${name}\\b[^>]*>`, 'g'))].map((m) => attributes(m[0]));
+
+  const metas = tags('meta');
+  const meta = (key, value) => metas.filter((m) => m[key] === value).map((m) => m.content);
+
+  return {
+    html: attributes(html.match(/<html\b[^>]*>/)?.[0] ?? ''),
+    titles: [...head.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => decode(m[1])),
+    descriptions: meta('name', 'description'),
+    robots: meta('name', 'robots'),
+    canonicals: tags('link')
+      .filter((l) => l.rel === 'canonical')
+      .map((l) => l.href),
+    h1Count: [...html.matchAll(/<h1[\s>]/g)].length,
+  };
+}
+
+export const isNoindex = (page) => page.robots.some((r) => /\bnoindex\b/.test(r));

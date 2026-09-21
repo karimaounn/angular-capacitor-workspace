@@ -1,0 +1,52 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * What a prerendered site has to get right beyond rendering: hydrating onto the
+ * server's markup without a mismatch, and keeping the head — which is what a
+ * crawler reads — correct as the router moves between pages.
+ */
+
+test('hydrates without errors', async ({ page }) => {
+  // A hydration mismatch is logged, not thrown: the page still renders, and
+  // only the console says Angular threw the server's markup away.
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+
+  expect(errors).toEqual([]);
+});
+
+test('serves an unknown URL the 404 page, kept out of the index', async ({ page }) => {
+  await page.goto('/no-page-lives-here');
+
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Page not found');
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex');
+  await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+});
+
+test('updates the head on client-side navigation', async ({ page }) => {
+  await page.goto('/404');
+  await page.getByRole('main').getByRole('link', { name: 'Go to the home page' }).click();
+
+  await expect(page).toHaveURL('/');
+  await expect(page).not.toHaveTitle(/not found/i);
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+  const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
+  expect(new URL(canonical!).pathname).toBe('/');
+});
+
+test('the skip link moves focus to the content without leaving the page', async ({ page }) => {
+  await page.goto('/404');
+
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(page).toHaveURL('/404');
+  await expect(page.getByRole('main')).toBeFocused();
+});

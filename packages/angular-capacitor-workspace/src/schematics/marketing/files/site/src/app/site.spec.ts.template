@@ -1,0 +1,17 @@
+import { SITE_JSON_LD, SITE_ORIGIN, siteUrl } from './site';
+
+describe('site', () => {
+  it('keeps the origin bare, so every URL built from it has exactly one slash', () => {
+    expect(new URL(SITE_ORIGIN).origin).toBe(SITE_ORIGIN);
+  });
+
+  it('builds absolute URLs with a trailing slash only at the root', () => {
+    expect(siteUrl('/')).toBe(`${SITE_ORIGIN}/`);
+    expect(siteUrl('/about')).toBe(`${SITE_ORIGIN}/about`);
+  });
+
+  it('links the WebSite node to its publisher by id', () => {
+    const [organization, website] = SITE_JSON_LD;
+    expect(website?.['publisher']).toEqual({ '@id': organization?.['@id'] });
+  });
+});

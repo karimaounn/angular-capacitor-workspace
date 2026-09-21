@@ -1,0 +1,62 @@
+@use '../../styles/components' as c;
+
+@layer components {
+  :host {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .required {
+    color: var(--danger);
+    margin-inline-start: var(--space-1);
+  }
+
+  input {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--text);
+    font: inherit;
+
+    @include c.touch-target;
+    @include c.focus-ring(0);
+    @include c.transition(border-color, background-color);
+  }
+
+  input::placeholder {
+    color: var(--text-muted);
+  }
+
+  input:disabled {
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .description {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+  }
+
+  // The invalid state changes the border *and* the message text, and the
+  // message itself is the primary signal. Colour alone is not a state.
+  :host([data-invalid]) {
+    input {
+      border-color: var(--danger);
+    }
+
+    .description {
+      color: var(--danger);
+      font-weight: 500;
+    }
+  }
+}

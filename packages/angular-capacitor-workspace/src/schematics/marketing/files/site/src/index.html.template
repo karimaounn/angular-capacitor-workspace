@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- Every route sets its own title and description (app.routes.ts); these
+         are only the fallbacks. -->
+    <title><%= siteName %></title>
+    <meta name="description" content="<%= siteName %>" />
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+
+    <meta property="og:site_name" content="<%= siteName %>" />
+    <meta property="og:type" content="website" />
+    <!-- For a share image, add a 1200×630 file to public/, reference it by
+         absolute URL, and switch the card to summary_large_image:
+           <meta property="og:image" content="<%= origin %>/og.png" /> -->
+    <meta name="twitter:card" content="summary" />
+  </head>
+  <body>
+    <<%= prefix %>-root></<%= prefix %>-root>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+<label [attr.for]="id">
+  {{ label() }}
+  @if (required()) {
+    <span class="required" aria-hidden="true">*</span>
+  }
+</label>
+
+<input
+  [id]="id"
+  [type]="type()"
+  [value]="value()"
+  [placeholder]="placeholder()"
+  [disabled]="disabled()"
+  [required]="required()"
+  [attr.aria-invalid]="invalid() ? 'true' : null"
+  [attr.aria-describedby]="description() ? describedById : null"
+  (input)="onInput($event)"
+/>
+
+@if (description(); as text) {
+  <p
+    class="description"
+    [id]="describedById"
+    [attr.role]="invalid() ? 'alert' : null"
+  >
+    {{ text }}
+  </p>
+}

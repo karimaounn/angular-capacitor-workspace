@@ -1,0 +1,258 @@
+import { parseArgs } from 'node:util';
+import type { AppSpec, GenerateOptions, MobilePlatform } from 'angular-capacitor-workspace';
+
+export const USAGE = `npm create angular-capacitor-workspace@latest <directory> -- [options]
+
+  --app <name>            app to create (repeatable)
+  --mobile android,ios    Capacitor platforms for the preceding --app
+  --marketing <name>      prerendered static site
+  --marketing-origin <url>
+                          its production origin, for canonical URLs and the
+                          sitemap (default: https://example.com, which its
+                          build warns about)
+  --ui-lib [name]         design-system library skeleton (default: ui)
+  --ui-lib-prefix <p>     selector prefix for its components (default: its name)
+  --codegen orval         OpenAPI client generation
+  --e2e playwright        end-to-end test wiring
+  --audit-level <lvl>     low|moderate|high|critical  (default: moderate)
+  --no-install            stop after generating; still writes the lockfile to audit
+  --dry-run               show what would be generated
+  -h, --help              this message
+
+Interactive when no flags are given. Non-interactive when any flag is present,
+so CI and the integration tests take the same path users do.
+
+The \`--\` matters: without it npm reads the flags as its own configuration and
+passes on only their values.
+`;
+
+export interface ParsedArgs {
+  directory?: string;
+  options: Partial<GenerateOptions>;
+  /** True when any flag was supplied, which suppresses every prompt. */
+  nonInteractive: boolean;
+  help: boolean;
+}
+
+const AUDIT_LEVELS = ['low', 'moderate', 'high', 'critical'] as const;
+
+/**
+ * What Angular accepts as a selector prefix, copied from its own schemas.
+ *
+ * Checked here so a typo fails on the first line of output, rather than several
+ * minutes in, as a schema violation from inside `@schematics/angular:library`.
+ */
+const SELECTOR_PREFIX = /^[a-zA-Z][.0-9a-zA-Z]*(-[.0-9a-zA-Z]*)*$/;
+
+export class ArgError extends Error {}
+
+/**
+ * Checks and trims a site origin: a scheme and a host, nothing after.
+ *
+ * Checked here, like the selector prefix, so a mistake fails on the first line
+ * of output rather than minutes later inside the marketing schematic. A path is
+ * the likely mistake — `https://example.org/site` — and canonical URLs built on
+ * one would all point one directory too deep.
+ */
+export function parseOrigin(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new ArgError(`--marketing-origin must be a URL like https://example.org (got "${raw}").`);
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new ArgError(`--marketing-origin must be an http(s) URL (got "${raw}").`);
+  }
+  if (url.pathname !== '/' || url.search || url.hash) {
+    throw new ArgError(
+      `--marketing-origin takes the origin alone, without a path (got "${raw}"; ` +
+        `did you mean ${url.origin}?).`,
+    );
+  }
+  return url.origin;
+}
+
+/**
+ * Parses argv, binding each `--mobile` to the `--app` it follows.
+ *
+ * Position matters here and nowhere else in the CLI:
+ *
+ *     --app shop --mobile android --app admin
+ *
+ * gives the mobile target to `shop` alone. `parseArgs` collects repeated flags
+ * into flat arrays and discards the interleaving, so the association is
+ * recovered from the raw argv order instead.
+ */
+export function parseArguments(argv: string[]): ParsedArgs {
+  const { values, positionals } = parseArgs({
+    args: fillBareFlag(argv, 'ui-lib', 'ui'),
+    allowPositionals: true,
+    // Lets `--no-install` negate the `install` boolean rather than being
+    // rejected as an unknown flag.
+    allowNegative: true,
+    options: {
+      app: { type: 'string', multiple: true },
+      mobile: { type: 'string', multiple: true },
+      marketing: { type: 'string' },
+      'marketing-origin': { type: 'string' },
+      'ui-lib': { type: 'string' },
+      'ui-lib-prefix': { type: 'string' },
+      codegen: { type: 'string' },
+      e2e: { type: 'string' },
+      'audit-level': { type: 'string' },
+      install: { type: 'boolean', default: true },
+      'dry-run': { type: 'boolean', default: false },
+      'self-spec': { type: 'string' },
+      help: { type: 'boolean', short: 'h', default: false },
+    },
+  });
+
+  const apps = pairAppsWithPlatforms(argv);
+
+  const options: Partial<GenerateOptions> = {};
+  if (apps.length > 0) options.apps = apps;
+  if (values.marketing) options.marketing = values.marketing;
+
+  const marketingOrigin = values['marketing-origin'];
+  if (marketingOrigin !== undefined) {
+    if (!options.marketing) {
+      throw new ArgError(
+        '--marketing-origin is the address of the marketing site, and there is no ' +
+          '--marketing. Write `--marketing site --marketing-origin https://example.org`.',
+      );
+    }
+    options.marketingOrigin = parseOrigin(marketingOrigin);
+  }
+
+  if ('ui-lib' in values) {
+    // A bare `--ui-lib` arrives here already filled in; `--ui-lib=` still
+    // reaches this as an empty string. Both mean the documented default.
+    options.uiLib =
+      values['ui-lib'] === '' || values['ui-lib'] === undefined ? 'ui' : values['ui-lib'];
+  }
+
+  const uiLibPrefix = values['ui-lib-prefix'];
+  if (uiLibPrefix !== undefined) {
+    if (!options.uiLib) {
+      throw new ArgError(
+        '--ui-lib-prefix names the selector prefix of the design-system library, ' +
+          'and there is no --ui-lib. Write `--ui-lib ui --ui-lib-prefix acme`.',
+      );
+    }
+    if (!SELECTOR_PREFIX.test(uiLibPrefix)) {
+      throw new ArgError(
+        `--ui-lib-prefix must be a valid element-selector prefix (got "${uiLibPrefix}").`,
+      );
+    }
+    options.uiLibPrefix = uiLibPrefix;
+  }
+
+  if (values.codegen !== undefined) {
+    if (values.codegen !== 'orval') {
+      throw new ArgError(`--codegen only supports "orval" (got "${values.codegen}").`);
+    }
+    options.codegen = 'orval';
+  }
+
+  if (values.e2e !== undefined) {
+    if (values.e2e !== 'playwright') {
+      throw new ArgError(`--e2e only supports "playwright" (got "${values.e2e}").`);
+    }
+    options.e2e = 'playwright';
+  }
+
+  const auditLevel = values['audit-level'];
+  if (auditLevel !== undefined) {
+    if (!(AUDIT_LEVELS as readonly string[]).includes(auditLevel)) {
+      throw new ArgError(
+        `--audit-level must be one of ${AUDIT_LEVELS.join(', ')} (got "${auditLevel}").`,
+      );
+    }
+    options.auditLevel = auditLevel as GenerateOptions['auditLevel'];
+  }
+
+  options.install = values.install;
+  options.dryRun = values['dry-run'];
+  if (values['self-spec'] !== undefined) {
+    options.selfSpec = values['self-spec'];
+  }
+
+  // `--no-install` and `--dry-run` are how the tests and CI drive this, so they
+  // must not count as "the user made choices" — but every other flag does.
+  const nonInteractive = argv.some(
+    (arg) =>
+      arg.startsWith('--') &&
+      !['--no-install', '--dry-run'].includes(arg) &&
+      !arg.startsWith('--self-spec'),
+  );
+
+  return {
+    directory: positionals[0],
+    options,
+    nonInteractive,
+    help: values.help,
+  };
+}
+
+/**
+ * Rewrites a valueless `--<flag>` into `--<flag>=<fallback>`.
+ *
+ * `parseArgs` has no notion of an optional value: a `type: 'string'` option
+ * with nothing usable after it throws before any of this module's own
+ * validation runs, which made the documented `--ui-lib [name]` exit on a raw
+ * TypeError with no usage attached. The rewrite happens on argv rather than
+ * after parsing because by then the distinction is gone.
+ */
+function fillBareFlag(argv: string[], flag: string, fallback: string): string[] {
+  return argv.map((arg, index) => {
+    if (arg !== `--${flag}`) return arg;
+    const next = argv[index + 1];
+    // Anything starting with `-` is the next flag, not this one's value.
+    return next === undefined || next.startsWith('-') ? `--${flag}=${fallback}` : arg;
+  });
+}
+
+function pairAppsWithPlatforms(argv: string[]): AppSpec[] {
+  const apps: AppSpec[] = [];
+
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index]!;
+
+    if (arg === '--app' || arg.startsWith('--app=')) {
+      const name = arg.startsWith('--app=') ? arg.slice('--app='.length) : argv[++index];
+      if (!name) {
+        throw new ArgError('--app needs a name.');
+      }
+      apps.push({ name });
+      continue;
+    }
+
+    if (arg === '--mobile' || arg.startsWith('--mobile=')) {
+      const raw = arg.startsWith('--mobile=') ? arg.slice('--mobile='.length) : argv[++index];
+      if (!raw) {
+        throw new ArgError('--mobile needs at least one platform.');
+      }
+      const target = apps.at(-1);
+      if (!target) {
+        throw new ArgError(
+          '--mobile applies to the --app before it, and there is no --app yet. ' +
+            'Write `--app shop --mobile android`.',
+        );
+      }
+      target.mobile = parsePlatforms(raw);
+    }
+  }
+
+  return apps;
+}
+
+function parsePlatforms(raw: string): MobilePlatform[] {
+  return raw.split(',').map((value) => {
+    const platform = value.trim().toLowerCase();
+    if (platform !== 'android' && platform !== 'ios') {
+      throw new ArgError(`--mobile only supports android and ios (got "${value}").`);
+    }
+    return platform;
+  });
+}

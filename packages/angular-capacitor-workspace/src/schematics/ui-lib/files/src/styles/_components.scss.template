@@ -1,0 +1,56 @@
+@use 'semantic';
+
+/// Layer 4 — shared component primitives.
+///
+/// Mixins that more than one component needs. A component's own styles live
+/// beside the component; this file is only for what would otherwise be copied.
+
+/// The focus ring, defined once.
+///
+/// `:focus-visible` rather than `:focus` so a mouse click does not paint a ring,
+/// while keyboard and assistive-technology focus still does. Two offset rings
+/// rather than an outline so the indicator stays visible against both light and
+/// dark surfaces — a single-colour ring always disappears against something.
+@mixin focus-ring($offset: 2px) {
+  &:focus-visible {
+    outline: 2px solid var(--info);
+    outline-offset: $offset;
+    border-radius: inherit;
+  }
+}
+
+/// Hides content visually while leaving it in the accessibility tree.
+///
+/// `display: none` and `visibility: hidden` remove it from that tree too, which
+/// is the opposite of what a screen-reader-only label wants.
+@mixin visually-hidden() {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/// Respects a user's reduced-motion preference for a transition.
+@mixin transition($properties...) {
+  transition-property: $properties;
+  transition-duration: var(--duration-base);
+  transition-timing-function: ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 1ms;
+  }
+}
+
+/// Minimum interactive target size.
+///
+/// 44px is the smallest target most touch guidance considers reliable, and this
+/// library ships inside a Capacitor app where every target is a touch target.
+@mixin touch-target($size: 44px) {
+  min-inline-size: $size;
+  min-block-size: $size;
+}

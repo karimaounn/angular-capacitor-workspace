@@ -1,0 +1,20 @@
+{
+  "name": "@<%= workspace %>/<%= app %>-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Capacitor shell for the <%= app %> application.",
+  "scripts": {
+    "cap": "cap",
+    "sync": "cap sync",<% for (const platform of platforms) { %>
+    "open:<%= platform %>": "cap open <%= platform %>",
+    "run:<%= platform %>": "cap run <%= platform %>",<% } %>
+    "doctor": "cap doctor"
+  },
+  "dependencies": {
+    "@capacitor/core": "<%= versions['@capacitor/core'] %>"<% for (const platform of platforms) { %>,
+    "@capacitor/<%= platform %>": "<%= versions['@capacitor/' + platform] %>"<% } %>
+  },
+  "devDependencies": {
+    "@capacitor/cli": "<%= versions['@capacitor/cli'] %>"
+  }
+}

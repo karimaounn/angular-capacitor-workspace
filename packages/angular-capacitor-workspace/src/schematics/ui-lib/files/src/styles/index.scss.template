@@ -1,0 +1,48 @@
+@use 'layers';
+@use 'semantic';
+
+/// The entry point consuming applications import:
+///
+/// ```scss
+/// @use '<%= importName %>/styles' as *;
+/// ```
+///
+/// `ng-package.json` maps this directory into the library's build output, so
+/// the import resolves through `dist/` exactly like the TypeScript does.
+
+@layer tokens {
+  :root {
+    @include semantic.theme('default');
+    @include semantic.scales();
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--surface);
+    color: var(--text);
+    font-family:
+      'Inter',
+      system-ui,
+      -apple-system,
+      sans-serif;
+    font-size: var(--font-size-md);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :where(h1, h2, h3, h4, h5, h6) {
+    margin: 0;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  :where(a) {
+    color: var(--info);
+  }
+}

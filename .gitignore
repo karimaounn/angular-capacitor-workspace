@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.vitest-cache/
+coverage/
+
+# e2e matrix + advisory sweep working directories
+.e2e-work/
+e2e-report.json
+
+.DS_Store
+*.log
+npm-debug.log*

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-workspace",
+  "title": "Workspace overlay",
+  "type": "object",
+  "properties": {
+    "e2e": {
+      "description": "End-to-end runner to wire up at the workspace root.",
+      "oneOf": [
+        { "type": "string", "enum": ["playwright"] },
+        { "type": "boolean", "enum": [false] }
+      ],
+      "default": false
+    },
+    "uiLib": {
+      "type": "string",
+      "description": "Name of the design-system library, when one is being generated."
+    },
+    "mobile": {
+      "type": "boolean",
+      "description": "Emit the Capacitor helper scripts under scripts/.",
+      "default": false
+    },
+    "selfSpec": {
+      "type": "string",
+      "description": "Dependency spec for this package in the generated workspace. Defaults to the installed version. Used by the integration matrix to point at a local tarball before publication."
+    }
+  },
+  "additionalProperties": false
+}
