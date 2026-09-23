@@ -6,28 +6,6 @@ within a line lands as a minor. See [Versioning](CONTRIBUTING.md#versioning).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Added
-
-- `style`, exported from the `angular-capacitor-workspace` root: the sixteen
-  escape codes both CLIs print with, written out rather than imported, on the
-  same argument as the prompt layer. It degrades to the identity function off a
-  terminal, and honours `NO_COLOR` and `FORCE_COLOR` ahead of the TTY check — so a redirected run, or a CI log, gets byte-for-byte
-  the plain text these tools printed before.
-
-### Changed
-
-- Generation, `doctor`, `audit` and the interactive prompts now print in
-  sections — `Workspace`, `Dependency policy`, `Audit gate`, `Install` — with
-  progress dimmed, outcomes marked `✓` or `✗`, and commands the reader is meant
-  to type in colour. The wording is unchanged; only the hierarchy is new. A
-  generation log that was one undifferentiated wall now says at a glance which
-  phase failed.
-- `angular-capacitor-workspace audit` writes its progress lines to stdout
-  rather than stderr, so they stay in order with the report they introduce.
-  `--json` still suppresses them entirely, leaving stdout machine-readable.
-
 ## [22.1.0] — 2026-09-23
 
 ### Fixed
@@ -54,9 +32,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Every CI workflow moves to Node 24, ours and the generated template's.
 - `@types/node` tracks the floor at `^24`, so the types describe the oldest
   supported runtime rather than the newest available one.
+- Generation, `doctor`, `audit` and the interactive prompts now print in
+  sections — `Workspace`, `Dependency policy`, `Audit gate`, `Install` — with
+  progress dimmed, outcomes marked `✓` or `✗`, and commands the reader is meant
+  to type in colour. The wording is unchanged; only the hierarchy is new. A
+  generation log that was one undifferentiated wall now says at a glance which
+  phase failed.
+- `angular-capacitor-workspace audit` writes its progress lines to stdout
+  rather than stderr, so they stay in order with the report they introduce.
+  `--json` still suppresses them entirely, leaving stdout machine-readable.
 
 ### Added
 
+- `style`, exported from the `angular-capacitor-workspace` root: the sixteen
+  escape codes both CLIs print with, written out rather than imported, on the
+  same argument as the prompt layer. It degrades to the identity function off a
+  terminal, and honours `NO_COLOR` and `FORCE_COLOR` ahead of the TTY check —
+  so a redirected run, or a CI log, gets byte-for-byte the plain text these
+  tools printed before.
 - The audit gate refuses to run on npm below `11.6.0`, before the lockfile
   resolve, naming the Node release that carries the floor. Without it this
   surfaces as an arborist stack trace misattributed to the Angular pins.
