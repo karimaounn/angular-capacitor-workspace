@@ -102,8 +102,16 @@ jobs:
           # `npm view` reads through the restored npm cache and can be
           # answered by a stale CDN edge, so ask the registry for the version
           # document directly. 404 until it lands, 200 once it has.
+          #
+          # The unique query string is what makes that true. The skip check
+          # below asks for this exact URL moments before publishing and gets a
+          # 404, and that miss is cacheable: without a cache buster the poll
+          # afterwards is served the same stored 404 for as long as the edge
+          # holds it, and a release that published perfectly well fails on a
+          # three-minute wait that was never going to see anything change.
           on_registry() {
-            curl -fsS -o /dev/null "https://registry.npmjs.org/$1/$VERSION"
+            curl -fsS -o /dev/null \
+              "https://registry.npmjs.org/$1/$VERSION?t=$(date +%s)-$RANDOM"
           }
 
           # Order is load-bearing: `create-*` depends on the generator at an
