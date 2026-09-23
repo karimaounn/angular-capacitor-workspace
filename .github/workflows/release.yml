@@ -113,6 +113,29 @@ jobs:
 
             echo "Publishing $name@$VERSION under $DIST_TAG"
             npm publish --workspace "$name" --tag "$DIST_TAG"
+
+            # A publish the registry stages rather than accepts exits 0 and
+            # leaves nothing installable — a green job, a release announcing
+            # itself, and a version nobody can add. So ask what actually went
+            # live. The retries cover read-after-write lag, not a publish that
+            # might turn up later; a staged one never will.
+            live=""
+            for attempt in 1 2 3 4 5; do
+              live=$(npm view --prefer-online "$name@$VERSION" version 2>/dev/null || true)
+              if [ "$live" = "$VERSION" ]; then
+                break
+              fi
+              sleep 3
+            done
+
+            if [ "$live" != "$VERSION" ]; then
+              echo "$name@$VERSION is not on the registry, though publishing it reported success."
+              echo "It was almost certainly staged: staging is always allowed for a trusted"
+              echo "publisher, and direct publish is a separate permission that can be off."
+              echo "Approve or discard the staged version, turn direct publish back on, and"
+              echo "re-run — a pending stage blocks a direct publish of the same number."
+              exit 1
+            fi
           done
 
   github-release:

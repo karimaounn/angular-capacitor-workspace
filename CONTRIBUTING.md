@@ -95,9 +95,12 @@ The publish carries no npm token. Both packages name this repository,
 `release.yml` and the `npm` environment as a trusted publisher on npmjs.com, so
 the workflow's own OIDC identity is what the registry checks — and what signs
 the provenance attestation. Renaming the workflow file or the environment
-breaks publishing until the same rename is made on both packages. It is the one
-step here that cannot be undone, so add a required reviewer to the `npm`
-environment to hold it for approval.
+breaks publishing until the same rename is made on both packages. Direct
+publish is a permission of its own there, separate from staging, which is
+always allowed: without it `npm publish` quietly stages the version instead,
+and the workflow fails on the check that asks the registry what went live. It
+is the one step here that cannot be undone, so add a required reviewer to the
+`npm` environment to hold it for approval.
 
 If a run dies between the two publishes, re-run it from the tag rather than
 moving the tag. Each step skips what the registry already has.
