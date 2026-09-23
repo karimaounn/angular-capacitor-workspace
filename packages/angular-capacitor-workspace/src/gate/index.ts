@@ -4,7 +4,8 @@ import type { Policy } from '../policy/types';
 import { atOrAbove, findingsFrom, parseAudit, type Finding, type Severity } from './audit';
 import { auditJson, npmVersion, NPM_FLOOR, resolveLockfile } from './npm';
 import { formatAccepted, formatFindings } from './report';
-import { command, dim, heading, MARK, progress } from '../style';
+import { withSpinner } from '../spinner';
+import { command, dim, heading, MARK } from '../style';
 
 export interface GateOptions {
   cwd: string;
@@ -70,8 +71,11 @@ export function runGate(options: GateOptions): GateResult {
   }
 
   if (!skipResolve) {
-    log(progress('Resolving lockfile (npm install --package-lock-only --ignore-scripts)…'));
-    const resolved = resolveLockfile(cwd);
+    const resolved = withSpinner(
+      log,
+      'Resolving lockfile (npm install --package-lock-only --ignore-scripts)…',
+      () => resolveLockfile(cwd),
+    );
     if (resolved.status !== 0) {
       return {
         ok: false,
@@ -90,8 +94,7 @@ export function runGate(options: GateOptions): GateResult {
     }
   }
 
-  log(progress('Auditing (npm audit --json)…'));
-  const audited = auditJson(cwd);
+  const audited = withSpinner(log, 'Auditing (npm audit --json)…', () => auditJson(cwd));
   const report = parseAudit(audited.stdout);
 
   if (report.error) {

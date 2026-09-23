@@ -10,6 +10,7 @@ import { applyPolicy, type Manifest } from './policy/apply';
 import { POLICY } from './policy/advisories';
 import type { Policy, PolicyDecision } from './policy/types';
 import { ANGULAR_CLI_RANGE } from './policy/versions';
+import { withSpinner, withSpinnerAsync } from './spinner';
 import { heading, progress } from './style';
 
 export type MobilePlatform = 'android' | 'ios';
@@ -154,20 +155,21 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
     // Everything Angular owns stays Angular's. We never template a file the CLI
     // is willing to emit, which is what keeps this generator alive across minors.
     log(heading('Workspace'));
-    log(progress(`Bootstrapping with @angular/cli${ANGULAR_CLI_RANGE}…`));
-    const bootstrap = spawnSync(
-      'npx',
-      [
-        '--yes',
-        `@angular/cli@${ANGULAR_CLI_RANGE}`,
-        'new',
-        name,
-        '--no-create-application',
-        '--skip-install',
-        '--skip-git',
-        '--package-manager=npm',
-      ],
-      { cwd: parent, encoding: 'utf8', stdio: 'pipe', shell: process.platform === 'win32' },
+    const bootstrap = withSpinner(log, `Bootstrapping with @angular/cli${ANGULAR_CLI_RANGE}…`, () =>
+      spawnSync(
+        'npx',
+        [
+          '--yes',
+          `@angular/cli@${ANGULAR_CLI_RANGE}`,
+          'new',
+          name,
+          '--no-create-application',
+          '--skip-install',
+          '--skip-git',
+          '--package-manager=npm',
+        ],
+        { cwd: parent, encoding: 'utf8', stdio: 'pipe', shell: process.platform === 'win32' },
+      ),
     );
 
     if (bootstrap.status !== 0) {
@@ -222,13 +224,14 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
     let deprecations: Deprecation[] = [];
     if (options.install ?? true) {
       log(heading('Install'));
-      log(progress('Installing dependencies…'));
-      const install = spawnSync('npm', ['install'], {
-        cwd: directory,
-        encoding: 'utf8',
-        stdio: 'pipe',
-        shell: process.platform === 'win32',
-      });
+      const install = withSpinner(log, 'Installing dependencies…', () =>
+        spawnSync('npm', ['install'], {
+          cwd: directory,
+          encoding: 'utf8',
+          stdio: 'pipe',
+          shell: process.platform === 'win32',
+        }),
+      );
       if (install.status !== 0) {
         throw new GenerateError(
           'Dependency installation failed after the gate passed.',
@@ -338,17 +341,18 @@ async function runOverlay(
   }
 
   for (const step of steps) {
-    log(progress(`Running ${step.schematic}…`));
-    await workflow
-      .execute({
-        collection,
-        schematic: step.schematic,
-        options: step.options,
-        allowPrivate: true,
-        debug: false,
-        logger: undefined as never,
-      })
-      .toPromise();
+    await withSpinnerAsync(log, `Running ${step.schematic}…`, () =>
+      workflow
+        .execute({
+          collection,
+          schematic: step.schematic,
+          options: step.options,
+          allowPrivate: true,
+          debug: false,
+          logger: undefined as never,
+        })
+        .toPromise(),
+    );
   }
 
   return files;

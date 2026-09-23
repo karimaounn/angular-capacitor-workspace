@@ -28,6 +28,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The steps that take a while now spin while they run.** Generation spends
+  nearly all of its wall clock inside four child processes — the Angular
+  bootstrap, the lockfile resolve, `npm audit`, and `npm install` — and each of
+  them printed one line and then went quiet for anything up to several minutes,
+  which on a slow network is indistinguishable from a hang. Each now animates
+  beside its label and, when it finishes, leaves the same quiet line behind with
+  how long it took.
+
+  The frames are drawn from a worker thread, which is the unusual part and worth
+  recording: every one of those steps is a synchronous child process, so a timer
+  on the main thread paints one frame and then freezes on it for the whole
+  install — an animation that stops exactly when it is needed. A worker has its
+  own event loop, and `fs.writeSync(1, …)` reaches the terminal without going
+  through the main thread. That also keeps `runGate` synchronous, so no
+  published signature moved. No dependency, for the same reason the prompts
+  have none.
+
+  Off a terminal — a pipe, `CI`, `TERM=dumb` — nothing is animated and the
+  step's line is printed before its work starts, exactly as it always was, so a
+  build log still says what is running while it runs and a redirected run is
+  byte-for-byte what it was.
+
 - **The interactive questions with a list of options are now answered with the
   arrow keys**, the way `ng new` and every other scaffolder does it: `↑↓` moves,
   `Space` toggles a platform, `Enter` confirms, and a number still jumps
