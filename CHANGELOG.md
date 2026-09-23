@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A release whose publish had worked could still fail the run, and the error
+  blamed the wrong thing.** The publish step confirmed each version by asking
+  `npm view --prefer-online` for it five times across twelve seconds. npm's
+  write path and its read path are separate systems: the read side is
+  CDN-fronted, and on the runner it is answered through the npm cache
+  `setup-node` restores, so `--prefer-online` revalidates against an edge that
+  can still be serving the previous packument. Twelve seconds is not a
+  meaningful head start on that. The version the check called missing is on the
+  registry carrying a provenance attestation, which only the OIDC publish job
+  can mint — the publish was never the part that went wrong.
+
+  The check now asks the registry for the version document directly,
+  `https://registry.npmjs.org/<name>/<version>` — 404 until it lands, and no
+  local cache stands in front of it — and waits up to three minutes instead of
+  twelve seconds. Three minutes costs a passing run nothing. The same check
+  replaces the `npm view` behind the "already on the registry — skipping" test
+  that makes a re-run idempotent, where a stale packument could have sent the
+  job on to republish a version that was already out.
+
+  Its failure message no longer asserts that the registry staged the version.
+  Staging is chosen by the client, not imposed on it — `npm publish` sends
+  `stage: false` and only `npm stage publish` does otherwise — so that
+  diagnosis sent the reader to trusted publisher permissions that were never
+  involved. It now says to check the package page first, because the likeliest
+  explanation is that the release is fine and the check simply ran out of
+  patience.
+
 ## [22.2.0] — 2026-09-23
 
 ### Removed

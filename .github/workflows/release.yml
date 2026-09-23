@@ -99,6 +99,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          # `npm view` reads through the restored npm cache and can be
+          # answered by a stale CDN edge, so ask the registry for the version
+          # document directly. 404 until it lands, 200 once it has.
+          on_registry() {
+            curl -fsS -o /dev/null "https://registry.npmjs.org/$1/$VERSION"
+          }
+
           # Order is load-bearing: `create-*` depends on the generator at an
           # exact version, so between these two publishes `npm create` resolves
           # a dependency that does not exist yet. Generator first keeps that
@@ -106,7 +113,7 @@ jobs:
           for name in angular-capacitor-workspace create-angular-capacitor-workspace; do
             # A re-run after a failure finds the first package already out.
             # Skipping it is what makes the whole job safe to run again.
-            if [ "$(npm view "$name@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+            if on_registry "$name"; then
               echo "$name@$VERSION is already on the registry — skipping."
               continue
             fi
@@ -114,26 +121,33 @@ jobs:
             echo "Publishing $name@$VERSION under $DIST_TAG"
             npm publish --workspace "$name" --tag "$DIST_TAG"
 
-            # A publish the registry stages rather than accepts exits 0 and
-            # leaves nothing installable — a green job, a release announcing
-            # itself, and a version nobody can add. So ask what actually went
-            # live. The retries cover read-after-write lag, not a publish that
-            # might turn up later; a staged one never will.
+            # `npm publish` is the authoritative signal: it exits non-zero if
+            # the registry refuses. This only catches the rarer case of a
+            # success that leaves nothing installable — a green job, a release
+            # announcing itself, and a version nobody can add.
+            #
+            # Be patient about it. The registry's read path is a separate,
+            # CDN-fronted system that trails its write path, and a window of
+            # seconds here fails releases that published perfectly well. Three
+            # minutes costs nothing on a run that is about to succeed anyway.
             live=""
-            for attempt in 1 2 3 4 5; do
-              live=$(npm view --prefer-online "$name@$VERSION" version 2>/dev/null || true)
-              if [ "$live" = "$VERSION" ]; then
+            for attempt in $(seq 1 18); do
+              if on_registry "$name"; then
+                live="$VERSION"
                 break
               fi
-              sleep 3
+              sleep 10
             done
 
-            if [ "$live" != "$VERSION" ]; then
-              echo "$name@$VERSION is not on the registry, though publishing it reported success."
-              echo "It was almost certainly staged: staging is always allowed for a trusted"
-              echo "publisher, and direct publish is a separate permission that can be off."
-              echo "Approve or discard the staged version, turn direct publish back on, and"
-              echo "re-run — a pending stage blocks a direct publish of the same number."
+            if [ -z "$live" ]; then
+              echo "$name@$VERSION did not appear on the registry within three minutes,"
+              echo "though publishing it reported success."
+              echo
+              echo "Check https://www.npmjs.com/package/$name first. If the version is"
+              echo "listed, the publish worked and this check simply outran the registry:"
+              echo "re-run this workflow from the tag and it will skip ahead to the rest."
+              echo "If it is not listed, look for a pending version under Publishing"
+              echo "access in the package settings before re-running."
               exit 1
             fi
           done
