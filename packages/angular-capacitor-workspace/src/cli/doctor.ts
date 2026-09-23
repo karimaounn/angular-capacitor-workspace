@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { CATALOG, packageFeature } from '../catalog';
 import { POLICY } from '../policy/advisories';
 import { applyPolicy, type Manifest } from '../policy/apply';
 import type { Policy, PolicyContext, Tier } from '../policy/types';
@@ -58,6 +59,17 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
   // independent witness. A mention in a comment counts as use and keeps the
   // package — the false positive errs towards leaving a build working.
   if (importsAnimations(cwd)) features.add('animations');
+
+  // Catalog packages, read straight from the manifest. That is circular for a
+  // guard whose job is to decide whether a package should be there — see
+  // animations above — and it is not circular here: nothing prunes a package
+  // the user asked for by name. The token exists so a remedy can be scoped to
+  // the workspaces that carry it, and the entry is the only evidence there is.
+  for (const entry of CATALOG) {
+    if (entry.packages.some((pkg) => pkg.name in deps)) {
+      features.add(packageFeature(entry.id));
+    }
+  }
 
   if ('@capacitor/cli' in deps || '@capacitor/core' in deps) features.add('mobile');
   if ('@capacitor/android' in deps) features.add('mobile:android');

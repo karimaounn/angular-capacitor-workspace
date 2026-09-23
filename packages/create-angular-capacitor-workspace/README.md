@@ -50,6 +50,8 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
   --ui-lib-prefix <p>     selector prefix for its components (default: its name)
   --codegen orval         OpenAPI client generation
   --e2e playwright        end-to-end test wiring
+  --with <pkg>            extra package to wire in (repeatable, comma-separated)
+                          cdk — overlays, a11y, drag & drop, virtual scrolling
   --audit-level <lvl>     low|moderate|high|critical  (default: moderate)
   --no-install            stop after generating; still writes the lockfile to audit
   --dry-run               show what would be generated

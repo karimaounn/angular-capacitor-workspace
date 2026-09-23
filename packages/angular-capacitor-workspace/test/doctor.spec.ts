@@ -92,6 +92,17 @@ describe('inferFeatures', () => {
     expect(features).toContain('mobile:android');
   });
 
+  it('detects a catalog package from the manifest, which is the only witness', () => {
+    // Unlike the animations guard above, nothing prunes a package the user
+    // asked for by name, so reading the dependency entry is not circular here.
+    write('package.json', { name: 'ws', dependencies: { '@angular/cdk': '^22.1.0' } });
+
+    expect(inferFeatures(cwd, { dependencies: { '@angular/cdk': '^22.1.0' } })).toContain(
+      'pkg:cdk',
+    );
+    expect(inferFeatures(cwd, {})).not.toContain('pkg:cdk');
+  });
+
   it('detects a static marketing target from angular.json', () => {
     write('angular.json', {
       projects: {

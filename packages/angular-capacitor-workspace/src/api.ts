@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { NodeWorkflow } from '@angular-devkit/schematics/tools';
+import { packageFeature, resolveCatalog } from './catalog';
 import { runGate, type GateResult, type Severity } from './gate';
 import { collectDeprecations, type Deprecation } from './gate/deprecations';
 import { formatDecisions } from './gate/report';
@@ -38,6 +39,12 @@ export interface GenerateOptions {
   uiLibPrefix?: string;
   codegen?: 'orval' | false;
   e2e?: 'playwright' | false;
+  /**
+   * Curated packages to wire in, by catalog id — `['cdk']`. See src/catalog.ts;
+   * an id that is not in it fails during generation rather than installing
+   * something nobody has resolved against the Angular line.
+   */
+  packages?: string[];
   auditLevel?: Severity;
   /** Run `npm install` after the gate passes. */
   install?: boolean;
@@ -101,6 +108,13 @@ export function featuresFor(options: GenerateOptions): Set<string> {
   if (options.codegen) features.add('codegen');
   if (options.e2e) features.add(`e2e:${options.e2e}`);
 
+  // One token per catalog package asked for, so a policy remedy can be scoped
+  // to the workspaces that carry it — the way `onlyWhen: ['codegen']` scopes the
+  // undici override to the workspaces that have orval.
+  for (const id of options.packages ?? []) {
+    features.add(packageFeature(id));
+  }
+
   for (const app of apps) {
     for (const platform of app.mobile ?? []) {
       features.add('mobile');
@@ -128,6 +142,15 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
 
   if (existsSync(requested) && !dryRun) {
     throw new GenerateError(`${requested} already exists. Choose another name or remove it first.`);
+  }
+
+  // Before the Angular bootstrap, not inside the schematic that consumes them:
+  // an unknown id is a typo, and a typo should cost a line of output rather
+  // than the minute `ng new` takes to fail after it.
+  try {
+    resolveCatalog(options.packages ?? []);
+  } catch (error) {
+    throw new GenerateError((error as Error).message);
   }
 
   // A dry run generates for real, into a scratch directory that is thrown away.
@@ -338,6 +361,12 @@ async function runOverlay(
       schematic: 'codegen',
       options: { apps: apps.map((app) => app.name) },
     });
+  }
+
+  // Last, so the libraries a catalog package declares itself a peer of already
+  // exist. Nothing else depends on it having run.
+  if ((options.packages ?? []).length > 0) {
+    steps.push({ schematic: 'packages', options: { packages: options.packages } });
   }
 
   for (const step of steps) {

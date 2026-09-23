@@ -1,6 +1,9 @@
 import { parseArgs } from 'node:util';
 import {
+  CATALOG,
+  catalogEntry,
   style,
+  unknownPackageMessage,
   type AppSpec,
   type GenerateOptions,
   type MobilePlatform,
@@ -31,6 +34,8 @@ ${option('--ui-lib [name]', 'design-system library skeleton (default: ui)')}
 ${option('--ui-lib-prefix <p>', 'selector prefix for its components (default: its name)')}
 ${option('--codegen orval', 'OpenAPI client generation')}
 ${option('--e2e playwright', 'end-to-end test wiring')}
+${option('--with <pkg>', 'extra package to wire in (repeatable, comma-separated)')}
+${CATALOG.map((entry) => `${CONTINUED}${dim(`${entry.id} — ${entry.summary}`)}`).join('\n')}
 ${option('--audit-level <lvl>', 'low|moderate|high|critical  (default: moderate)')}
 ${option('--no-install', 'stop after generating; still writes the lockfile to audit')}
 ${option('--dry-run', 'show what would be generated')}
@@ -126,6 +131,7 @@ export function parseArguments(argv: string[]): ParsedArgs {
       'ui-lib-prefix': { type: 'string' },
       codegen: { type: 'string' },
       e2e: { type: 'string' },
+      with: { type: 'string', multiple: true },
       'audit-level': { type: 'string' },
       install: { type: 'boolean', default: true },
       'dry-run': { type: 'boolean', default: false },
@@ -189,6 +195,11 @@ export function parseArguments(argv: string[]): ParsedArgs {
     options.e2e = 'playwright';
   }
 
+  const wanted = parsePackages(values.with ?? []);
+  if (wanted.length > 0) {
+    options.packages = wanted;
+  }
+
   const auditLevel = values['audit-level'];
   if (auditLevel !== undefined) {
     if (!(AUDIT_LEVELS as readonly string[]).includes(auditLevel)) {
@@ -241,6 +252,33 @@ function fillBareFlag(argv: string[], flag: string, fallback: string): string[] 
     // Anything starting with `-` is the next flag, not this one's value.
     return next === undefined || next.startsWith('-') ? `--${flag}=${fallback}` : arg;
   });
+}
+
+/**
+ * Reads `--with` into catalog ids: repeatable, and comma-separated within each.
+ *
+ * Both forms because both are reflexes — `--with cdk --with gsap` from someone
+ * copying the `--app` habit, `--with cdk,gsap` from someone copying `--mobile`.
+ * Checked against the catalog here so a typo costs a line rather than the
+ * minutes generation takes to reach the schematic that would reject it.
+ */
+function parsePackages(raw: string[]): string[] {
+  const ids: string[] = [];
+
+  for (const value of raw.flatMap((entry) => entry.split(','))) {
+    const id = value.trim();
+    if (id === '') {
+      throw new ArgError('--with needs the name of a package. See --help for the list.');
+    }
+    if (!catalogEntry(id)) {
+      throw new ArgError(`--with: ${unknownPackageMessage(id)}`);
+    }
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+
+  return ids;
 }
 
 function pairAppsWithPlatforms(argv: string[]): AppSpec[] {

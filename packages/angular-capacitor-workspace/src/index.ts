@@ -8,6 +8,21 @@ export { featuresFor, generateWorkspace, GenerateError } from './api';
 export type { AppSpec, GenerateOptions, GenerateResult, MobilePlatform } from './api';
 export { PLACEHOLDER_ORIGIN } from './schematics/marketing';
 
+/**
+ * The packages `--with` knows how to wire in. Exported so the `create-*` shell
+ * renders its help and its prompt from the catalog rather than from a second
+ * list that would fall behind it.
+ */
+export {
+  CATALOG,
+  CATALOG_IDS,
+  catalogEntry,
+  packageFeature,
+  resolveCatalog,
+  unknownPackageMessage,
+} from './catalog';
+export type { CatalogEntry, CatalogPackage, DependencyBlock } from './catalog';
+
 export { runGate } from './gate';
 export { collectDeprecations } from './gate';
 export type { Deprecation, Finding, GateResult, Severity } from './gate';

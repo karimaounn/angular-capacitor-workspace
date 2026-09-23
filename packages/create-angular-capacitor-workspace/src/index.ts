@@ -2,6 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import {
+  CATALOG,
   generateWorkspace,
   PLACEHOLDER_ORIGIN,
   style,
@@ -148,6 +149,15 @@ async function ask(
       ? ('orval' as const)
       : false;
 
+    // Offered as a list rather than one question per package: the catalog is
+    // meant to grow, and a run of yes/no questions grows with it into an
+    // interrogation.
+    const packages = await prompter.multi(
+      'Add any of these packages?',
+      CATALOG.map((entry) => ({ value: entry.id, label: `${entry.title} — ${entry.summary}` })),
+      [],
+    );
+
     const auditLevel = await prompter.select(
       'Fail the audit gate at which severity?',
       [
@@ -169,6 +179,7 @@ async function ask(
       marketingOrigin,
       e2e,
       codegen,
+      packages,
       auditLevel,
     };
   } finally {

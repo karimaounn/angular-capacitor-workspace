@@ -790,3 +790,61 @@ describe('codegen', () => {
     );
   });
 });
+
+describe('packages', () => {
+  let tree: UnitTestTree;
+
+  beforeAll(async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withApp);
+    tree = await runner().runSchematic('packages', { packages: ['cdk'] }, withLib);
+  });
+
+  it('installs the CDK as a runtime dependency, not a dev one', () => {
+    const manifest = JSON.parse(tree.readContent('/package.json'));
+    expect(manifest.dependencies['@angular/cdk']).toBeDefined();
+    expect(manifest.devDependencies?.['@angular/cdk']).toBeUndefined();
+  });
+
+  it('takes the range Angular writes for its own packages, not `latest`', () => {
+    // Read from @schematics/angular rather than hard-coded: the CDK ships in
+    // lockstep with the framework, and the assertion is that the two agree.
+    const manifest = JSON.parse(tree.readContent('/package.json'));
+    expect(manifest.dependencies['@angular/cdk']).toBe(latestVersions.Angular);
+  });
+
+  it('declares it as a peer of the library, which is what publishes', () => {
+    // A component library built on the CDK that does not declare it ships a
+    // package resolving only by accident of hoisting.
+    const library = JSON.parse(tree.readContent('/projects/ui/package.json'));
+    expect(library.peerDependencies['@angular/cdk']).toBe(latestVersions.Angular);
+    // Angular's own peers are still there — the block was added to, not rewritten.
+    expect(library.peerDependencies['@angular/core']).toBeDefined();
+  });
+
+  it('says in the README what it is for and which stylesheet it needs', () => {
+    const readme = tree.readContent('/README.md');
+    expect(readme).toContain('## Angular CDK');
+    expect(readme).toContain('overlay-prebuilt.css');
+  });
+
+  it('is idempotent, so running it again in a live workspace changes nothing', async () => {
+    const again = await runner().runSchematic('packages', { packages: ['cdk'] }, tree);
+    expect(again.readContent('/README.md')).toBe(tree.readContent('/README.md'));
+    expect(again.readContent('/package.json')).toBe(tree.readContent('/package.json'));
+  });
+
+  it('does nothing at all when nothing was asked for', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const untouched = await runner().runSchematic('packages', {}, base);
+    expect(untouched.readContent('/package.json')).toBe(base.readContent('/package.json'));
+  });
+
+  it('names the alternatives when an id is not in the catalog', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    await expect(runner().runSchematic('packages', { packages: ['cdk-x'] }, base)).rejects.toThrow(
+      /"cdk-x" is not one of the packages .* Known: cdk/s,
+    );
+  });
+});

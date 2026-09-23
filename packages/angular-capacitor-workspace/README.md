@@ -41,16 +41,18 @@ ng generate angular-capacitor-workspace:marketing site --origin https://example.
 ng generate angular-capacitor-workspace:ui-lib ui --prefix acme
 ng generate angular-capacitor-workspace:mobile shop --platforms ios
 ng generate angular-capacitor-workspace:codegen
+ng generate angular-capacitor-workspace:packages cdk
 ```
 
-| Schematic   | Emits                                                                                  |
-| ----------- | -------------------------------------------------------------------------------------- |
-| `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                      |
-| `app`       | a client-rendered app at `projects/<name>/web`, with room for a `mobile/` sibling      |
-| `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks      |
-| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, contrast checker |
-| `mobile`    | a Capacitor sibling registered as its own npm workspace member                         |
-| `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point       |
+| Schematic   | Emits                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                        |
+| `app`       | a client-rendered app at `projects/<name>/web`, with room for a `mobile/` sibling        |
+| `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks        |
+| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, contrast checker   |
+| `mobile`    | a Capacitor sibling registered as its own npm workspace member                           |
+| `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point         |
+| `packages`  | a curated package — the Angular CDK today — at a range resolved against the Angular line |
 
 `ng generate angular-capacitor-workspace:<schematic> --help` lists every
 option, including ones not shown above: `--prefix` and `--port` on `app` and
@@ -143,6 +145,28 @@ That file is yours, and regeneration never touches it. Set the base URL there
 Build, serve and test scripts run codegen first. When `OPENAPI_SPEC` is unset
 they skip it with a message rather than failing, so a fresh clone without
 access to the spec still starts.
+
+### Curated packages
+
+```bash
+ng generate angular-capacitor-workspace:packages cdk    # or --with cdk at generation
+```
+
+| Id    | Package        | Adds                                                                   |
+| ----- | -------------- | ---------------------------------------------------------------------- |
+| `cdk` | `@angular/cdk` | overlays, a11y, drag & drop, virtual scrolling — behaviour, no styling |
+
+`npm install @angular/cdk` is one command and needs no generator. What the
+schematic adds is the rest of it: a range taken from the Angular line rather
+than `latest`, the peer declaration every library in the workspace needs before
+it can publish a component built on the package, a feature token (`pkg:cdk`)
+that scopes a future policy remedy to the workspaces carrying it, and a README
+section on what the package is for and the stylesheet people forget.
+
+The list is short on purpose. Everything in it has been resolved against the
+Angular line and run through the audit gate; anything else belongs on the end of
+an `npm install`. Proposals go in
+[`src/catalog.ts`](src/catalog.ts).
 
 ## Commands
 

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-packages",
+  "title": "Curated packages",
+  "type": "object",
+  "properties": {
+    "packages": {
+      "type": "array",
+      "description": "Catalog ids to wire in, e.g. \"cdk\". Run with an unknown id to be told the list.",
+      "items": { "type": "string" },
+      "default": [],
+      "$default": { "$source": "argv" }
+    }
+  },
+  "additionalProperties": false
+}

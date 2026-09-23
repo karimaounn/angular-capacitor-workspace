@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ArgError, parseArguments } from '../src/args';
+import { CATALOG_IDS } from 'angular-capacitor-workspace';
+import { ArgError, parseArguments, USAGE } from '../src/args';
 
 describe('--ui-lib-prefix', () => {
   it('rides along with the library it names', () => {
@@ -111,5 +112,51 @@ describe('--report', () => {
     expect(
       parseArguments(['ws', '--app', 'shop', '--report', '/tmp/run.json']).nonInteractive,
     ).toBe(true);
+  });
+});
+
+describe('--with', () => {
+  it('takes the flag repeated, or one comma-separated list, or both', () => {
+    for (const argv of [
+      ['ws', '--with', 'cdk'],
+      ['ws', '--with=cdk'],
+      ['ws', '--with', 'cdk,cdk'],
+      ['ws', '--with', 'cdk', '--with', 'cdk'],
+    ]) {
+      expect(parseArguments(argv).options.packages, argv.join(' ')).toEqual(['cdk']);
+    }
+  });
+
+  it('is absent unless asked for, so nothing extra is installed', () => {
+    expect(parseArguments(['ws', '--app', 'shop']).options.packages).toBeUndefined();
+  });
+
+  it('names the catalog when the id is not in it, before the minutes are spent', () => {
+    expect(() => parseArguments(['ws', '--with', 'cdkk'])).toThrow(ArgError);
+    expect(() => parseArguments(['ws', '--with', 'cdkk'])).toThrow(/Known: cdk/);
+  });
+
+  it('rejects an empty entry rather than silently dropping it', () => {
+    expect(() => parseArguments(['ws', '--with', 'cdk,'])).toThrow(/needs the name of a package/);
+  });
+});
+
+describe('the usage text', () => {
+  it('lists every catalog package, so --help cannot fall behind the catalog', () => {
+    for (const id of CATALOG_IDS) {
+      expect(USAGE).toContain(id);
+    }
+  });
+
+  it('keeps those rows inside an 80-column terminal', () => {
+    // They are rendered from the catalog, so a summary written one clause too
+    // long wraps `--help` into nonsense. Fail here rather than there. Colour is
+    // off when stdout is not a terminal, so these are real columns.
+    const rows = USAGE.split('\n').filter((line) =>
+      CATALOG_IDS.some((id) => line.trimStart().startsWith(`${id} `)),
+    );
+
+    expect(rows).toHaveLength(CATALOG_IDS.length);
+    expect(rows.filter((row) => row.length > 80)).toEqual([]);
   });
 });

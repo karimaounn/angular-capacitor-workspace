@@ -68,6 +68,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`--with cdk` adds the Angular CDK**, and a small curated catalog behind it
+  that the flag, the interactive list and the help text all render themselves
+  from. There is also a schematic, so a workspace that did not ask at generation
+  can ask later:
+
+  ```bash
+  npm create angular-capacitor-workspace@latest acme -- --app shop --with cdk
+  ng generate angular-capacitor-workspace:packages cdk
+  ```
+
+  `npm install @angular/cdk` is one command and needs no generator, so what the
+  entry adds is the rest of it: the range Angular's own schematics write for the
+  framework, since the CDK ships in lockstep with it and pinning a second number
+  by hand is one more thing to remember at every release; a peer declaration on
+  every library in the workspace, without which a component built on the CDK
+  publishes a package that resolves only by accident of hoisting; a `pkg:cdk`
+  feature token, so a future advisory remedy can be scoped to the workspaces
+  that carry it the way the undici override is scoped to the ones that have
+  orval; and a README section naming the prebuilt overlay stylesheet, which is
+  not loaded for you and whose absence looks like a broken dialog rather than a
+  missing import.
+
+  The catalog is deliberately short. Everything in it has been resolved against
+  the Angular line and run through the audit gate — the `full` matrix row now
+  carries `--with cdk` for exactly that — and anything else belongs on the end
+  of an `npm install`. Unknown ids fail on the first line of output, naming the
+  ones that exist, rather than minutes later inside a schematic.
+
 - `doctor` infers an `animations` feature by scanning the workspace's own
   TypeScript, so a guard can distinguish a dependency someone uses from one the
   generator left behind. The dependency entry cannot be that evidence, for the

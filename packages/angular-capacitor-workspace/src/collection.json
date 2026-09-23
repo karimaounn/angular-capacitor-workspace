@@ -39,6 +39,12 @@
       "description": "OpenAPI client generation with orval, wired into the pre* hooks.",
       "factory": "./schematics/codegen/index#codegen",
       "schema": "./schematics/codegen/schema.json"
+    },
+    "packages": {
+      "description": "Curated extra packages — the Angular CDK and friends — at a version resolved against the Angular line.",
+      "factory": "./schematics/packages/index#packages",
+      "schema": "./schematics/packages/schema.json",
+      "aliases": ["with"]
     }
   }
 }

@@ -35,7 +35,7 @@ itself:
 npm create angular-capacitor-workspace@latest acme -- \
   --app storefront --mobile android,ios \
   --app admin \
-  --marketing site --ui-lib ui --e2e playwright
+  --marketing site --ui-lib ui --e2e playwright --with cdk
 ```
 
 That gives:
@@ -84,6 +84,7 @@ added later:
 ng generate angular-capacitor-workspace:app back-office
 ng generate angular-capacitor-workspace:mobile admin --platforms android
 ng generate angular-capacitor-workspace:codegen
+ng generate angular-capacitor-workspace:packages cdk
 ```
 
 Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
@@ -162,9 +163,11 @@ packages/
   angular-capacitor-workspace/       schematics, policy, gate, CLI
     src/policy/advisories.ts         ← the file you patch
     src/policy/versions.ts           ← pins for what ng new does not choose
+    src/catalog.ts                   ← the packages --with knows how to wire in
     src/gate/                        lockfile resolve + npm audit + proposals
     src/style.ts                     the terminal palette both CLIs print with
-    src/schematics/                  workspace, app, marketing, ui-lib, mobile, codegen
+    src/schematics/                  workspace, app, marketing, ui-lib, mobile,
+                                     codegen, packages
     src/cli/                         audit, doctor
   create-angular-capacitor-workspace/
     src/                             argv, prompts, bootstrap
