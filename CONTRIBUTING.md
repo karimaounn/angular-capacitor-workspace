@@ -99,15 +99,26 @@ there.
 
 ## Releasing
 
-A release is a tag. Promote `## [Unreleased]` to `## [x.y.z] — <date>`, add its
-compare link at the foot of the file, set the version in the root manifest and
-in both packages — including the exact `angular-capacitor-workspace` pin in
-`create-angular-capacitor-workspace` — and commit. Then:
+A release is a tag. With the changelog's `## [Unreleased]` section written,
+[`scripts/bump.mjs`](scripts/bump.mjs) makes the five edits a release needs —
+the version in the root manifest and in both packages, the exact
+`angular-capacitor-workspace` pin in `create-angular-capacitor-workspace`, and
+the changelog heading with its compare links:
+
+```bash
+npm run bump -- minor        # or patch, or 22.2.0 in full
+npm run bump -- minor --dry-run
+```
+
+It stops there. Check the diff, commit, then:
 
 ```bash
 git tag v22.2.0
 git push origin main v22.2.0
 ```
+
+The major is not a bump it will make: it tracks the Angular line, so raising it
+means retargeting `ANGULAR_LINE` and the pins it feeds first.
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) does the rest.
 It checks that the tag names the version the tree agrees on and that the

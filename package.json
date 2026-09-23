@@ -20,6 +20,7 @@
     "e2e": "node e2e/matrix.mjs",
     "e2e:minimal": "node e2e/matrix.mjs --row minimal",
     "sweep": "node e2e/sweep.mjs",
+    "bump": "node scripts/bump.mjs",
     "sync-versions": "node scripts/sync-versions.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
