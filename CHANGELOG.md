@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.2.0] — 2026-09-23
+
 ### Removed
 
 - **`@angular/animations` is no longer written into generated workspaces.** It
@@ -172,6 +174,7 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.1.0...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.2.0...HEAD
+[22.2.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.1.0...v22.2.0
 [22.1.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.0.0...v22.1.0
 [22.0.0]: https://github.com/karimaounn/angular-capacitor-workspace/releases/tag/v22.0.0
