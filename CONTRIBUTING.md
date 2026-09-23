@@ -6,7 +6,9 @@ Angular, Storybook, Capacitor and the advisory database change around it.
 
 ## Setup
 
-Node ≥ 22.12 and npm ≥ 11.6.
+Node ≥ 24.8 and npm ≥ 11.6. 24.8 is the first Node whose bundled npm clears that
+floor; on anything older, `allowScripts` and `--strict-allow-scripts` are
+accepted and ignored.
 
 ```bash
 npm ci --strict-allow-scripts
@@ -64,6 +66,11 @@ Angular 22. Both packages are released together at the same version, and
 [`test/release-line.spec.ts`](packages/angular-capacitor-workspace/test/release-line.spec.ts)
 fails if they drift apart. Policy patches for an older Angular major go to its
 maintenance branch.
+
+Because the major belongs to Angular, a change that breaks consumers within a
+line lands as a minor — dropping a supported Node, say. Every release gets a
+[`CHANGELOG.md`](CHANGELOG.md) entry; commit messages stay short and point
+there.
 
 ## Licence
 

@@ -88,6 +88,24 @@ export function addScripts(tree: Tree, scripts: Record<string, string>): void {
 }
 
 /**
+ * Declares the runtime floor the generated workspace needs.
+ *
+ * Unlike `addScripts`, an existing value is replaced rather than preserved. A
+ * floor is a correctness constraint, not a preference: the generated workspace
+ * runs this package's own `audit` and `doctor`, so it needs at least what this
+ * package needs. Leaving a lower floor in place because something wrote one
+ * first is how the workspace ends up claiming to support a runtime on which its
+ * own dependency policy silently does nothing.
+ */
+export function setEngines(tree: Tree, engines: Record<string, string>): void {
+  updateJson(tree, PACKAGE_JSON, (file) => {
+    for (const [name, range] of Object.entries(engines)) {
+      file.modify(['engines', name], range);
+    }
+  });
+}
+
+/**
  * Appends a command to a script, building up a chain across schematic runs.
  *
  * `build:libs` is the motivating case: Angular has no way to build every

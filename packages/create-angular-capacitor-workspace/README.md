@@ -8,7 +8,9 @@ it is generated.
 npm create angular-capacitor-workspace@latest my-workspace
 ```
 
-Requires Node ≥ 22.12 and npm ≥ 11.6.
+Requires Node ≥ 24.8 and npm ≥ 11.6. 24.8 is the first Node whose bundled npm
+clears that floor; on anything older, `allowScripts` and
+`--strict-allow-scripts` are accepted and ignored.
 
 Interactive when no flags are given. Pressing Return through every question
 gives one app, a `ui` library and Playwright wiring, and no mobile target,

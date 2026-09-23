@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HostTree } from '@angular-devkit/schematics';
 import { SchematicTestRunner, type UnitTestTree } from '@angular-devkit/schematics/testing';
@@ -65,6 +65,23 @@ describe('workspace overlay', () => {
     expect(tree.files).toContain('/playwright.base.ts');
     expect(tree.files).toContain('/AGENTS.md');
     expect(tree.files).toContain('/README.md');
+  });
+
+  it('declares the same runtime floor this package declares', () => {
+    // Read, not hard-coded. The assertion is that the two agree, so a floor
+    // raised in one place and not the other fails here rather than in a
+    // generated workspace whose `allowScripts` silently does nothing.
+    const own = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as {
+      engines: Record<string, string>;
+    };
+    const generated = JSON.parse(tree.readContent('/package.json')) as {
+      engines?: Record<string, string>;
+    };
+
+    expect(generated.engines).toEqual(own.engines);
+    // Guards the assertion above against passing because both are empty.
+    expect(own.engines.npm).toBeDefined();
+    expect(own.engines.node).toBeDefined();
   });
 
   it('emits a CI workflow that enforces the install-script allowlist', () => {

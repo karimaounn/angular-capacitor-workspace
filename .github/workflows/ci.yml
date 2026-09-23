@@ -19,7 +19,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Tracks `engines.node` (>=24.8.0), which exists to guarantee a
+          # bundled npm >= 11.6. Below that, --strict-allow-scripts is accepted
+          # and silently ignored and `npm install --package-lock-only` crashes
+          # resolving vitest's optional peer set. Node 22 never qualified.
+          node-version: 24
           cache: npm
 
       # --strict-allow-scripts turns an install script that is not on this
@@ -45,7 +49,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci --strict-allow-scripts

@@ -18,9 +18,12 @@ Two packages, one repo, following the `create-vite` / `vite` precedent:
 
 ## Usage
 
-Requires Node ≥ 22.12 and npm ≥ 11.6, the first npm with the install-script
-allowlist that generated workspaces depend on. Mobile targets also need a native
-toolchain: a JDK and the Android SDK for Android, macOS with Xcode for iOS.
+Requires Node ≥ 24.8 and npm ≥ 11.6, the first npm with the install-script
+allowlist that generated workspaces depend on. 24.8 is the first Node whose
+bundled npm clears that floor — no Node 22.x ever did, and on an older npm
+`allowScripts` and `--strict-allow-scripts` are accepted and silently ignored.
+Mobile targets also need a native toolchain: a JDK and the Android SDK for
+Android, macOS with Xcode for iOS.
 
 ### Create a workspace
 

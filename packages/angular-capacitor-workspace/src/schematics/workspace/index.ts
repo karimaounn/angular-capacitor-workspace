@@ -22,6 +22,7 @@ import {
   addGitignoreSection,
   addScripts,
   PACKAGE_JSON,
+  setEngines,
   TSCONFIG_JSON,
 } from '../../utils/workspace';
 
@@ -69,6 +70,7 @@ export function workspaceOverlay(options: WorkspaceOverlayOptions = {}): Rule {
       preparePathsBlock(),
       rootScripts(options),
       rootDependencies(options),
+      engines(),
       gitignore(options),
     ]);
   };
@@ -144,25 +146,52 @@ function rootDependencies(options: WorkspaceOverlayOptions): Rule {
 }
 
 /**
- * The version of this package, read from its own manifest.
+ * Declares the same runtime floor this package declares.
  *
- * Hard-coding it would mean a release that forgot to update a string generates
- * workspaces pinned to a version that does not exist.
+ * The generated workspace runs `angular-capacitor-workspace audit` and
+ * `doctor`, so whatever they need, it needs. Copying the numbers into a
+ * template would let the two drift, and the direction that drift breaks in is
+ * the quiet one: on an npm below the floor, `allowScripts` and
+ * `--strict-allow-scripts` are accepted and ignored, so a workspace that looks
+ * gated is not. Reading them from our own manifest keeps that impossible.
  */
-function ownVersion(): string {
+function engines(): Rule {
+  return (tree: Tree) => {
+    const declared = ownManifest().engines;
+    if (!declared || Object.keys(declared).length === 0) {
+      throw new SchematicsException(
+        "Could not read this package's own `engines` from its manifest. The " +
+          'generated workspace declares the same floor, and inventing one here ' +
+          'would let the two disagree.',
+      );
+    }
+    setEngines(tree, declared);
+  };
+}
+
+/**
+ * This package's own manifest.
+ *
+ * Hard-coding anything out of it would mean a release that forgot to update a
+ * string generates workspaces describing a package that does not exist.
+ */
+function ownManifest(): { version?: string; engines?: Record<string, string> } {
   // dist/schematics/workspace/index.js → the package root is three levels up,
   // and the same is true of src/schematics/workspace/index.ts under ts-node.
-  const manifest = JSON.parse(
-    readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'),
-  ) as { version?: string };
+  return JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
+}
 
-  if (!manifest.version) {
+/** The version of this package, read from its own manifest. */
+function ownVersion(): string {
+  const { version } = ownManifest();
+
+  if (!version) {
     throw new SchematicsException(
       "Could not read this package's own version from its manifest. The " +
         'generated workspace needs it to depend on the generator that made it.',
     );
   }
-  return manifest.version;
+  return version;
 }
 
 function gitignore(options: WorkspaceOverlayOptions): Rule {

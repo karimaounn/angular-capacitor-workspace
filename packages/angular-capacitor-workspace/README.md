@@ -11,7 +11,9 @@ npm create angular-capacitor-workspace@latest my-workspace
 ```
 
 This package is what that one installs, and what stays in the generated
-workspace afterwards. It requires Node ≥ 22.12 and npm ≥ 11.6.
+workspace afterwards. It requires Node ≥ 24.8 and npm ≥ 11.6. 24.8 is the first Node whose bundled
+npm clears that floor; on anything older, `allowScripts` and
+`--strict-allow-scripts` are accepted and ignored.
 
 Its major version is the Angular major it targets: 22.x is for Angular 22
 workspaces. When moving to a new Angular major, update the two together:

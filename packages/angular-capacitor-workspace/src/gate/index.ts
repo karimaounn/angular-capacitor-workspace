@@ -1,7 +1,8 @@
+import * as semver from 'semver';
 import { POLICY } from '../policy/advisories';
 import type { Policy } from '../policy/types';
 import { atOrAbove, findingsFrom, parseAudit, type Finding, type Severity } from './audit';
-import { auditJson, resolveLockfile } from './npm';
+import { auditJson, npmVersion, NPM_FLOOR, resolveLockfile } from './npm';
 import { formatFindings } from './report';
 
 export interface GateOptions {
@@ -36,6 +37,29 @@ export interface GateResult {
 export function runGate(options: GateOptions): GateResult {
   const { cwd, auditLevel = 'moderate', policy = POLICY, skipResolve = false } = options;
   const log = options.log ?? (() => {});
+
+  // Checked before the resolve, because on an npm below the floor the resolve
+  // does not fail with a diagnosis — it crashes inside arborist, and the report
+  // below would send the reader to versions.ts to hunt a peer range that is
+  // perfectly fine.
+  const version = npmVersion(cwd);
+  if (version !== undefined && semver.lt(version, NPM_FLOOR)) {
+    return {
+      ok: false,
+      all: [],
+      unhandled: [],
+      accepted: [],
+      report:
+        `Audit gate: npm ${version} is below the required ${NPM_FLOOR}, so the ` +
+        `tree was never audited.\n\n` +
+        `npm ${NPM_FLOOR} is the first with the install-script allowlist this ` +
+        `policy relies on; older npm accepts \`allowScripts\` and ` +
+        `\`--strict-allow-scripts\` and ignores both. It arrives with Node ` +
+        `24.8, which is why that is the \`engines.node\` floor — no Node 22.x ` +
+        `release ever bundled it. Either move to Node >= 24.8, or upgrade npm ` +
+        `in place:\n\n  npm install -g npm@^11.6`,
+    };
+  }
 
   if (!skipResolve) {
     log('Resolving lockfile (npm install --package-lock-only --ignore-scripts)…');
@@ -105,5 +129,5 @@ function tail(text: string, lines: number): string {
 
 export { atOrAbove, findingsFrom, parseAudit, SEVERITY_ORDER } from './audit';
 export type { AuditReport, Finding, Proposal, Severity } from './audit';
-export { npm, resolveLockfile, auditJson } from './npm';
+export { npm, resolveLockfile, auditJson, npmVersion, NPM_FLOOR } from './npm';
 export { formatDecisions, formatFindings } from './report';

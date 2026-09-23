@@ -1,6 +1,6 @@
 {
   "name": "create-angular-capacitor-workspace",
-  "version": "22.0.0",
+  "version": "22.1.0",
   "description": "Scaffold an Angular workspace that ships as a web app, a Capacitor mobile app, a prerendered marketing site and shared libraries — audit-clean on the day it is generated.",
   "keywords": [
     "angular",
@@ -24,7 +24,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=24.8.0",
     "npm": ">=11.6.0"
   },
   "scripts": {
@@ -32,7 +32,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "angular-capacitor-workspace": "22.0.0"
+    "angular-capacitor-workspace": "22.1.0"
   },
   "repository": {
     "type": "git",

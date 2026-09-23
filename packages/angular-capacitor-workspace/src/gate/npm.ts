@@ -48,3 +48,33 @@ export function resolveLockfile(cwd: string): NpmRun {
 export function auditJson(cwd: string): NpmRun {
   return npm(['audit', '--json'], cwd);
 }
+
+/**
+ * The oldest npm this gate can run on.
+ *
+ * 11.6 is the first npm with the install-script allowlist, which *is* the Tier 1
+ * `allowScripts` remedy. On anything older the field is inert and
+ * `--strict-allow-scripts` is accepted and silently ignored — so a workspace
+ * that looks gated is not, which is the failure mode worth being loud about.
+ *
+ * Older npm also cannot resolve this tree at all. npm 10.9.8 — the newest npm
+ * any Node 22.x release bundles — dies in arborist's peer-set walk with
+ * `Cannot read properties of null (reading 'edgesOut')` while following
+ * vitest's optional `@vitest/browser-*` peers. That surfaces as a generation
+ * failure pointing at the Angular line, which is the wrong place to look.
+ *
+ * `engines.node` is `>=24.8.0` for this reason and no other: 24.8 is the first
+ * Node whose bundled npm clears this floor. Keep the two in step — a Node floor
+ * that ships an npm below this one puts every install back in the case above.
+ */
+export const NPM_FLOOR = '11.6.0';
+
+/** The running npm's version, or `undefined` if it could not be determined. */
+export function npmVersion(cwd: string): string | undefined {
+  try {
+    const version = npm(['--version'], cwd).stdout.trim();
+    return /^\d+\.\d+\.\d+/.test(version) ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
