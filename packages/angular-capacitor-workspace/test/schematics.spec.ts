@@ -695,6 +695,30 @@ describe('ui-lib', () => {
     expect(table).toContain('| `npm run storybook` |');
   });
 
+  it('declares the required Storybook peers but not the optional deprecated one', () => {
+    // The three devkit packages and platform-browser-dynamic are REQUIRED peers
+    // of @storybook/angular: left implicit, npm backtracks them onto Angular
+    // 20/21 and the install fails ERESOLVE. @angular/animations is an OPTIONAL
+    // peer, so declaring it bought nothing but a deprecation warning on every
+    // install — Angular 22 deprecated the package.
+    const devDependencies = JSON.parse(tree.readContent('/package.json')).devDependencies;
+
+    expect(devDependencies['@angular-devkit/build-angular']).toBeDefined();
+    expect(devDependencies['@angular-devkit/core']).toBeDefined();
+    expect(devDependencies['@angular-devkit/architect']).toBeDefined();
+    expect(devDependencies['@angular/platform-browser-dynamic']).toBeDefined();
+    expect(devDependencies['@angular/animations']).toBeUndefined();
+  });
+
+  it('emits no source that imports the deprecated animations package', () => {
+    // The prune rule's guard reads the source, so a story or component that
+    // imported @angular/animations would quietly re-legitimise the dependency.
+    const importers = tree.files.filter(
+      (file) => file.endsWith('.ts') && tree.readContent(file).includes('@angular/animations'),
+    );
+    expect(importers).toEqual([]);
+  });
+
   it('derives the selector prefix from the library name', async () => {
     // Regression: schema defaults are applied before the factory runs, so a
     // `"default"` on `prefix` silently shadows the derivation and every

@@ -52,6 +52,13 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
   // be pruned, so taking express's presence as evidence that it is needed means
   // it can never be pruned. The build configuration is the independent witness.
 
+  // Same principle as ssr:server: the dependency entry cannot be the evidence,
+  // because the guard exists to decide whether that entry should stay. An
+  // `@angular/animations` import in the workspace's own source is the
+  // independent witness. A mention in a comment counts as use and keeps the
+  // package — the false positive errs towards leaving a build working.
+  if (importsAnimations(cwd)) features.add('animations');
+
   if ('@capacitor/cli' in deps || '@capacitor/core' in deps) features.add('mobile');
   if ('@capacitor/android' in deps) features.add('mobile:android');
   if ('@capacitor/ios' in deps) features.add('mobile:ios');
@@ -86,6 +93,50 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
   }
 
   return features;
+}
+
+/**
+ * Where a workspace's own TypeScript lives. Bounded deliberately: walking from
+ * the root would walk node_modules, where half of Angular mentions
+ * @angular/animations and every scan would come back positive.
+ */
+const SOURCE_ROOTS = ['src', 'projects', 'apps', 'libs'];
+
+/** True when the workspace's own source imports `@angular/animations`. */
+function importsAnimations(cwd: string): boolean {
+  return SOURCE_ROOTS.some((root) => scanForAnimations(join(cwd, root)));
+}
+
+function scanForAnimations(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) {
+        continue;
+      }
+      if (scanForAnimations(path)) return true;
+      continue;
+    }
+
+    if (!entry.name.endsWith('.ts')) continue;
+    try {
+      if (readFileSync(path, 'utf8').includes('@angular/animations')) return true;
+    } catch {
+      // An unreadable file is not evidence either way; keep looking.
+    }
+  }
+
+  return false;
 }
 
 interface AngularProjectShape {

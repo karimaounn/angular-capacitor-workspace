@@ -171,6 +171,8 @@ packages/
 e2e/
   matrix.mjs                         generate → install → build → test → audit
   sweep.mjs                          daily advisory sweep, opens an issue
+  deprecations.mjs                   which deprecations are ours to fix
+  deprecation-issue.mjs              merges the rows into one issue
 scripts/
   sync-versions.mjs                  reports pins that have moved
 ```
@@ -207,6 +209,25 @@ and audit for real, in a temp directory, against the live registry:
 The minimal row runs on every PR; the full matrix runs nightly alongside the
 advisory sweep. Nightly rather than on-merge because the failures it catches
 arrive on wall-clock time rather than on commits.
+
+### Deprecations
+
+An advisory has a severity, a vulnerable range and a remedy, which is what makes
+the four-tier ladder possible. A deprecation has none of those — it is one
+maintainer's opinion, published on their schedule, and often with no move
+available at all. So generated workspaces never gate on one, and neither does
+any pull request here.
+
+The nightly matrix does, but only for the narrow case that is always actionable:
+a deprecated package **this generator itself writes** into a manifest, that npm
+does not put back as a required peer. That rule can never be permanently red,
+because anything it reports can be fixed in this repo on the day it appears.
+
+Everything else is reported as context. A generated workspace carrying Storybook
+installs four deprecated packages today; two are required peers of
+`@storybook/angular`, waived in `e2e/deprecations.mjs` with the peer that forces
+them, and two arrive underneath Compodoc and Angular's webpack builder, where
+nothing here can reach them.
 
 A generated workspace depends on `angular-capacitor-workspace` — that is what
 keeps `audit:policy`, `doctor` and `ng generate` working after generation. Before

@@ -97,3 +97,19 @@ describe('--marketing-origin', () => {
     }
   });
 });
+
+describe('--report', () => {
+  it('carries the path for the harness to read', () => {
+    const { reportPath } = parseArguments(['ws', '--report', '/tmp/run.json']);
+    expect(reportPath).toBe('/tmp/run.json');
+  });
+
+  it('does not by itself count as the user having made choices', () => {
+    // Harness plumbing, like --self-spec. If it suppressed the prompts, the
+    // matrix would be exercising a path no user ever takes.
+    expect(parseArguments(['ws', '--report', '/tmp/run.json']).nonInteractive).toBe(false);
+    expect(
+      parseArguments(['ws', '--app', 'shop', '--report', '/tmp/run.json']).nonInteractive,
+    ).toBe(true);
+  });
+});

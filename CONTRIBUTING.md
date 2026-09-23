@@ -59,6 +59,31 @@ ready-to-paste entry at the tier it recommends. Start from that.
 `npm run sweep` audits every matrix row against today's advisories, which is
 the quickest way to check that a patch works everywhere it should.
 
+## Answering a deprecation issue
+
+The nightly matrix opens one when a package **this generator writes** into a
+generated manifest turns out to be deprecated. Transitive deprecations never
+appear there as work — nothing here can fix one — and no pull request is ever
+gated on either kind.
+
+There are exactly two correct answers, and the issue names both:
+
+- **It is ours to remove.** Drop it from the schematic that writes it, and add a
+  `POLICY.prune` entry so `doctor --fix` reaches workspaces that already exist.
+  A schematic change alone only fixes projects nobody has created yet. If the
+  package could legitimately be in use, guard the prune — see the `animations`
+  token, which reads the workspace's own source rather than its manifest.
+- **npm puts it back as a required peer.** Add it to `EXPECTED` in
+  [`e2e/deprecations.mjs`](e2e/deprecations.mjs) with the peer that forces it,
+  why it cannot be removed, and what would let it be. An entry with no forcing
+  peer belongs in `POLICY.prune` instead, and the tests check that each entry
+  names one.
+
+A waiver that stops appearing in any row is reported as stale so it can be
+deleted. That check needs a complete run, so it only fires nightly — a waiver
+missing from `--row minimal` means nothing, because that row carries no
+Storybook to force it.
+
 ## Versioning
 
 The major version is the Angular major the package generates for: 22.x is

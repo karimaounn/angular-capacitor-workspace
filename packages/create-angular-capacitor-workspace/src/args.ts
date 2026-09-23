@@ -49,6 +49,15 @@ export interface ParsedArgs {
   /** True when any flag was supplied, which suppresses every prompt. */
   nonInteractive: boolean;
   help: boolean;
+  /**
+   * Where to write the machine-readable run report, if anywhere.
+   *
+   * Undocumented, like `--self-spec`: it exists so the integration matrix can
+   * read what the run observed — the deprecation warnings npm printed during
+   * the install, which exist only in that moment — without scraping prose that
+   * is written for a person and free to change.
+   */
+  reportPath?: string;
 }
 
 const AUDIT_LEVELS = ['low', 'moderate', 'high', 'critical'] as const;
@@ -121,6 +130,7 @@ export function parseArguments(argv: string[]): ParsedArgs {
       install: { type: 'boolean', default: true },
       'dry-run': { type: 'boolean', default: false },
       'self-spec': { type: 'string' },
+      report: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
@@ -197,11 +207,13 @@ export function parseArguments(argv: string[]): ParsedArgs {
 
   // `--no-install` and `--dry-run` are how the tests and CI drive this, so they
   // must not count as "the user made choices" — but every other flag does.
+  // `--self-spec` and `--report` are harness plumbing and count for even less.
   const nonInteractive = argv.some(
     (arg) =>
       arg.startsWith('--') &&
       !['--no-install', '--dry-run'].includes(arg) &&
-      !arg.startsWith('--self-spec'),
+      !arg.startsWith('--self-spec') &&
+      !arg.startsWith('--report'),
   );
 
   return {
@@ -209,6 +221,7 @@ export function parseArguments(argv: string[]): ParsedArgs {
     options,
     nonInteractive,
     help: values.help,
+    reportPath: values.report,
   };
 }
 

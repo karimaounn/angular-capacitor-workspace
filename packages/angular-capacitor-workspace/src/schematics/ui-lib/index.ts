@@ -330,7 +330,9 @@ function libraryDependencies(storybook: boolean): Rule {
         '@angular-devkit/core',
         '@angular-devkit/architect',
         '@angular/platform-browser-dynamic',
-        '@angular/animations',
+        // @angular/animations is NOT listed: Storybook marks it optional, so
+        // npm never installs it on its own, and asking for it only bought a
+        // deprecation warning. See policy/versions.ts.
       );
     }
 

@@ -53,6 +53,27 @@ export const POLICY: Policy = {
         'nothing for a server to serve.',
       unlessUsing: ['ssr:server'],
     },
+    {
+      packages: ['@angular/animations'],
+      reason:
+        'Angular 22 deprecates the package in favour of `animate.enter` and ' +
+        '`animate.leave`, and nothing a generated workspace emits imports it. ' +
+        'It was once declared as a Storybook peer pin alongside the devkit ' +
+        'packages, but Storybook marks it OPTIONAL (as does ' +
+        '@angular/platform-browser), so npm installed it only because we asked. ' +
+        'Verified 2026-09-23: with the declaration gone the install still ' +
+        'resolves with no ERESOLVE, `npm ls @angular/animations` is empty, and ' +
+        'one deprecation warning disappears from every install.',
+      // Not a security remedy — the ladder is the right shape for "a package we
+      // should not be installing" whatever the reason, and this is the only rung
+      // that reaches workspaces that already exist.
+      //
+      // The guard matters here in a way it does not for express: a workspace
+      // that has been alive for a year may have grown a real `provideAnimations`
+      // call, and `doctor --fix` must not delete the package out from under it.
+      // The import is the independent witness, not the dependency entry.
+      unlessUsing: ['animations'],
+    },
   ],
 
   /**

@@ -13,6 +13,14 @@
  *   node e2e/matrix.mjs --row minimal   # one row
  *   node e2e/matrix.mjs --keep          # leave the workspaces on disk
  *   node e2e/matrix.mjs --json report.json
+ *   node e2e/matrix.mjs --deprecations         # also fail on unexpected deprecations
+ *   node e2e/matrix.mjs --deprecations --deprecation-json out.json
+ *
+ * Deprecations are collected and printed on every run, and gate nothing unless
+ * --deprecations is passed. That flag belongs to the nightly workflow and not to
+ * the per-PR row: a deprecation arrives on the registry's clock, so gating a
+ * pull request on one turns an upstream publication into somebody's red build on
+ * a morning they touched nothing. See e2e/deprecations.mjs.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
@@ -20,6 +28,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { classify, summarise } from './deprecations.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
@@ -99,6 +108,8 @@ const { values } = parseArgs({
     keep: { type: 'boolean', default: false },
     json: { type: 'string' },
     'skip-install': { type: 'boolean', default: false },
+    deprecations: { type: 'boolean', default: false },
+    'deprecation-json': { type: 'string' },
   },
 });
 
@@ -138,7 +149,63 @@ for (const result of results) {
 const failed = results.filter((result) => !result.ok);
 console.log('='.repeat(70));
 console.log(`${results.length - failed.length}/${results.length} rows passed.`);
-process.exit(failed.length === 0 ? 0 : 1);
+
+// Not short-circuited on a failed row: a build that broke for its own reasons
+// still installed, and the deprecation report it produced is still worth filing.
+const deprecationsClean = reportDeprecations();
+process.exit(failed.length === 0 && deprecationsClean ? 0 : 1);
+
+/**
+ * The deprecation rule, run only under --deprecations.
+ *
+ * Returns true when the run is clean by this rule. Every row still collects and
+ * prints its deprecations without the flag; what the flag adds is the part that
+ * can turn a build red, and that belongs to the nightly workflow alone.
+ */
+function reportDeprecations() {
+  if (!values.deprecations) return true;
+
+  // An empty result means "npm unpacked nothing", not "nothing is deprecated" —
+  // npm warns while it reifies and says nothing about a tree already on disk. A
+  // check that passes because it looked at an install that never happened is
+  // worse than no check, so this is a hard error rather than a green tick.
+  const installed = results.filter((result) => result.installed);
+  if (installed.length === 0) {
+    console.error(
+      '\n--deprecations was passed but no row installed anything, so nothing was ' +
+        'checked. Drop --skip-install.',
+    );
+    process.exit(2);
+  }
+
+  // Written whatever the verdict. Whether a waiver has gone stale is not
+  // answerable from one invocation — each CI row runs in its own process, and
+  // `--row minimal` carries no Storybook, so a waiver missing there means
+  // nothing at all. e2e/deprecation-issue.mjs merges these and decides.
+  if (values['deprecation-json']) {
+    writeFileSync(
+      values['deprecation-json'],
+      `${JSON.stringify(
+        {
+          selected,
+          allRows: Object.keys(ROWS),
+          rows: installed.map(({ row, deprecations }) => ({ row, deprecations })),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
+
+  const findings = results.flatMap((result) => result.deprecations.findings);
+  if (findings.length === 0) {
+    console.log('No unexpected deprecations.');
+    return true;
+  }
+
+  console.log(`${findings.length} unexpected deprecation(s).`);
+  return false;
+}
 
 /** `npm pack` the schematics package and return a `file:` spec for the tarball. */
 function packSelf() {
@@ -167,6 +234,12 @@ function runRow(name, row) {
   const steps = [];
   console.log(`\n${'─'.repeat(70)}\n${name}\n${'─'.repeat(70)}`);
 
+  // npm prints `npm warn deprecated` only while it unpacks a tree, so the install
+  // inside this step is the one moment the information exists. The generator
+  // writes it to --report rather than us scraping the prose it prints, which is
+  // written for a person and free to change.
+  const reportPath = join(workdir, 'run-report.json');
+
   try {
     // Generation runs the audit gate itself and exits non-zero if it fails, so
     // a clean exit here already means "audit-clean".
@@ -180,12 +253,23 @@ function runRow(name, row) {
             ...row.args,
             '--self-spec',
             selfSpec,
+            '--report',
+            reportPath,
             ...(values['skip-install'] ? ['--no-install'] : []),
           ],
           workdir,
         ),
       ),
     );
+
+    const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : {};
+    const deprecations = classify(report.deprecations ?? []);
+    if (report.installed) {
+      console.log(`  deprecations … ${summarise(deprecations)}`);
+      for (const finding of deprecations.findings) {
+        console.log(`      unexpected: ${finding.package}@${finding.version}`);
+      }
+    }
 
     if (steps[0].ok && !values['skip-install']) {
       for (const check of row.checks) {
@@ -195,7 +279,14 @@ function runRow(name, row) {
     }
 
     const ok = steps.every((s) => s.ok);
-    return { row: name, ok, directory: ok && !values.keep ? undefined : target, steps };
+    return {
+      row: name,
+      ok,
+      directory: ok && !values.keep ? undefined : target,
+      steps,
+      installed: Boolean(report.installed),
+      deprecations,
+    };
   } finally {
     if (!values.keep && steps.every((s) => s.ok)) {
       rmSync(workdir, { recursive: true, force: true });

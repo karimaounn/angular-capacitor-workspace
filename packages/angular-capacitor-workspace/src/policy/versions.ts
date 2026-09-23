@@ -109,10 +109,15 @@ export const VERSIONS = {
     range: `^${ANGULAR_LINE}.1.0`,
     constraint: 'Required peer of @storybook/angular.',
   },
-  '@angular/animations': {
-    range: `^${ANGULAR_LINE}.1.0`,
-    constraint: 'Optional peer of @storybook/angular, but pinned so npm cannot backtrack it.',
-  },
+
+  // @angular/animations is deliberately absent. It was once pinned here on the
+  // same "stop npm backtracking" reasoning as its neighbours, but it is an
+  // OPTIONAL peer of @storybook/angular and of @angular/platform-browser, so
+  // nothing in the tree requires it and npm never installs it unless we ask.
+  // Asking cost a deprecation warning on every install — Angular 22 deprecated
+  // the package in favour of `animate.enter` / `animate.leave` — in exchange
+  // for a pin with nothing to pin. See POLICY.prune, which removes it from
+  // workspaces generated before this was noticed.
 
   // ── Capacitor ───────────────────────────────────────────────────────────
   '@capacitor/core': { range: '^8.5.2' },

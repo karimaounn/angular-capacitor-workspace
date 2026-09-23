@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import {
   generateWorkspace,
@@ -28,6 +29,15 @@ async function main(argv: string[]): Promise<number> {
     ...options,
     log: (message) => process.stdout.write(`${message}\n`),
   });
+
+  // Written before the gate is consulted below, so a failed run still reports
+  // what it saw rather than only what went wrong.
+  if (parsed.reportPath !== undefined) {
+    writeFileSync(
+      parsed.reportPath,
+      `${JSON.stringify({ directory: result.directory, installed: result.installed, deprecations: result.deprecations }, null, 2)}\n`,
+    );
+  }
 
   if (options.dryRun) {
     // The gate still ran, against a scratch copy — so a dry run answers "would

@@ -22,6 +22,12 @@ function write(relative: string, value: unknown): void {
   writeFileSync(path, JSON.stringify(value, null, 2));
 }
 
+function writeText(relative: string, contents: string): void {
+  const path = join(cwd, relative);
+  mkdirSync(join(path, '..'), { recursive: true });
+  writeFileSync(path, contents);
+}
+
 function readManifest(): Record<string, unknown> {
   return JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
 }
@@ -36,6 +42,41 @@ const POLICY: Policy = {
 };
 
 describe('inferFeatures', () => {
+  it('does not claim animations are used when nothing imports them', () => {
+    write('package.json', { name: 'ws' });
+    writeText('projects/ui/src/lib/button.ts', "import { Component } from '@angular/core';\n");
+
+    expect(inferFeatures(cwd, {})).not.toContain('animations');
+  });
+
+  it('treats an import in the workspace source as the witness, not the dependency', () => {
+    // The dependency entry cannot be the evidence: the guard exists to decide
+    // whether that entry should survive. Declaring it without importing it must
+    // still infer nothing.
+    write('package.json', { name: 'ws', dependencies: { '@angular/animations': '^22.1.0' } });
+
+    expect(
+      inferFeatures(cwd, { dependencies: { '@angular/animations': '^22.1.0' } }),
+    ).not.toContain('animations');
+
+    writeText(
+      'projects/shop/web/src/app/app.config.ts',
+      "import { provideAnimations } from '@angular/animations';\n",
+    );
+
+    expect(inferFeatures(cwd, {})).toContain('animations');
+  });
+
+  it('does not read node_modules, where every Angular package mentions it', () => {
+    write('package.json', { name: 'ws' });
+    writeText(
+      'projects/node_modules/@angular/platform-browser/index.d.ts',
+      "export * from '@angular/animations';\n",
+    );
+
+    expect(inferFeatures(cwd, {})).not.toContain('animations');
+  });
+
   it('reads the feature set from the workspace, not from a saved answer file', () => {
     write('package.json', {
       name: 'ws',

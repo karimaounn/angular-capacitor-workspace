@@ -98,4 +98,99 @@ jobs:
       # shell is a download separate from `chromium`.
       - run: npx playwright install --with-deps chromium chromium-headless-shell
 
-      - run: node e2e/matrix.mjs --row ${{ matrix.row }}
+      # --deprecations is passed here and nowhere else. The per-PR workflow runs
+      # this same row without it, deliberately: a deprecation is published on the
+      # registry's clock, so gating a pull request on one turns somebody else's
+      # release into a red build on a morning this repo changed nothing.
+      - run: >
+          node e2e/matrix.mjs --row ${{ matrix.row }}
+          --deprecations
+          --deprecation-json "$RUNNER_TEMP/deprecations-${{ matrix.row }}.json"
+
+      # !cancelled() rather than always(): a row that failed its build still
+      # installed, and the report it wrote on the way past is what the aggregate
+      # job needs — but a cancelled run has nothing to say and should stay quiet.
+      - name: Keep the deprecation report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: deprecations-${{ matrix.row }}
+          path: ${{ runner.temp }}/deprecations-${{ matrix.row }}.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deprecations:
+    name: Unexpected deprecations
+    needs: matrix
+    # The rows report on their way past, so a row that failed for an unrelated
+    # reason must not take the deprecation report down with it. Not always():
+    # that would also run on a cancelled workflow, where no row reached an
+    # install and the only possible outcome is a false alarm.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # continue-on-error: with nothing to download this step fails, and the
+      # judgement about what an empty set of reports means belongs to the script
+      # below — which treats it as a broken nightly rather than a clean one.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: deprecations-*
+          path: reports
+          merge-multiple: true
+
+      # One job, one issue. Four matrix rows racing to file the same issue open
+      # four of them, and a tracker that duplicates is a tracker people mute.
+      - name: Merge the rows
+        id: merge
+        run: node e2e/deprecation-issue.mjs reports --out issue.md
+        continue-on-error: true
+
+      # hashFiles, not the step outcome: the script also exits non-zero when the
+      # run was too broken to judge, and an issue filed about that would be an
+      # issue about nothing. The body existing is what says there is something to
+      # report. It is written into the workspace because hashFiles cannot see
+      # RUNNER_TEMP.
+      - name: Open or update an issue
+        if: steps.merge.outcome == 'failure' && hashFiles('issue.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const body = fs.readFileSync('issue.md', 'utf8');
+            const title = 'Deprecations: unexpected deprecated packages in generated workspaces';
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'deprecation-sweep',
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Still failing as of ${new Date().toISOString().slice(0, 10)}.\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['deprecation-sweep'],
+              });
+            }
+
+      - name: Fail the run when a deprecation needs a decision
+        if: steps.merge.outcome == 'failure'
+        run: exit 1

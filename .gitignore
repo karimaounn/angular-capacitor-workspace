@@ -7,6 +7,9 @@ coverage/
 # e2e matrix + advisory sweep working directories
 .e2e-work/
 e2e-report.json
+# The deprecation issue body, written here rather than to a temp directory so
+# the workflow can test for it with hashFiles.
+issue.md
 
 .DS_Store
 *.log

@@ -207,6 +207,34 @@ describe('the shipped policy', () => {
     expect(manifest.devDependencies?.['@angular-devkit/build-angular']).toBeUndefined();
   });
 
+  it('removes the deprecated animations package from an existing workspace', () => {
+    // Reaches workspaces generated before the pin was dropped: the schematic
+    // change alone only fixes projects nobody has created yet.
+    const { manifest } = applyPolicy(
+      { devDependencies: { '@angular/animations': '^22.1.0', storybook: '^10.6.0' } },
+      ctx({ features: new Set(['storybook']) }),
+      POLICY,
+    );
+    expect(manifest.devDependencies?.['@angular/animations']).toBeUndefined();
+    expect(manifest.devDependencies?.['storybook']).toBe('^10.6.0');
+  });
+
+  it('keeps animations when the workspace actually imports them', () => {
+    // `doctor --fix` must not delete a package out from under a real
+    // provideAnimations call in a workspace that has been alive for a year.
+    const { manifest, decisions } = applyPolicy(
+      { dependencies: { '@angular/animations': '^22.1.0' } },
+      ctx({ features: new Set(['animations']) }),
+      POLICY,
+    );
+    expect(manifest.dependencies?.['@angular/animations']).toBe('^22.1.0');
+
+    const prune = decisions.find(
+      (decision) => decision.tier === 'prune' && decision.packages.includes('@angular/animations'),
+    );
+    expect(prune).toMatchObject({ outcome: 'skipped', guard: 'animations' });
+  });
+
   it('writes the install-script allowlist', () => {
     const { manifest } = applyPolicy({}, ctx(), POLICY);
     expect(manifest.allowScripts).toMatchObject({ esbuild: true });

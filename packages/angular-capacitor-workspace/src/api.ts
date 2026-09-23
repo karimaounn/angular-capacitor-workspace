@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { NodeWorkflow } from '@angular-devkit/schematics/tools';
 import { runGate, type GateResult, type Severity } from './gate';
+import { collectDeprecations, type Deprecation } from './gate/deprecations';
 import { formatDecisions } from './gate/report';
 import { applyPolicy, type Manifest } from './policy/apply';
 import { POLICY } from './policy/advisories';
@@ -57,6 +58,13 @@ export interface GenerateResult {
   decisions: PolicyDecision[];
   gate?: GateResult;
   installed: boolean;
+  /**
+   * Deprecation warnings npm printed during the install.
+   *
+   * Reported, never gated on — see gate/deprecations.ts. Empty whenever nothing
+   * was installed, which is not the same as nothing being deprecated.
+   */
+  deprecations: Deprecation[];
 }
 
 export class GenerateError extends Error {
@@ -195,15 +203,23 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
       // the direction that matters.
       const everything = listFiles(directory);
       log(progress(`Dry run: ${everything.length} file(s) would be written to ${requested}.`));
-      return { directory: requested, files: everything, decisions, gate, installed: false };
+      return {
+        directory: requested,
+        files: everything,
+        decisions,
+        gate,
+        installed: false,
+        deprecations: [],
+      };
     }
 
     if (!gate.ok) {
-      return { directory, files, decisions, gate, installed: false };
+      return { directory, files, decisions, gate, installed: false, deprecations: [] };
     }
 
     // ── 5. Install ────────────────────────────────────────────────────────
     let installed = false;
+    let deprecations: Deprecation[] = [];
     if (options.install ?? true) {
       log(heading('Install'));
       log(progress('Installing dependencies…'));
@@ -220,9 +236,17 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
         );
       }
       installed = true;
+
+      // The only moment this information exists. npm warns while it unpacks, so
+      // a second install into the tree it just populated reports nothing, and
+      // the output was until now read only when the install failed.
+      deprecations = collectDeprecations(
+        `${install.stdout ?? ''}\n${install.stderr ?? ''}`,
+        JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as Manifest,
+      );
     }
 
-    return { directory, files, decisions, gate, installed };
+    return { directory, files, decisions, gate, installed, deprecations };
   }
 }
 

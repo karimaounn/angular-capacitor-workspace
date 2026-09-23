@@ -6,6 +6,46 @@ within a line lands as a minor. See [Versioning](CONTRIBUTING.md#versioning).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Removed
+
+- **`@angular/animations` is no longer written into generated workspaces.** It
+  was declared alongside the devkit packages on the same "stop npm backtracking"
+  reasoning, but it is an _optional_ peer of both `@storybook/angular` and
+  `@angular/platform-browser`, so nothing in the tree ever required it and npm
+  installed it only because we asked. Angular 22 deprecates the package in
+  favour of `animate.enter` / `animate.leave`, so the pin bought one deprecation
+  warning on every install and nothing else. Verified against the registry: the
+  install still resolves with no ERESOLVE and `npm ls @angular/animations` comes
+  back empty.
+
+  Existing workspaces are covered by a `POLICY.prune` entry, so
+  `npx angular-capacitor-workspace doctor --fix` removes it. The rule is guarded
+  on a new `animations` feature token, inferred from whether the workspace's own
+  source imports the package — a workspace that grew a real `provideAnimations`
+  call keeps it.
+
+### Added
+
+- `doctor` infers an `animations` feature by scanning the workspace's own
+  TypeScript, so a guard can distinguish a dependency someone uses from one the
+  generator left behind. The dependency entry cannot be that evidence, for the
+  same reason `ssr:server` is not inferred from express being installed.
+- Generation collects the deprecation warnings npm prints during the install and
+  returns them on `GenerateResult.deprecations`. npm emits these only while it
+  unpacks a tree, so this is the one moment the information exists; it used to be
+  read only when the install failed.
+- The nightly matrix fails on a deprecation in a package the generator itself
+  writes, unless `e2e/deprecations.mjs` waives it with the required peer that
+  forces it. Findings are merged across rows into a single tracking issue.
+
+  Deliberately nightly and not per-PR: a deprecation is published on the
+  registry's clock, so gating a pull request on one turns somebody else's
+  release into a red build on a morning this repo changed nothing. Transitive
+  deprecations are reported as context and gate nothing — there is no move
+  available three levels down inside someone else's dependency.
+
 ## [22.1.0] — 2026-09-23
 
 ### Fixed
@@ -64,5 +104,6 @@ that user a usable message.
 
 Initial release.
 
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.1.0...HEAD
 [22.1.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.0.0...v22.1.0
 [22.0.0]: https://github.com/karimaounn/angular-capacitor-workspace/releases/tag/v22.0.0

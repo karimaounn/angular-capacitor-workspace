@@ -135,5 +135,7 @@ function tail(text: string, lines: number): string {
 
 export { atOrAbove, findingsFrom, parseAudit, SEVERITY_ORDER } from './audit';
 export type { AuditReport, Finding, Proposal, Severity } from './audit';
+export { collectDeprecations } from './deprecations';
+export type { Deprecation } from './deprecations';
 export { npm, resolveLockfile, auditJson, npmVersion, NPM_FLOOR } from './npm';
 export { formatAccepted, formatDecisions, formatFindings } from './report';

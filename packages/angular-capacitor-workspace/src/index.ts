@@ -9,7 +9,8 @@ export type { AppSpec, GenerateOptions, GenerateResult, MobilePlatform } from '.
 export { PLACEHOLDER_ORIGIN } from './schematics/marketing';
 
 export { runGate } from './gate';
-export type { Finding, GateResult, Severity } from './gate';
+export { collectDeprecations } from './gate';
+export type { Deprecation, Finding, GateResult, Severity } from './gate';
 
 export { applyPolicy, POLICY, PolicyError } from './policy';
 export type { Policy, PolicyContext, PolicyDecision, Tier } from './policy';
