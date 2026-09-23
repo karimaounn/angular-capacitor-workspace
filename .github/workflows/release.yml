@@ -17,6 +17,10 @@ concurrency:
 permissions:
   contents: read
 
+# Both packages name this repository, `release.yml` and the `npm` environment
+# as a trusted publisher on npmjs.com. That configuration and this file are one
+# mechanism in two places: a rename on either side is a failed publish.
+
 jobs:
   guard:
     name: Check the tag against the tree
@@ -58,13 +62,20 @@ jobs:
     # Holds the run for a manual approval once a required reviewer is added to
     # the `npm` environment in the repository settings. With no rules on it,
     # the job runs straight through.
+    #
+    # The name is also part of what the registry checks: it appears in the OIDC
+    # claim, so renaming it here without renaming it on both packages' trusted
+    # publisher breaks the publish rather than the approval.
     environment:
       name: npm
       url: https://www.npmjs.com/package/angular-capacitor-workspace
     permissions:
       contents: read
-      # Signs each tarball with this workflow run's identity, so the registry
-      # can show what commit and workflow built it.
+      # This is the credential. npm trusts a publish from this repository, this
+      # workflow file and this environment, so there is no token to leak or
+      # rotate — and none that January 2027 takes away. It also carries the
+      # provenance attestation, which is why `npm publish` needs no
+      # `--provenance` below.
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -83,12 +94,6 @@ jobs:
 
       - name: Publish
         env:
-          # A granular automation token for both packages, with no 2FA prompt
-          # an unattended run cannot answer. To move to npm's trusted
-          # publishing instead, configure this repo and workflow as a publisher
-          # on each package and delete this line — the OIDC identity that
-          # `id-token: write` already grants replaces the token.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.guard.outputs.version }}
           DIST_TAG: ${{ needs.guard.outputs.dist-tag }}
         run: |
@@ -107,7 +112,7 @@ jobs:
             fi
 
             echo "Publishing $name@$VERSION under $DIST_TAG"
-            npm publish --workspace "$name" --provenance --tag "$DIST_TAG"
+            npm publish --workspace "$name" --tag "$DIST_TAG"
           done
 
   github-release:

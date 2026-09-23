@@ -91,11 +91,13 @@ trusting that main was green, publishes the generator and then the `create-*`
 shell with provenance, and opens the GitHub release from that changelog
 section. A `v22.2.0-rc.1` tag publishes under `next` rather than `latest`.
 
-The publish needs an `NPM_TOKEN` secret: a granular automation token with write
-access to both packages, and automation rather than publish so that no 2FA
-prompt waits for an answer nobody is there to give. It is the one step here
-that cannot be undone, so it runs in the `npm` environment — add a required
-reviewer to that environment to hold it for approval.
+The publish carries no npm token. Both packages name this repository,
+`release.yml` and the `npm` environment as a trusted publisher on npmjs.com, so
+the workflow's own OIDC identity is what the registry checks — and what signs
+the provenance attestation. Renaming the workflow file or the environment
+breaks publishing until the same rename is made on both packages. It is the one
+step here that cannot be undone, so add a required reviewer to the `npm`
+environment to hold it for approval.
 
 If a run dies between the two publishes, re-run it from the tag rather than
 moving the tag. Each step skips what the registry already has.
