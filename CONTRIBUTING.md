@@ -72,6 +72,34 @@ line lands as a minor — dropping a supported Node, say. Every release gets a
 [`CHANGELOG.md`](CHANGELOG.md) entry; commit messages stay short and point
 there.
 
+## Releasing
+
+A release is a tag. Promote `## [Unreleased]` to `## [x.y.z] — <date>`, add its
+compare link at the foot of the file, set the version in the root manifest and
+in both packages — including the exact `angular-capacitor-workspace` pin in
+`create-angular-capacitor-workspace` — and commit. Then:
+
+```bash
+git tag v22.2.0
+git push origin main v22.2.0
+```
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) does the rest.
+It checks that the tag names the version the tree agrees on and that the
+changelog has a section for it, runs the CI gate against the tag rather than
+trusting that main was green, publishes the generator and then the `create-*`
+shell with provenance, and opens the GitHub release from that changelog
+section. A `v22.2.0-rc.1` tag publishes under `next` rather than `latest`.
+
+The publish needs an `NPM_TOKEN` secret: a granular automation token with write
+access to both packages, and automation rather than publish so that no 2FA
+prompt waits for an answer nobody is there to give. It is the one step here
+that cannot be undone, so it runs in the `npm` environment — add a required
+reviewer to that environment to hold it for approval.
+
+If a run dies between the two publishes, re-run it from the tag rather than
+moving the tag. Each step skips what the registry already has.
+
 ## Licence
 
 Contributions are accepted under the project's [MIT licence](LICENSE). Each

@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  # Re-runs a publish that failed halfway, from the tag's ref dropdown. Moving
+  # the tag is not the recovery path: every step below is idempotent, and a
+  # version already on the registry cannot be replaced anyway.
+  workflow_dispatch:
+
+# A cancelled release is the half-published state — the generator out, the
+# `create-*` shell pointing at it still unpublished. Queue instead.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Check the tag against the tree
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      dist-tag: ${{ steps.check.outputs.dist-tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # The tag name reaches the shell through the environment rather than
+      # through an expression pasted into the script, which would run whatever
+      # a tag was named.
+      - name: Check
+        id: check
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node scripts/check-release.mjs "$TAG" --notes "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes.md
+
+  verify:
+    name: CI
+    needs: guard
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish to npm
+    needs: [guard, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Holds the run for a manual approval once a required reviewer is added to
+    # the `npm` environment in the repository settings. With no rules on it,
+    # the job runs straight through.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/angular-capacitor-workspace
+    permissions:
+      contents: read
+      # Signs each tarball with this workflow run's identity, so the registry
+      # can show what commit and workflow built it.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci --strict-allow-scripts
+
+      # `prepublishOnly` rebuilds each package as it goes out; this is the
+      # build that fails loudly, before anything has been published.
+      - run: npm run build
+
+      - name: Publish
+        env:
+          # A granular automation token for both packages, with no 2FA prompt
+          # an unattended run cannot answer. To move to npm's trusted
+          # publishing instead, configure this repo and workflow as a publisher
+          # on each package and delete this line — the OIDC identity that
+          # `id-token: write` already grants replaces the token.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.guard.outputs.version }}
+          DIST_TAG: ${{ needs.guard.outputs.dist-tag }}
+        run: |
+          set -euo pipefail
+
+          # Order is load-bearing: `create-*` depends on the generator at an
+          # exact version, so between these two publishes `npm create` resolves
+          # a dependency that does not exist yet. Generator first keeps that
+          # window to seconds and on the side that fails loudly.
+          for name in angular-capacitor-workspace create-angular-capacitor-workspace; do
+            # A re-run after a failure finds the first package already out.
+            # Skipping it is what makes the whole job safe to run again.
+            if [ "$(npm view "$name@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+              echo "$name@$VERSION is already on the registry — skipping."
+              continue
+            fi
+
+            echo "Publishing $name@$VERSION under $DIST_TAG"
+            npm publish --workspace "$name" --provenance --tag "$DIST_TAG"
+          done
+
+  github-release:
+    name: Publish the GitHub release
+    needs: [guard, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}
+
+      - name: Create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          # A prerelease publishes under `next`, and should not be what the
+          # repository's front page calls the latest release either.
+          PRERELEASE: ${{ needs.guard.outputs.dist-tag != 'latest' && '--prerelease' || '' }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "A release for $TAG already exists — leaving it alone."
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag \
+            $PRERELEASE

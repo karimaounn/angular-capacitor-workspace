@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The release workflow runs this same gate against the tag before it
+  # publishes, rather than trusting that the commit passed on main — a tag can
+  # be cut anywhere, and these two jobs are the whole definition of "green".
+  workflow_call:
 
 # A second push to the same PR makes the first run's answer irrelevant.
 concurrency:
