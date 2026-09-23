@@ -355,6 +355,34 @@ describe('app', () => {
     expect(tree.readContent('/tsconfig.json')).toContain('./projects/shop/web/e2e/tsconfig.json');
   });
 
+  it('replaces the Angular welcome page with a shell and a starter route', () => {
+    const shell = tree.readContent('/projects/shop/web/src/app/app.html');
+    expect(shell).toContain('<router-outlet />');
+    expect(shell).toContain('Skip to content');
+    // Angular's splash, and the spec that asserts on it, are both gone.
+    expect(shell).not.toContain('Hello,');
+    expect(tree.files).toContain('/projects/shop/web/src/app/pages/home.page.ts');
+    expect(tree.readContent('/projects/shop/web/src/app/app.routes.ts')).toContain(
+      "import('./pages/home.page')",
+    );
+  });
+
+  it('titles the shell from the app name', () => {
+    expect(tree.readContent('/projects/shop/web/src/app/app.ts')).toContain("signal('Shop')");
+  });
+
+  it('emits no theme suite when there is no theme', () => {
+    expect(tree.files).not.toContain('/projects/shop/web/e2e/theme.spec.ts');
+  });
+
+  it('leaves the plain shell alone when there is no design system to show', () => {
+    const shell = tree.readContent('/projects/shop/web/src/app/app.ts');
+    expect(shell).not.toContain('theme-toggle');
+    // Nothing to import, so nothing is written into the global stylesheet.
+    expect(tree.readContent('/projects/shop/web/src/styles.scss')).not.toContain('@use');
+    expect(tree.readContent('/projects/shop/web/src/index.html')).not.toContain('data-theme');
+  });
+
   it('looks for the root component under the prefix it was generated with', async () => {
     const base = await runner().runSchematic(
       'workspace',
@@ -369,6 +397,78 @@ describe('app', () => {
     expect(prefixed.readContent('/projects/shop/web/e2e/smoke.spec.ts')).toContain(
       "page.locator('acme-root')",
     );
+  });
+});
+
+describe('app, in a workspace that already has a design system', () => {
+  let tree: UnitTestTree;
+
+  beforeAll(async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, base);
+    tree = await runner().runSchematic('app', { name: 'shop' }, withLib);
+  });
+
+  it('loads the design tokens from the app stylesheet', () => {
+    // Without this line the tokens are built, published and never loaded —
+    // every var() in the library resolves to nothing.
+    expect(tree.readContent('/projects/shop/web/src/styles.scss')).toContain(
+      "@use 'ui/styles' as *;",
+    );
+  });
+
+  it('builds the libraries before a per-app build, which npm cannot hook', () => {
+    // `prebuild` only covers the script named `build`; `npm run build:shop` on a
+    // fresh clone would otherwise fail in Sass on a path under dist/.
+    expect(JSON.parse(tree.readContent('/package.json')).scripts['prebuild:shop']).toContain(
+      'npm run build:libs',
+    );
+  });
+
+  it('puts the theme toggle in the shell, so every route has it', () => {
+    expect(tree.readContent('/projects/shop/web/src/app/app.ts')).toContain(
+      "import { ThemeToggle } from 'ui';",
+    );
+    expect(tree.readContent('/projects/shop/web/src/app/app.html')).toContain(
+      '<ui-theme-toggle />',
+    );
+  });
+
+  it('e2e-tests the part that runs before Angular does', async () => {
+    const base = await runner().runSchematic(
+      'workspace',
+      { e2e: 'playwright' },
+      await baseWorkspace(),
+    );
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, base);
+    const app = await runner().runSchematic('app', { name: 'shop', e2e: 'playwright' }, withLib);
+
+    expect(app.files).toContain('/projects/shop/web/e2e/theme.spec.ts');
+  });
+
+  it('demonstrates the library on the starter page', () => {
+    const page = tree.readContent('/projects/shop/web/src/app/pages/home.page.html');
+    expect(page).toContain('<ui-button');
+    expect(page).toContain('<ui-field');
+  });
+
+  it('applies the saved theme before the first paint', () => {
+    const html = tree.readContent('/projects/shop/web/src/index.html');
+    // Before </head>, and reading the keys ThemeService writes.
+    expect(html).toContain("localStorage.getItem('ui.theme-mode')");
+    expect(html).toContain("localStorage.getItem('ui.theme-palette')");
+    expect(html.indexOf('data-theme')).toBeLessThan(html.indexOf('</head>'));
+  });
+
+  it('takes the selector prefix from the library, not from the app', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withLib = await runner().runSchematic('ui-lib', { name: 'design', prefix: 'acme' }, base);
+    const app = await runner().runSchematic('app', { name: 'shop', prefix: 'shop' }, withLib);
+
+    expect(app.readContent('/projects/shop/web/src/app/app.html')).toContain(
+      '<acme-theme-toggle />',
+    );
+    expect(app.readContent('/projects/shop/web/src/index.html')).toContain("'acme.theme-mode'");
   });
 });
 
@@ -646,9 +746,11 @@ describe('ui-lib', () => {
     }
   });
 
-  it('maps the SCSS into the package output so consumers can @use it', () => {
+  it('maps the SCSS into the package output at the path consumers @use', () => {
+    // `output`, so the sheet lands at dist/ui/styles and the import is
+    // `@use 'ui/styles'` — not `ui/src/styles`, which leaks the source layout.
     expect(JSON.parse(tree.readContent('/projects/ui/ng-package.json')).assets).toEqual([
-      './src/styles',
+      { glob: '**/*.scss', input: './src/styles', output: './styles' },
     ]);
   });
 
@@ -677,6 +779,55 @@ describe('ui-lib', () => {
     const api = tree.readContent('/projects/ui/src/public-api.ts');
     expect(api).toContain("export * from './lib/button/button'");
     expect(api).toContain("export * from './lib/field/field'");
+    expect(api).toContain("export * from './lib/theme/theme'");
+    expect(api).toContain("export * from './lib/theme/theme-toggle'");
+  });
+
+  it('ships more than one palette, all with the same steps', () => {
+    const ref = tree.readContent('/projects/ui/src/styles/_ref.scss');
+    const palettes = [...ref.matchAll(/^\s{2}'([^']+)': \($/gm)].map(([, name]) => name);
+    expect(palettes.length).toBeGreaterThan(1);
+    expect(palettes).toContain('default');
+  });
+
+  it('offers exactly the palettes the stylesheet declares', () => {
+    // The same invariant `npm run check:contrast` enforces in the generated
+    // workspace, asserted here so a template edit cannot ship broken.
+    const ref = tree.readContent('/projects/ui/src/styles/_ref.scss');
+    const declared = [...ref.matchAll(/^\s{2}'([^']+)': \($/gm)].map(([, name]) => name);
+    const offered = [
+      ...tree.readContent('/projects/ui/src/lib/theme/theme.ts').matchAll(/id: '([^']+)'/g),
+    ].map(([, id]) => id);
+    expect(offered).toEqual(declared);
+  });
+
+  it('emits each palette under the attribute the theme service writes', () => {
+    const index = tree.readContent('/projects/ui/src/styles/index.scss');
+    expect(index).toContain("[data-palette='#{$name}']");
+  });
+
+  it('namespaces the stored preference by the library prefix', () => {
+    const theme = tree.readContent('/projects/ui/src/lib/theme/theme.ts');
+    expect(theme).toContain("THEME_MODE_KEY = 'ui.theme-mode'");
+    expect(theme).toContain("THEME_PALETTE_KEY = 'ui.theme-palette'");
+  });
+
+  it('retrofits the token import onto an app that predates the library', () => {
+    expect(tree.readContent('/projects/shop/web/src/styles.scss')).toContain(
+      "@use 'ui/styles' as *;",
+    );
+  });
+
+  it('leaves an existing app shell alone — only the stylesheet is retrofitted', () => {
+    // The app was generated before the library, so its shell is the plain one
+    // and rewriting it would destroy whatever had been written there since.
+    expect(tree.readContent('/projects/shop/web/src/app/app.ts')).not.toContain('ThemeToggle');
+  });
+
+  it('builds libraries before a build, not only before start and test', () => {
+    expect(JSON.parse(tree.readContent('/package.json')).scripts['prebuild']).toContain(
+      'npm run build:libs',
+    );
   });
 
   it('ships components with tests and stories, so the wiring is exercised', () => {

@@ -1,0 +1,159 @@
+import {
+  DestroyRef,
+  DOCUMENT,
+  Injectable,
+  PLATFORM_ID,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+
+/** `system` follows the OS; the other two override it in both directions. */
+export type ThemeMode = 'system' | 'light' | 'dark';
+
+/**
+ * The palettes on offer.
+ *
+ * This list and the `$palettes` map in `src/styles/_ref.scss` are two halves of
+ * one fact, and nothing in the type system ties them together —
+ * `npm run check:contrast` compares them and fails when they drift. Add a
+ * palette in both places, or in neither.
+ */
+export const PALETTES = [
+  { id: 'default', label: 'Slate' },
+  { id: 'sand', label: 'Sand' },
+  { id: 'indigo', label: 'Indigo' },
+] as const;
+
+export type PaletteId = (typeof PALETTES)[number]['id'];
+
+export const THEME_MODE_KEY = '<%= prefix %>.theme-mode';
+export const THEME_PALETTE_KEY = '<%= prefix %>.theme-palette';
+
+/**
+ * The colour scheme and palette, as signals, applied to `<html>`.
+ *
+ * The whole mechanism is two attributes: `data-theme` for the mode and
+ * `data-palette` for the palette. The stylesheet declares every combination up
+ * front, so a switch is an attribute write — no re-render, no component that
+ * needs to know a theme exists, and no flash of restyled content while a
+ * component tree catches up.
+ *
+ * `mode` defaults to `system`, and `system` is expressed by *removing*
+ * `data-theme` rather than by writing the resolved value. That distinction is
+ * the difference between a preference and a decision: with the attribute absent
+ * the `prefers-color-scheme` block in the stylesheet governs, so a visitor who
+ * changes their OS theme with the page open sees the page follow — including in
+ * a prerendered page whose HTML was written long before they arrived.
+ *
+ * Everything here is browser-only. During prerender there is no `localStorage`,
+ * no `matchMedia`, and — by the workspace's house rules — no business writing a
+ * colour scheme into static HTML that every visitor will then be served.
+ */
+@Injectable({ providedIn: 'root' })
+export class ThemeService {
+  private readonly document = inject(DOCUMENT);
+  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+
+  /** The user's choice, which may be `system`. */
+  readonly mode = signal<ThemeMode>('system');
+
+  readonly palette = signal<PaletteId>('default');
+
+  /** Tracks the OS preference, so `system` stays live rather than sampled once. */
+  private readonly systemDark = signal(false);
+
+  /** What `system` currently resolves to. The value a toggle should display. */
+  readonly resolvedMode = computed<'light' | 'dark'>(() => {
+    // Read once into a local: TypeScript cannot narrow a signal across two
+    // calls, since nothing stops the second from returning something else.
+    const mode = this.mode();
+    if (mode !== 'system') {
+      return mode;
+    }
+    return this.systemDark() ? 'dark' : 'light';
+  });
+
+  constructor() {
+    if (!this.isBrowser) {
+      return;
+    }
+
+    this.restore();
+    this.watchSystem();
+
+    // One effect for both attributes and both storage keys: they are one piece
+    // of state, and splitting them into two effects only creates an interleaving
+    // where the DOM and storage briefly disagree.
+    effect(() => {
+      const mode = this.mode();
+      const palette = this.palette();
+      const root = this.document.documentElement;
+
+      if (mode === 'system') {
+        root.removeAttribute('data-theme');
+      } else {
+        root.setAttribute('data-theme', mode);
+      }
+      root.setAttribute('data-palette', palette);
+
+      this.write(THEME_MODE_KEY, mode);
+      this.write(THEME_PALETTE_KEY, palette);
+    });
+  }
+
+  /** Cycles system → light → dark → system. What a single toggle button calls. */
+  next(): void {
+    const order: ThemeMode[] = ['system', 'light', 'dark'];
+    this.mode.set(order[(order.indexOf(this.mode()) + 1) % order.length]!);
+  }
+
+  private restore(): void {
+    const mode = this.read(THEME_MODE_KEY);
+    if (mode === 'system' || mode === 'light' || mode === 'dark') {
+      this.mode.set(mode);
+    }
+
+    const palette = this.read(THEME_PALETTE_KEY);
+    if (PALETTES.some((option) => option.id === palette)) {
+      this.palette.set(palette as PaletteId);
+    }
+  }
+
+  private watchSystem(): void {
+    // `matchMedia` is missing in some test environments and in every non-browser
+    // renderer, and a theme service is not worth a crash.
+    const query = this.document.defaultView?.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!query) {
+      return;
+    }
+
+    this.systemDark.set(query.matches);
+    const listener = (event: MediaQueryListEvent) => this.systemDark.set(event.matches);
+    query.addEventListener('change', listener);
+    inject(DestroyRef).onDestroy(() => query.removeEventListener('change', listener));
+  }
+
+  /**
+   * Storage access, which throws rather than returning null in a Safari private
+   * window and wherever site data is blocked. A theme preference is a
+   * convenience; failing to save one must never take the page down with it.
+   */
+  private read(key: string): string | null {
+    try {
+      return this.document.defaultView?.localStorage.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private write(key: string, value: string): void {
+    try {
+      this.document.defaultView?.localStorage.setItem(key, value);
+    } catch {
+      // Ignored on purpose. See read().
+    }
+  }
+}

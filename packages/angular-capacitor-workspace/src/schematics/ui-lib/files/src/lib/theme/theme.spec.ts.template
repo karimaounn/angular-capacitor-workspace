@@ -1,0 +1,107 @@
+import { TestBed } from '@angular/core/testing';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PALETTES, THEME_MODE_KEY, THEME_PALETTE_KEY, ThemeService } from './theme';
+
+describe('ThemeService', () => {
+  const root = document.documentElement;
+
+  beforeEach(() => {
+    localStorage.removeItem(THEME_MODE_KEY);
+    localStorage.removeItem(THEME_PALETTE_KEY);
+    root.removeAttribute('data-theme');
+    root.removeAttribute('data-palette');
+    TestBed.configureTestingModule({});
+  });
+
+  afterEach(() => {
+    // The service writes to the real document, which every other test in this
+    // file — and every other file in the run — shares.
+    root.removeAttribute('data-theme');
+    root.removeAttribute('data-palette');
+  });
+
+  function service(): ThemeService {
+    const instance = TestBed.inject(ThemeService);
+    TestBed.tick();
+    return instance;
+  }
+
+  it('leaves data-theme off while the mode is system', () => {
+    service();
+    // Absent, not "light": the stylesheet's prefers-color-scheme block only
+    // governs when nothing has overridden it.
+    expect(root.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('writes the chosen mode onto the document element', () => {
+    const theme = service();
+
+    theme.mode.set('dark');
+    TestBed.tick();
+    expect(root.getAttribute('data-theme')).toBe('dark');
+
+    theme.mode.set('light');
+    TestBed.tick();
+    expect(root.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('returns to the system preference when the override is cleared', () => {
+    const theme = service();
+
+    theme.mode.set('dark');
+    TestBed.tick();
+    theme.mode.set('system');
+    TestBed.tick();
+
+    expect(root.hasAttribute('data-theme')).toBe(false);
+  });
+
+  it('writes the palette, including the default one', () => {
+    const theme = service();
+    expect(root.getAttribute('data-palette')).toBe('default');
+
+    const other = PALETTES.find((option) => option.id !== 'default')!;
+    theme.palette.set(other.id);
+    TestBed.tick();
+    expect(root.getAttribute('data-palette')).toBe(other.id);
+  });
+
+  it('persists the choice and restores it', () => {
+    const theme = service();
+    theme.mode.set('dark');
+    TestBed.tick();
+
+    expect(localStorage.getItem(THEME_MODE_KEY)).toBe('dark');
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    expect(service().mode()).toBe('dark');
+  });
+
+  it('ignores a stored value that is no longer a valid choice', () => {
+    // A palette someone removed, or a key another app on this origin owns.
+    localStorage.setItem(THEME_PALETTE_KEY, 'chartreuse');
+    localStorage.setItem(THEME_MODE_KEY, 'sepia');
+
+    const theme = service();
+    expect(theme.palette()).toBe('default');
+    expect(theme.mode()).toBe('system');
+  });
+
+  it('resolves system to whatever the engine reports', () => {
+    const theme = service();
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    expect(theme.resolvedMode()).toBe(dark ? 'dark' : 'light');
+  });
+
+  it('cycles system → light → dark → system', () => {
+    const theme = service();
+
+    theme.next();
+    expect(theme.mode()).toBe('light');
+    theme.next();
+    expect(theme.mode()).toBe('dark');
+    theme.next();
+    expect(theme.mode()).toBe('system');
+  });
+});

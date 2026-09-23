@@ -1,0 +1,72 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * The theme, checked where it actually runs.
+ *
+ * The library's own tests cover `ThemeService` and the toggle in a real browser
+ * engine. What they cannot cover is the part that lives outside Angular: the
+ * inline script in `index.html` that applies the stored preference *before the
+ * first paint*. Its storage keys are written in one file and read in another,
+ * with nothing between them — and when they drift, nothing fails. The theme
+ * simply arrives a moment late, as a flash, on the machines of the people who
+ * asked for dark mode.
+ */
+const background = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+test('the toggle restyles the page, and the choice survives a reload', async ({ page }) => {
+  await page.goto('/');
+  const html = page.locator('html');
+
+  // Clicking the visible label, not the radio: the input is positioned
+  // off-screen so that the segmented control can be drawn, which is exactly how
+  // a real user reaches it.
+  await page.getByText('Light', { exact: true }).click();
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  const light = await background(page);
+
+  await page.getByText('Dark', { exact: true }).click();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  const dark = await background(page);
+  expect(dark).not.toBe(light);
+
+  await page.reload();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  expect(await background(page)).toBe(dark);
+});
+
+test('the palette changes the brand colour without touching the colour scheme', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const html = page.locator('html');
+  const accent = () =>
+    page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+    );
+
+  const before = await accent();
+  const options = await page.getByLabel('Palette').locator('option').all();
+  const other = await options[1]!.getAttribute('value');
+
+  await page.getByLabel('Palette').selectOption(other!);
+  await expect(html).toHaveAttribute('data-palette', other!);
+  expect(await accent()).not.toBe(before);
+
+  await page.reload();
+  await expect(html).toHaveAttribute('data-palette', other!);
+});
+
+test('system means system — no colour scheme is pinned', async ({ page }) => {
+  await page.goto('/');
+  const html = page.locator('html');
+
+  await page.getByText('Dark', { exact: true }).click();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+
+  // Back to following the OS. The attribute has to go, not become "light":
+  // while it is absent, prefers-color-scheme in the stylesheet governs, so a
+  // visitor who changes their OS theme with the page open sees it follow.
+  await page.getByText('System', { exact: true }).click();
+  await expect(html).not.toHaveAttribute('data-theme', /.*/);
+});

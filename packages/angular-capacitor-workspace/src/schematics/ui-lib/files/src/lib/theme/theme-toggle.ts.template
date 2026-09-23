@@ -1,0 +1,60 @@
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { PALETTES, ThemeService, type ThemeMode } from './theme';
+
+let nextId = 0;
+
+interface ModeOption {
+  readonly value: ThemeMode;
+  readonly label: string;
+}
+
+/**
+ * The colour-scheme and palette picker.
+ *
+ * Two native controls rather than a clever one. The mode is a radio group, so
+ * arrow keys, grouping and the accessible name come from the platform; the
+ * palette is a `<select>`, which on a phone opens the OS picker — and this
+ * library ships inside a Capacitor app, where that matters more than it does on
+ * the web.
+ *
+ * `system` is offered as a first-class choice and is the default. A toggle that
+ * only knows light and dark forces a visitor to restate a preference their
+ * device already expresses, and gets it wrong for anyone whose device switches
+ * at sunset.
+ */
+@Component({
+  selector: '<%= prefix %>-theme-toggle',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  templateUrl: './theme-toggle.html',
+  styleUrl: './theme-toggle.scss',
+})
+export class ThemeToggle {
+  /** Hides the palette picker, for a shell that only wants light and dark. */
+  readonly palettes = input(true);
+
+  protected readonly theme = inject(ThemeService);
+  protected readonly paletteOptions = PALETTES;
+
+  protected readonly modes: readonly ModeOption[] = [
+    { value: 'system', label: 'System' },
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+  ];
+
+  // Unique per instance: a second toggle on the page (a header and a settings
+  // screen, say) would otherwise share a radio group name with the first, and
+  // selecting in one would clear the other.
+  protected readonly group = `<%= prefix %>-theme-${nextId++}`;
+
+  protected selectMode(mode: ThemeMode): void {
+    this.theme.mode.set(mode);
+  }
+
+  protected selectPalette(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    const match = PALETTES.find((option) => option.id === value);
+    if (match) {
+      this.theme.palette.set(match.id);
+    }
+  }
+}

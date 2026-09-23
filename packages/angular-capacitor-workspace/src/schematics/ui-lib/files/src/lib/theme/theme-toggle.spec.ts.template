@@ -1,0 +1,95 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PALETTES, THEME_MODE_KEY, THEME_PALETTE_KEY, ThemeService } from './theme';
+import { ThemeToggle } from './theme-toggle';
+
+describe('ThemeToggle', () => {
+  let fixture: ComponentFixture<ThemeToggle>;
+
+  beforeEach(async () => {
+    localStorage.removeItem(THEME_MODE_KEY);
+    localStorage.removeItem(THEME_PALETTE_KEY);
+    await TestBed.configureTestingModule({ imports: [ThemeToggle] }).compileComponents();
+    fixture = TestBed.createComponent(ThemeToggle);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-palette');
+  });
+
+  function radios(): HTMLInputElement[] {
+    return [...fixture.nativeElement.querySelectorAll('input[type="radio"]')];
+  }
+
+  it('offers system alongside light and dark, with system selected', () => {
+    const values = radios().map((radio) => radio.value);
+    expect(values).toEqual(['system', 'light', 'dark']);
+    expect(radios().find((radio) => radio.checked)?.value).toBe('system');
+  });
+
+  it('groups the radios so only one can be chosen', () => {
+    const names = new Set(radios().map((radio) => radio.name));
+    expect(names.size).toBe(1);
+  });
+
+  it('names the group for assistive technology', () => {
+    const legend = fixture.nativeElement.querySelector('legend') as HTMLLegendElement;
+    expect(legend.textContent?.trim()).toBe('Colour scheme');
+  });
+
+  it('applies the mode a user picks', () => {
+    const dark = radios().find((radio) => radio.value === 'dark')!;
+    dark.click();
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(TestBed.inject(ThemeService).mode()).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('applies the palette a user picks', () => {
+    const other = PALETTES.find((option) => option.id !== 'default')!;
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+
+    select.value = other.id;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(document.documentElement.getAttribute('data-palette')).toBe(other.id);
+  });
+
+  it('shows the palette that is already active', () => {
+    const other = PALETTES.find((option) => option.id !== 'default')!;
+    TestBed.inject(ThemeService).palette.set(other.id);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement.querySelector('select') as HTMLSelectElement).value).toBe(
+      other.id,
+    );
+  });
+
+  it('offers every palette the stylesheet declares', () => {
+    const options = [...fixture.nativeElement.querySelectorAll('option')] as HTMLOptionElement[];
+    expect(options.map((option) => option.value)).toEqual(PALETTES.map((option) => option.id));
+  });
+
+  it('hides the palette picker when asked', () => {
+    fixture.componentRef.setInput('palettes', false);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('select')).toBeNull();
+    expect(radios()).toHaveLength(3);
+  });
+
+  it('keeps the radios reachable by keyboard', () => {
+    // They are positioned off-screen, which is not the same as removed: a
+    // `display: none` radio takes itself out of the tab order and out of the
+    // accessibility tree, and this is the assertion that catches the change.
+    const radio = radios()[0]!;
+    radio.focus();
+    expect(document.activeElement).toBe(radio);
+  });
+});

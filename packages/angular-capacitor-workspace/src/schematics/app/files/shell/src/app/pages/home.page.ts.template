@@ -1,0 +1,61 @@
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Button, Field, PALETTES, ThemeService } from '<%= libName %>';
+
+/** One swatch in the token strip: a custom property and the text that sits on it. */
+interface Swatch {
+  readonly token: string;
+  readonly on: string;
+  readonly label: string;
+}
+
+/**
+ * The starter screen.
+ *
+ * It is here to be deleted. What it is worth reading first is *what* it
+ * demonstrates: every colour on this page is a custom property from
+ * <%= libName %>, so the toggle in the header restyles all of it without a
+ * single component re-rendering. That is the whole theming mechanism — two
+ * attributes on `<html>`, and a stylesheet that declares every combination.
+ *
+ * Replace it with your own home route in `app.routes.ts`.
+ */
+@Component({
+  selector: '<%= prefix %>-home-page',
+  imports: [Button, Field],
+  templateUrl: './home.page.html',
+  styleUrl: './home.page.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class HomePage {
+  protected readonly theme = inject(ThemeService);
+
+  protected readonly email = signal('');
+  protected readonly submitting = signal(false);
+
+  protected readonly paletteLabel = computed(
+    () => PALETTES.find((option) => option.id === this.theme.palette())?.label ?? '',
+  );
+
+  /** Deliberately naive. A real form belongs to a form library, not to a starter page. */
+  protected readonly emailError = computed(() => {
+    const value = this.email();
+    if (value.length === 0 || value.includes('@')) {
+      return undefined;
+    }
+    return 'That does not look like an email address.';
+  });
+
+  protected readonly swatches: readonly Swatch[] = [
+    { token: '--surface-raised', on: '--text', label: 'surface-raised' },
+    { token: '--surface-sunken', on: '--text', label: 'surface-sunken' },
+    { token: '--accent', on: '--on-accent', label: 'accent' },
+    { token: '--success', on: '--on-accent', label: 'success' },
+    { token: '--warning', on: '--on-accent', label: 'warning' },
+    { token: '--danger', on: '--on-accent', label: 'danger' },
+  ];
+
+  protected submit(): void {
+    this.submitting.set(true);
+    setTimeout(() => this.submitting.set(false), 900);
+  }
+}

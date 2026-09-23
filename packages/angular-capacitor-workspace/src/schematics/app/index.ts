@@ -10,6 +10,7 @@ import {
   move,
   schematic,
   url,
+  SchematicsException,
   type Rule,
   type Tree,
 } from '@angular-devkit/schematics';
@@ -22,10 +23,14 @@ import {
   appendToScript,
   claimDefaultStart,
   documentScripts,
+  findDesignSystem,
+  importDesignSystemStyles,
   nextFreePort,
   readProject,
   setDevServerPort,
+  titleFromName,
   type AngularProject,
+  type DesignSystem,
 } from '../../utils/workspace';
 import type { MobilePlatform } from '../../api';
 import { installedPackages } from '../packages';
@@ -87,6 +92,7 @@ export function app(options: AppOptions): Rule {
         addStyleIncludePath(host, name);
         setDevServerPort(host, name, port);
       },
+      starterShell(name, prefix),
       appScripts(name),
       options.e2e === 'playwright' ? e2eConfig(name, port, prefix) : noop(),
       mobile.length > 0 ? schematic('mobile', { app: name, platforms: mobile }) : noop(),
@@ -96,6 +102,108 @@ export function app(options: AppOptions): Rule {
       installedPackages(),
     ]);
   };
+}
+
+/**
+ * Replaces Angular's welcome page with a starter screen for this workspace.
+ *
+ * Angular's splash is a deliberately temporary thing — it exists to prove the
+ * app booted — and every workspace generated here used to ship it unchanged.
+ * That left the two most visible things this generator adds, the design tokens
+ * and the theming, invisible until somebody went looking in a library they had
+ * no reason to open yet.
+ *
+ * The shell replaces `app.html`, `app.scss`, `app.ts`, `app.spec.ts` and
+ * `app.routes.ts`: Angular's spec asserts on the markup of the page being
+ * replaced, so leaving it behind means shipping a red test suite.
+ *
+ * Two versions, picked by whether the workspace has a design system. With one,
+ * the screen renders its components and its tokens and carries the theme
+ * toggle; without one, it is the same shell in system colours, with no tokens
+ * to demonstrate and nothing to switch. A starter page that silently drops half
+ * its content is worse than one that was never claiming to have it.
+ */
+function starterShell(name: string, prefix: string): Rule {
+  return (tree: Tree) => {
+    const project = readProject(tree, name);
+    const root = requireRoot(project, name);
+    const library = findDesignSystem(tree);
+
+    const templates = apply(url(library ? './files/shell' : './files/plain'), [
+      applyTemplates({
+        ...strings,
+        name,
+        prefix,
+        title: titleFromName(name),
+        libName: library?.name ?? '',
+        libPrefix: library?.prefix ?? '',
+      }),
+      move(`/${root}`),
+    ]);
+
+    return chain([
+      mergeWith(templates, MergeStrategy.Overwrite),
+      (host: Tree) => {
+        if (!library) {
+          return;
+        }
+        importDesignSystemStyles(host, name, library.name);
+        applyThemeBeforePaint(host, root, library);
+      },
+    ]);
+  };
+}
+
+/**
+ * The script that applies a saved theme before the first paint.
+ *
+ * Without it the page renders in the OS colour scheme, Angular boots, and the
+ * saved preference lands a few hundred milliseconds later — a white flash on
+ * every load for the users who most specifically asked not to have one. There
+ * is no way to do this from Angular: by the time any framework code runs, the
+ * first frame is on screen.
+ *
+ * Blocking and inline for the same reason: an external file is a round trip
+ * that the paint does not wait for. A workspace with a strict Content-Security
+ * -Policy needs a hash or nonce for this tag, which is the trade being made and
+ * the reason it is one small script rather than a convenience layer.
+ */
+function applyThemeBeforePaint(tree: Tree, root: string, library: DesignSystem): void {
+  const path = `/${root}/src/index.html`;
+  const html = tree.read(path)?.toString('utf8');
+  if (html === undefined) {
+    throw new SchematicsException(`Expected Angular to have written ${path}.`);
+  }
+  if (!html.includes('</head>')) {
+    throw new SchematicsException(
+      `${path} has no </head> to insert the theme script before. If Angular's ` +
+        `index.html changed shape, update this rule.`,
+    );
+  }
+
+  const script = `  <script>
+    // Applies the stored theme before the first paint. Keys and values are
+    // written by ThemeService in ${library.name}.
+    (function () {
+      try {
+        var root = document.documentElement;
+        var mode = localStorage.getItem('${library.prefix}.theme-mode');
+        if (mode === 'light' || mode === 'dark') {
+          root.setAttribute('data-theme', mode);
+        }
+        var palette = localStorage.getItem('${library.prefix}.theme-palette');
+        if (palette) {
+          root.setAttribute('data-palette', palette);
+        }
+      } catch (error) {
+        // Storage can be blocked outright. The page then renders in the system
+        // scheme, which is the right answer when nothing is stored.
+      }
+    })();
+  </script>
+`;
+
+  tree.overwrite(path, html.replace('</head>', `${script}</head>`));
 }
 
 function noop(): Rule {
@@ -130,21 +238,39 @@ function e2eConfig(name: string, port: number, prefix: string): Rule {
     const project = readProject(tree, name);
     const root = requireRoot(project, name);
 
-    const templates = apply(url('./files'), [
+    const context = {
+      ...strings,
+      name,
+      port,
+      prefix,
+      // Config lives at projects/<name>/web/playwright.config.ts; the base is
+      // at the workspace root.
+      pathToRoot: '../'.repeat(root.split('/').filter(Boolean).length),
+    };
+
+    const templates = apply(url('./files/e2e'), [
       filter((path) => !path.endsWith('.gitkeep')),
-      applyTemplates({
-        ...strings,
-        name,
-        port,
-        prefix,
-        // Config lives at projects/<name>/web/playwright.config.ts; the base is
-        // at the workspace root.
-        pathToRoot: '../'.repeat(root.split('/').filter(Boolean).length),
-      }),
+      applyTemplates(context),
       move(`/${root}`),
     ]);
 
-    return chain([mergeWith(templates, MergeStrategy.Overwrite), e2eScripts(name, root)]);
+    // The theme suite exists only where there is a theme to test. It covers the
+    // one thing the library's own tests cannot reach: the inline script in
+    // index.html, which runs before Angular does.
+    const themed: Rule[] = findDesignSystem(tree)
+      ? [
+          mergeWith(
+            apply(url('./files/shell-e2e'), [applyTemplates(context), move(`/${root}`)]),
+            MergeStrategy.Overwrite,
+          ),
+        ]
+      : [];
+
+    return chain([
+      mergeWith(templates, MergeStrategy.Overwrite),
+      ...themed,
+      e2eScripts(name, root),
+    ]);
   };
 }
 

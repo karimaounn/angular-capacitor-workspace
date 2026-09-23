@@ -37,10 +37,17 @@ const PAIRINGS = [
   { fg: 'text-muted', bg: 'surface-raised', min: 4.5, label: 'secondary text on a card' },
 
   // Filled controls. `on-accent`, not `text-inverse` — see _semantic.scss.
-  { fg: 'on-accent', bg: 'info', min: 4.5, label: 'text on a primary button' },
+  { fg: 'on-accent', bg: 'accent', min: 4.5, label: 'text on a primary button' },
+  { fg: 'on-accent', bg: 'info', min: 4.5, label: 'text on an informational fill' },
   { fg: 'on-accent', bg: 'danger', min: 4.5, label: 'text on a destructive button' },
   { fg: 'on-accent', bg: 'success', min: 4.5, label: 'text on a success button' },
   { fg: 'on-accent', bg: 'warning', min: 4.5, label: 'text on a warning button' },
+
+  // Accent-coloured text on the page: links, and anything else that borrows the
+  // brand colour for type. `-strong`, never `--accent` — the filled step is
+  // chosen to sit under white and does not survive being put on the surface.
+  { fg: 'accent-strong', bg: 'surface', min: 4.5, label: 'a link' },
+  { fg: 'accent-strong', bg: 'surface-raised', min: 4.5, label: 'a link on a card' },
 
   // Boundaries that identify a control — input outlines, selected states.
   // WCAG 1.4.11, 3:1.
@@ -88,6 +95,43 @@ function paletteNames() {
   return [...block[1].matchAll(/^\s*'([^']+)':\s*\(/gm)].map(([, name]) => name);
 }
 
+/**
+ * The palette list `ThemeService` offers must be the palette list the styles
+ * emit.
+ *
+ * Two sources of truth, one of them Sass and one of them TypeScript, and
+ * nothing in the type system connects them. The failure is quiet in the worst
+ * way: a palette in the picker with no `[data-palette]` block behind it looks
+ * like a toggle that does nothing, and a palette in the styles that the picker
+ * never offers is a theme nobody can reach. This is the cheapest place to
+ * notice, because this script already has to parse the map.
+ */
+function assertPickerAgrees(names) {
+  const path = join(libRoot, 'src', 'lib', 'theme', 'theme.ts');
+  const source = readFileSync(path, 'utf8');
+  const block = source.match(/PALETTES\s*=\s*\[([\s\S]*?)\]\s*as const;/);
+  if (!block) {
+    throw new Error(
+      `Could not find the PALETTES array in ${path}. If it was renamed, update ` +
+        'this check — the two lists drifting apart is exactly what it prevents.',
+    );
+  }
+
+  const offered = [...block[1].matchAll(/id:\s*'([^']+)'/g)].map(([, id]) => id);
+  const missing = names.filter((name) => !offered.includes(name));
+  const extra = offered.filter((id) => !names.includes(id));
+  if (missing.length === 0 && extra.length === 0) {
+    return;
+  }
+
+  console.error(
+    'FAIL  the theme picker and the stylesheet disagree about which palettes exist\n' +
+      `      in _ref.scss but not in PALETTES: ${missing.join(', ') || 'none'}\n` +
+      `      in PALETTES but not in _ref.scss: ${extra.join(', ') || 'none'}`,
+  );
+  process.exit(1);
+}
+
 function parseColor(value) {
   const hex = value.trim().replace(/^#/, '');
   if (!/^[0-9a-f]{3}$|^[0-9a-f]{6}$/i.test(hex)) {
@@ -124,6 +168,8 @@ function contrast(a, b) {
 const failures = [];
 const skipped = [];
 let checked = 0;
+
+assertPickerAgrees(paletteNames());
 
 for (const palette of paletteNames()) {
   for (const mode of MODES) {

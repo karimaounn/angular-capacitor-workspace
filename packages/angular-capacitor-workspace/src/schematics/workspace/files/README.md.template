@@ -38,6 +38,29 @@ hooked and need it run by hand:
 - `ng test` invoked directly rather than through `npm test`
 
 Use `npm run watch:libs` while working across a library and its consumer.
+
+### Theming
+
+Every application's `styles.scss` imports the design system's tokens, and the
+shell that ships with each app carries a theme toggle.
+
+Two attributes on `<html>` decide everything:
+
+| Attribute | Values | Set by |
+| --------- | ------ | ------ |
+| `data-theme` | `light`, `dark`, or absent | the toggle; absent means "follow the OS" |
+| `data-palette` | a palette name | the toggle |
+
+The stylesheet declares every combination up front, so switching either is an
+attribute write: nothing re-renders, and no component has to know a theme
+exists. The preference is stored per browser and re-applied by a small inline
+script in `index.html` before the first paint — without it, every load starts in
+the system scheme and flips a moment later.
+
+Add a palette in two places — `src/styles/_ref.scss` and the `PALETTES` array
+in `src/lib/theme/theme.ts` — and `npm run check:contrast` will check it, in
+both modes, against every declared pairing. It also fails if you add it to only
+one of them.
 <% } %>
 ## Scripts
 

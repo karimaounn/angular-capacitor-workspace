@@ -19,6 +19,7 @@ import {
   addScripts,
   addStyleIncludePath,
   aggregateTests,
+  importDesignSystemStyles,
   appendToScript,
   documentScripts,
   ANGULAR_JSON,
@@ -90,7 +91,7 @@ export function uiLib(options: UiLibOptions = {}): Rule {
           packageAssets(name, root),
           browserModeTests(name),
           storybook ? storybookTargets(name, root) : (host: Tree) => host,
-          styleIncludePaths(),
+          adoptExistingApps(name),
           libraryScripts(name, root, storybook),
           libraryDependencies(storybook),
           libraryGitignore(root),
@@ -138,25 +139,33 @@ function publicApi(name: string, root: string): Rule {
 
 export * from './lib/button/button';
 export * from './lib/field/field';
+export * from './lib/theme/theme';
+export * from './lib/theme/theme-toggle';
 `,
     );
   };
 }
 
 /**
- * Maps the SCSS sources into the library's build output.
+ * Maps the SCSS sources into the library's build output, at `styles/`.
  *
  * ng-packagr compiles TypeScript and bundles component styles, but a
  * consumer's global stylesheet needs the *sources* — an application's
  * `styles.scss` does `@use '<lib>/styles'` and compiles the tokens into its own
  * bundle. Without this, `dist/<lib>` has no .scss in it at all and the import
  * fails at build time with a path that looks correct.
+ *
+ * The `output` is what makes that import the one written in the documentation.
+ * A bare `'./src/styles'` copies the directory at its *source* path, so the
+ * sheet lands at `dist/<lib>/src/styles/` and every consumer has to write
+ * `@use '<lib>/src/styles'` — leaking the library's internal layout into every
+ * application, and into every README that gets it wrong.
  */
 function packageAssets(name: string, root: string): Rule {
   return (tree: Tree) => {
     updateJson(tree, `/${root}/ng-package.json`, (file) => {
       file.mustGet(['lib'], `the ng-package "lib" block for "${name}"`);
-      file.modify(['assets'], ['./src/styles']);
+      file.modify(['assets'], [{ glob: '**/*.scss', input: './src/styles', output: './styles' }]);
     });
   };
 }
@@ -235,19 +244,27 @@ function storybookTargets(name: string, root: string): Rule {
 }
 
 /**
- * Retrofits the style include path onto applications that already exist.
+ * Wires existing applications up to the library they just gained.
  *
- * The app and marketing schematics set this themselves, so during a full
- * generation this finds nothing to do. It matters for `ng g ui-lib` in a
- * workspace whose apps predate the library.
+ * The include path makes `@use '<lib>/styles'` resolvable; the import is what
+ * makes it happen. Both are set by the app and marketing schematics during a
+ * full generation, so this finds nothing to do there. It matters for
+ * `ng g ui-lib` in a workspace whose apps predate the library — which is what
+ * `ng add` into an existing workspace produces.
+ *
+ * The stylesheet import is the only thing retrofitted into an app's source. An
+ * app that already exists has a shell somebody has edited, and rewriting that
+ * to demonstrate a new library would be destructive; a token import at the top
+ * of `styles.scss` is additive and reversible.
  */
-function styleIncludePaths(): Rule {
+function adoptExistingApps(name: string): Rule {
   return (tree: Tree) => {
     for (const [projectName, project] of Object.entries(readProjects(tree))) {
       if (project.projectType === 'library') {
         continue;
       }
       addStyleIncludePath(tree, projectName);
+      importDesignSystemStyles(tree, projectName, name);
     }
   };
 }
@@ -287,6 +304,11 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
     // entry points npm can reach; the README covers the two it cannot.
     prependHook(tree, 'prestart', 'npm run build:libs');
     prependHook(tree, 'pretest', 'npm run build:libs');
+
+    // `prebuild` joins them now that every application's stylesheet imports the
+    // library's tokens: a build from a fresh clone would otherwise fail in Sass,
+    // on a path that does not exist yet rather than one that is wrong.
+    prependHook(tree, 'prebuild', 'npm run build:libs');
 
     if (storybook) {
       const prepare = `npm run docs:compodoc && npm run styles:tokens`;

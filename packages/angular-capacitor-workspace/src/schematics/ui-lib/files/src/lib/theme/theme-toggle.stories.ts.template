@@ -1,0 +1,25 @@
+import type { Meta, StoryObj } from '@storybook/angular';
+import { ThemeToggle } from './theme-toggle';
+
+/**
+ * The toggle drives `data-theme` and `data-palette` on `<html>` — the same two
+ * attributes Storybook's own toolbar writes, and the same two the application
+ * uses. A story that switches the palette here restyles the whole preview
+ * frame, which is the point: theming is a document-level concern, not a
+ * component input.
+ */
+const meta: Meta<ThemeToggle> = {
+  title: 'Primitives/Theme toggle',
+  component: ThemeToggle,
+  tags: ['autodocs'],
+};
+
+export default meta;
+type Story = StoryObj<ThemeToggle>;
+
+export const Default: Story = {};
+
+/** Colour scheme only, for a shell that does not offer palettes. */
+export const SchemeOnly: Story = {
+  args: { palettes: false } as never,
+};

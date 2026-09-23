@@ -36,8 +36,16 @@ const preview: Preview = {
     backgrounds: { disable: true },
   },
 
-  // The theme toggle drives the same attribute the tokens key off, so a story
-  // viewed in dark mode is rendered by exactly the mechanism production uses.
+  // Both toolbars drive the same two attributes the tokens key off — the same
+  // two `ThemeService` writes in the application — so a story viewed in dark
+  // mode, or in another palette, is rendered by exactly the mechanism
+  // production uses rather than by a Storybook-only approximation.
+  //
+  // The palette list is repeated here rather than imported from `theme.ts`.
+  // Importing it would pull the Angular service into the Storybook config,
+  // which is loaded outside the Angular compilation; `check:contrast` compares
+  // `theme.ts` against the stylesheet, and this list is checked by eye against
+  // the same place.
   globalTypes: {
     theme: {
       description: 'Colour scheme',
@@ -51,11 +59,26 @@ const preview: Preview = {
         dynamicTitle: true,
       },
     },
+    palette: {
+      description: 'Palette',
+      defaultValue: 'default',
+      toolbar: {
+        icon: 'paintbrush',
+        items: [
+          { value: 'default', title: 'Slate' },
+          { value: 'sand', title: 'Sand' },
+          { value: 'indigo', title: 'Indigo' },
+        ],
+        dynamicTitle: true,
+      },
+    },
   },
 
   decorators: [
     (story, context) => {
-      document.documentElement.setAttribute('data-theme', context.globals['theme'] as string);
+      const root = document.documentElement;
+      root.setAttribute('data-theme', context.globals['theme'] as string);
+      root.setAttribute('data-palette', context.globals['palette'] as string);
       return story();
     },
   ],

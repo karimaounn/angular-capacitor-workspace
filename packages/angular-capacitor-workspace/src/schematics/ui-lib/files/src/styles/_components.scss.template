@@ -13,7 +13,7 @@
 /// dark surfaces — a single-colour ring always disappears against something.
 @mixin focus-ring($offset: 2px) {
   &:focus-visible {
-    outline: 2px solid var(--info);
+    outline: 2px solid var(--accent);
     outline-offset: $offset;
     border-radius: inherit;
   }

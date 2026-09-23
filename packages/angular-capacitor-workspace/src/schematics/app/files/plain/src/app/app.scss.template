@@ -1,0 +1,47 @@
+// System colours, so this holds its contrast in light and dark without a design
+// system to ask. Generate one with `ng g angular-capacitor-workspace:ui-lib`
+// and this file becomes the place to stop hand-picking colours.
+:host {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100dvh;
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+}
+
+header {
+  padding: 1rem 1.25rem;
+  border-block-end: 1px solid;
+  border-color: color-mix(in srgb, CanvasText 20%, transparent);
+}
+
+.brand {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  padding: 1.5rem 1.25rem;
+
+  // Focusable only so the skip link can land here; it is not a control.
+  &:focus {
+    outline: none;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-start: 0.5rem;
+  z-index: 1;
+  padding: 0.5rem 1rem;
+  background: Canvas;
+  color: CanvasText;
+  outline: 2px solid CanvasText;
+  transform: translateY(-200%);
+
+  &:focus {
+    transform: none;
+  }
+}

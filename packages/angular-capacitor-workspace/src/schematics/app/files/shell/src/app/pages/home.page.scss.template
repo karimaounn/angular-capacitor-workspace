@@ -1,0 +1,70 @@
+:host {
+  display: block;
+  max-inline-size: 60rem;
+  margin-inline: auto;
+}
+
+h1 {
+  font-size: var(--font-size-3xl);
+}
+
+.lead {
+  max-inline-size: 60ch;
+  color: var(--text-muted);
+}
+
+.card {
+  margin-block-start: var(--space-6);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+
+  h2 {
+    margin-block-end: var(--space-4);
+    font-size: var(--font-size-xl);
+  }
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block-end: var(--space-5);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: var(--space-4) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-family: ui-monospace, monospace;
+  }
+}
+
+.next {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+
+  li + li {
+    margin-block-start: var(--space-2);
+  }
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}

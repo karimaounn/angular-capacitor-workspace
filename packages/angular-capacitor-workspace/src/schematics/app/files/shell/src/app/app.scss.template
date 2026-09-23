@@ -1,0 +1,53 @@
+// Everything here is a token from <%= libName %>. A hex code in an application
+// stylesheet is a token that does not exist yet — and one `npm run
+// check:contrast` will never look at.
+:host {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100dvh;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+
+  padding: var(--space-4) var(--space-5);
+  border-block-end: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.brand {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  padding: var(--space-6) var(--space-5);
+
+  // Focusable only so the skip link can land here; it is not a control.
+  &:focus {
+    outline: none;
+  }
+}
+
+// Off-screen until focused. Keyboard users meet it first; nobody else sees it.
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: 1;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text);
+  outline: 2px solid var(--accent);
+  transform: translateY(-200%);
+
+  &:focus {
+    transform: none;
+  }
+}

@@ -62,6 +62,19 @@ $status-tokens: ('success', 'warning', 'danger', 'info');
     --#{$name}-strong: #{ref.status($name, $strong)};
   }
 
+  // The brand accent. Unlike the status ramps, this one *does* travel with the
+  // palette — it is the token that makes a theme swap visible.
+  //
+  // `--accent` fills a control and carries `--on-accent`; `--accent-strong` is
+  // the step that contrasts with the surface, so it is what text on the page
+  // uses — a link, or an accent-coloured heading. Reaching for `--accent` there
+  // instead is the mistake this pair exists to prevent: the filled step is
+  // chosen to sit under white, and against the page it is 3:1 at best in light
+  // mode and far worse in dark.
+  --accent: #{ref.accent($palette, 500)};
+  --accent-subtle: #{ref.accent($palette, $subtle)};
+  --accent-strong: #{ref.accent($palette, $strong)};
+
   // Text and icons on a filled accent — white in both modes, unlike
   // `--text-inverse`, which flips.
   //
@@ -78,6 +91,12 @@ $status-tokens: ('success', 'warning', 'danger', 'info');
 /// `prefers-color-scheme` block covers users who never touch a toggle. The
 /// explicit attribute wins over the media query in both directions, so a
 /// toggle can force light on a dark-mode device.
+///
+/// The palette is a *build-time* argument and the mode is a *runtime* one, which
+/// is why they are spelled differently in the output: `index.scss` calls this
+/// once per palette under its own `[data-palette]` selector, and each of those
+/// blocks carries both modes. Switching either is still one attribute on
+/// `<html>` — see `ThemeService`.
 @mixin theme($palette: 'default') {
   @include mode($palette, 1);
 

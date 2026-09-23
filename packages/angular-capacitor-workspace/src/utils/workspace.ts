@@ -205,6 +205,106 @@ export function addStyleIncludePath(tree: Tree, projectName: string, path = 'dis
   });
 }
 
+/**
+ * `acme-shop` → `Acme Shop`. A starting point for a heading, which the user
+ * owns from the moment it is written.
+ */
+export function titleFromName(name: string): string {
+  return name
+    .split(/[-_/]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/** A design-system library in this workspace: its import name and selector prefix. */
+export interface DesignSystem {
+  name: string;
+  prefix: string;
+}
+
+/**
+ * Finds the design-system library, if the workspace has one.
+ *
+ * Identified by the file that makes it one — `src/styles/index.scss`, the
+ * entry point applications `@use` — rather than by name or by position in the
+ * project map. A workspace can hold several libraries, and only this one has a
+ * token sheet to wire into an application.
+ *
+ * Detection rather than an option, because both callers need the same answer
+ * from different directions: during a full generation the library was created
+ * moments ago, and for a bare `ng generate app` it was created months ago by
+ * someone who will not think to pass its name.
+ */
+export function findDesignSystem(tree: Tree): DesignSystem | undefined {
+  for (const [name, project] of Object.entries(readProjects(tree))) {
+    if (project.projectType !== 'library' || !project.root) {
+      continue;
+    }
+    if (tree.exists(`/${project.root}/src/styles/index.scss`)) {
+      return { name, prefix: project.prefix ?? name.split('/').pop()! };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Points an application's global stylesheet at the design system.
+ *
+ * Without this the tokens are generated, built and published, and no
+ * application ever loads them — every `var(--surface)` in the library resolves
+ * to nothing and the components render unstyled. `stylePreprocessorOptions`
+ * only makes the import *resolvable*; something still has to write the import.
+ *
+ * Prepended, and idempotent on the `@use` line: `@use` must precede every rule
+ * in a Sass file, so appending to a stylesheet somebody has already written in
+ * is a compile error rather than a merge conflict.
+ */
+export function importDesignSystemStyles(tree: Tree, projectName: string, library: string): void {
+  const path = globalStylesheet(tree, projectName);
+  if (!path) {
+    return;
+  }
+
+  const current = tree.read(path)?.toString('utf8') ?? '';
+  const statement = `@use '${library}/styles' as *;`;
+  if (current.includes(`'${library}/styles'`)) {
+    return;
+  }
+
+  // `npm run build:<project>` is an entry point npm cannot hook from `prebuild`,
+  // which only covers the script literally named `build`. Without this, the
+  // first per-project build in a fresh clone fails in Sass, on a path under
+  // dist/ that nothing has created yet.
+  prependHook(tree, `prebuild:${projectName}`, 'npm run build:libs');
+
+  tree.overwrite(
+    path,
+    `${statement}\n\n` +
+      `// Design tokens, base element styling and every palette come from the\n` +
+      `// line above. It resolves through dist/, like the library's TypeScript\n` +
+      `// does, so \`npm run build:libs\` has to have run at least once.\n` +
+      `//\n` +
+      `// Anything written below overrides it: the tokens live in the \`tokens\`\n` +
+      `// cascade layer and this file is unlayered, so a rule here wins without\n` +
+      `// needing to out-specify anything.\n` +
+      `${current.trimStart()}`,
+  );
+}
+
+/** The project's own `styles.scss`, as `angular.json` names it. */
+function globalStylesheet(tree: Tree, projectName: string): string | undefined {
+  const project = readProject(tree, projectName);
+  const styles = (project.architect?.['build']?.options?.['styles'] ?? []) as StyleEntry[];
+  for (const entry of styles) {
+    const input = styleInput(entry);
+    if (input?.endsWith('.scss') && tree.exists(`/${input}`)) {
+      return `/${input}`;
+    }
+  }
+  return undefined;
+}
+
 /** A `styles` entry in `angular.json`: a path, or a path with build options. */
 type StyleEntry = string | { input?: string };
 

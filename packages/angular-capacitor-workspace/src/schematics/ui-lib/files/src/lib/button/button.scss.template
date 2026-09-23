@@ -40,8 +40,11 @@
     min-block-size: 52px;
   }
 
+  // `--accent`, not `--info`: the primary action wears the brand colour, and the
+  // brand colour is the one that travels with the palette. Using `--info` here
+  // would leave the main button identical in every theme.
   :host([data-variant='primary']) button {
-    background: var(--info);
+    background: var(--accent);
     color: var(--on-accent);
   }
 

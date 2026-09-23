@@ -1,0 +1,36 @@
+<fieldset class="modes">
+  <!-- A legend, not an aria-label: the grouping and its name then come from the
+       element the platform already maps to a group. -->
+  <legend>Colour scheme</legend>
+
+  @for (option of modes; track option.value) {
+    <label>
+      <input
+        type="radio"
+        [name]="group"
+        [value]="option.value"
+        [checked]="theme.mode() === option.value"
+        (change)="selectMode(option.value)"
+      />
+      <span>{{ option.label }}</span>
+    </label>
+  }
+</fieldset>
+
+@if (palettes()) {
+  <label class="palette">
+    <span>Palette</span>
+    <!-- `selected` on each option, not `value` on the select. The select's own
+         property bindings are applied before the @for block has created any
+         options, so a bound `value` would be assigned against an empty list and
+         silently fall back to the first entry — which only shows up once
+         somebody has a palette stored. -->
+    <select (change)="selectPalette($event)">
+      @for (option of paletteOptions; track option.id) {
+        <option [value]="option.id" [selected]="option.id === theme.palette()">
+          {{ option.label }}
+        </option>
+      }
+    </select>
+  </label>
+}

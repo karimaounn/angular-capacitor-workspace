@@ -32,6 +32,14 @@ choices this layout makes for itself.
 - SCSS. Component styles are scoped by default; leave them that way.
 - Consume design tokens from the shared layer rather than restating colours.
   A hex code in a component is a token that does not exist yet.
+- Theming is two attributes on `<html>` — `data-theme` and `data-palette` — and
+  a stylesheet that declares every combination. Never read the current theme in
+  a component to pick a colour: use the token that already means what you want,
+  and let it resolve. A component that branches on the theme is a component that
+  will be wrong in the next palette.
+- `--accent` fills a control and carries `--on-accent`. `--accent-strong` is the
+  step that contrasts with the page, and is what accent-coloured *text* uses.
+  Swapping them passes review and fails contrast.
 
 ## Libraries
 

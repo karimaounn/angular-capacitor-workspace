@@ -44,15 +44,15 @@ ng generate angular-capacitor-workspace:codegen
 ng generate angular-capacitor-workspace:packages cdk
 ```
 
-| Schematic   | Emits                                                                                    |
-| ----------- | ---------------------------------------------------------------------------------------- |
-| `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                        |
-| `app`       | a client-rendered app at `projects/<name>/web`, with room for a `mobile/` sibling        |
-| `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks        |
-| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, contrast checker   |
-| `mobile`    | a Capacitor sibling registered as its own npm workspace member                           |
-| `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point         |
-| `packages`  | a curated package — the Angular CDK today — at a range resolved against the Angular line |
+| Schematic   | Emits                                                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                              |
+| `app`       | a client-rendered app at `projects/<name>/web`, a starter shell, room for a `mobile/` sibling  |
+| `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks              |
+| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, themes, contrast checker |
+| `mobile`    | a Capacitor sibling registered as its own npm workspace member                                 |
+| `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point               |
+| `packages`  | a curated package — the Angular CDK today — at a range resolved against the Angular line       |
 
 `ng generate angular-capacitor-workspace:<schematic> --help` lists every
 option, including ones not shown above: `--prefix` and `--port` on `app` and
@@ -61,6 +61,33 @@ option, including ones not shown above: `--prefix` and `--port` on `app` and
 
 Each schematic adds a row to the scripts table in the workspace README for
 every script it creates, so that table lists what the workspace can run.
+
+### Theming
+
+A workspace with a `ui-lib` gets light, dark and three palettes, and every app
+generated after it opens on a starter screen that demonstrates them.
+
+The mechanism is two attributes on `<html>` — `data-theme` (`light`, `dark`, or
+absent for "follow the OS") and `data-palette`. Every combination is declared in
+the stylesheet up front, so switching either is an attribute write: no
+re-render, and no component that has to know a theme exists. `ThemeService`
+owns those attributes and the stored preference; `<ui-theme-toggle>` is the
+control, and each app's `index.html` carries a small inline script that applies
+the stored value before the first paint.
+
+The colour that travels with a palette is `--accent`, which is deliberately not
+`--info`: a theme should change the brand, not restyle informational messages.
+`npm run check:contrast` compiles the real Sass and checks every declared
+pairing in every palette in both modes, so adding a palette that fails WCAG
+fails the build rather than shipping.
+
+A marketing site imports the tokens but carries no toggle and no script. A
+prerendered page is written once and served to everyone, so light and dark are
+left to `prefers-color-scheme` in CSS — the only mechanism that survives being
+cached at the edge.
+
+Without `--ui-lib`, an app gets the same shell in system colours and nothing to
+switch.
 
 ### Mobile
 

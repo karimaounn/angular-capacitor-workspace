@@ -8,6 +8,71 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Generated apps open on their own design system instead of the Angular
+  welcome page.** The app schematic now replaces `app.html`, `app.scss`,
+  `app.ts`, `app.spec.ts` and `app.routes.ts` with a shell — skip link,
+  landmarks, a lazy starter route — and, when the workspace has a `ui-lib`, a
+  starter page that renders the library's components, its semantic tokens and a
+  theme toggle. Angular's splash is meant to be deleted; shipping it unchanged
+  left the two most visible things this generator adds invisible until somebody
+  opened a library they had no reason to open yet. Without a `ui-lib` the same
+  shell is emitted in system colours, with nothing to demonstrate and nothing to
+  switch — a starter page that silently drops half its content is worse than one
+  that never claimed to have it.
+
+- **Three palettes, switchable at runtime, and light/dark as a real choice.**
+  `_ref.scss` carries `default`, `sand` and `indigo`; `index.scss` emits each
+  under `:root[data-palette='…']`, and each of those blocks carries both colour
+  schemes. `ThemeService` and `<ui-theme-toggle>` in the library own two
+  attributes on `<html>` — `data-theme` and `data-palette` — so a switch is an
+  attribute write: nothing re-renders, and no component has to know a theme
+  exists.
+
+  `system` is the default mode and is expressed by _removing_ `data-theme`
+  rather than by writing the resolved value, which is the difference between a
+  preference and a decision: with the attribute absent, a visitor who changes
+  their OS theme with the page open sees the page follow.
+
+  Each app's `index.html` gained a small inline script that applies the stored
+  preference before the first paint. There is no way to do this from Angular —
+  by the time any framework code runs the first frame is on screen — so without
+  it every load starts in the system scheme and flips a moment later, for
+  exactly the users who asked it not to.
+
+- **`--accent`, a brand colour that is not `--info`.** The primary button and
+  the focus ring used `--info`, which meant a palette swap changed the neutrals
+  and left the main action identical in every theme. They are now separate
+  ramps: `--accent` travels with the palette, `--info` keeps meaning
+  "informational". `--accent` fills a control and carries `--on-accent`;
+  `--accent-strong` is the step that contrasts with the page and is what
+  accent-coloured text uses, including links — which previously used `--info`
+  and were never in the contrast table.
+
+  `check:contrast` checks the new pairings across every palette in both modes,
+  and now also fails when `PALETTES` in `theme.ts` and `$palettes` in
+  `_ref.scss` disagree. Two sources of truth with nothing in the type system
+  between them: a palette in the picker with no block behind it is a toggle that
+  does nothing, and a palette in the styles the picker never offers is a theme
+  nobody can reach.
+
+### Fixed
+
+- **Applications never loaded the design system's stylesheet.** The include path
+  was wired into `angular.json` and the tokens were built and published, but
+  nothing ever wrote the `@use` — so every `var(--surface)` in the library
+  resolved to nothing and the components rendered unstyled in every generated
+  workspace. The `app` and `marketing` schematics now write the import, and
+  `ui-lib` retrofits it onto apps that predate it. `prebuild` joins `prestart`
+  and `pretest` in running `build:libs`, since a build from a fresh clone would
+  otherwise fail in Sass.
+
+- **A forced colour scheme left form controls and scrollbars in the other one.**
+  `color-scheme: light dark` hands those to the OS preference, which is no
+  longer the answer once a toggle has overridden it. `html[data-theme]` now
+  pins it.
+
 ### Changed
 
 - **`--with cdk` now wires the CDK's overlay stylesheet into every application**,

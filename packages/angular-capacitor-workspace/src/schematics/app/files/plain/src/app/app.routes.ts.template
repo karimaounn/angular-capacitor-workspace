@@ -1,0 +1,10 @@
+import type { Routes } from '@angular/router';
+
+export const routes: Routes = [
+  {
+    path: '',
+    // Lazily, so the starter page is not in the initial bundle — and so
+    // deleting it is one route and one file rather than an import to chase.
+    loadComponent: () => import('./pages/home.page').then((m) => m.HomePage),
+  },
+];

@@ -1,4 +1,6 @@
+@use 'sass:map';
 @use 'layers';
+@use 'ref';
 @use 'semantic';
 
 /// The entry point consuming applications import:
@@ -11,15 +13,43 @@
 /// the import resolves through `dist/` exactly like the TypeScript does.
 
 @layer tokens {
+  // The default palette, unqualified, so a document that never sets
+  // `data-palette` — a Storybook story, an email preview, a page rendered
+  // before the theme script runs — still has a complete token set.
   :root {
     @include semantic.theme('default');
     @include semantic.scales();
   }
+
+  // And one block per palette, keyed by the attribute `ThemeService` writes on
+  // `<html>`. Each carries its own light and dark values, so switching palette
+  // and switching mode stay independent: `[data-palette='sand'][data-theme='dark']`
+  // is a real, generated combination and not an accident of cascade order.
+  //
+  // Higher specificity than the `:root` above, so the selected palette wins
+  // wherever it is set, including for 'default' itself.
+  @each $name in map.keys(ref.$palettes) {
+    :root[data-palette='#{$name}'] {
+      @include semantic.theme($name);
+    }
+  }
 }
 
 @layer base {
+  // `light dark` lets the browser pick form controls, scrollbars and the
+  // canvas from the OS preference. Once a toggle has forced a mode, the
+  // preference is no longer the answer: without these two the page turns light
+  // while its scrollbars and date pickers stay dark.
   html {
     color-scheme: light dark;
+  }
+
+  html[data-theme='light'] {
+    color-scheme: light;
+  }
+
+  html[data-theme='dark'] {
+    color-scheme: dark;
   }
 
   body {
@@ -42,7 +72,11 @@
     text-wrap: balance;
   }
 
+  // `--accent-strong`, not `--accent`: the filled step is picked to carry white
+  // text, and text in that colour against the page is the pairing that fails.
+  // `-strong` is the step chosen to contrast with the surface in whichever mode
+  // is active, and it is the one `check-contrast.mjs` holds to 4.5:1.
   :where(a) {
-    color: var(--info);
+    color: var(--accent-strong);
   }
 }

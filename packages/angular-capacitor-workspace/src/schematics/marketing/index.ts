@@ -25,6 +25,8 @@ import {
   appendSection,
   claimDefaultStart,
   documentScripts,
+  findDesignSystem,
+  importDesignSystemStyles,
   nextFreePort,
   PACKAGE_JSON,
   readProject,
@@ -102,6 +104,7 @@ export function marketing(options: MarketingOptions): Rule {
         port,
         e2e,
       }),
+      designTokens(name),
       marketingScripts(name),
       postbuildChecks(name),
       houseRules(),
@@ -304,6 +307,24 @@ export function assertKnownProviders(tree: Tree, path: string): void {
 }
 
 /**
+ * Points the site at the design system, when the workspace has one.
+ *
+ * The stylesheet only — no toggle, and no script. A prerendered page is written
+ * once and served to everyone, so the rule in AGENTS.md holds here: nothing may
+ * bake a colour scheme into that HTML. Imported this way the site still gets
+ * light and dark, decided per visitor by `prefers-color-scheme` in CSS, which
+ * is the one mechanism that survives being cached at the edge.
+ */
+function designTokens(name: string): Rule {
+  return (tree: Tree) => {
+    const library = findDesignSystem(tree);
+    if (library) {
+      importDesignSystemStyles(tree, name, library.name);
+    }
+  };
+}
+
+/**
  * The scripts that run after every build of the site: write the sitemap from
  * the prerendered pages, then fail on pages a crawler could not use.
  *
@@ -400,7 +421,9 @@ function e2eConfig(name: string, port: number, prefix: string): Rule {
       pathToRoot: '../'.repeat(root.split('/').filter(Boolean).length),
     };
 
-    const shared = apply(url('../app/files'), [
+    // The app schematic's e2e tree specifically, not all of its templates: the
+    // rest of that directory is the starter shell, which a site does not share.
+    const shared = apply(url('../app/files/e2e'), [
       filter((path) => !path.endsWith('smoke.spec.ts.template')),
       applyTemplates(context),
       move(`/${root}`),

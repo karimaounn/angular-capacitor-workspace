@@ -13,8 +13,17 @@
 
 $ramp-steps: (0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950, 1000);
 
-/// The one palette this skeleton ships. Add siblings with the same step keys and
-/// `check-contrast.mjs` will pick them up without further wiring.
+/// The palettes this skeleton ships.
+///
+/// Every palette carries the same step keys, so switching one for another is an
+/// attribute change and nothing else. `check-contrast.mjs` finds them by
+/// parsing this map, and checks every one of them in both modes — a palette
+/// added here is a palette that is verified, and one that fails the check fails
+/// the build rather than shipping unreadable text.
+///
+/// Steps 0 and 1000 are pure white and black in every palette on purpose: 0 is
+/// what `--on-accent` resolves to, and white on the accent ramps below is the
+/// pairing the checker holds to 4.5:1.
 $palettes: (
   'default': (
     0: #ffffff,
@@ -31,6 +40,54 @@ $palettes: (
     950: #22262e,
     1000: #000000,
   ),
+  'sand': (
+    0: #ffffff,
+    50: #faf8f4,
+    100: #f2eee6,
+    200: #e3dccd,
+    300: #c9bfa9,
+    400: #a79a80,
+    500: #877a61,
+    600: #6e634e,
+    700: #5a5140,
+    800: #4b4438,
+    900: #423b31,
+    950: #2b2620,
+    1000: #000000,
+  ),
+  'indigo': (
+    0: #ffffff,
+    50: #f7f7fb,
+    100: #edecf5,
+    200: #d8d6e8,
+    300: #b7b3d0,
+    400: #8f8ab1,
+    500: #6f6a93,
+    600: #59547a,
+    700: #494564,
+    800: #3e3a55,
+    900: #363348,
+    950: #23212f,
+    1000: #000000,
+  ),
+);
+
+/// The brand accent, one ramp per palette.
+///
+/// Keyed by palette name rather than folded into `$palettes` because it is the
+/// one colour that is *meant* to change when a theme changes. Neutrals carry
+/// the page; the accent is what makes a swap read as a different product
+/// instead of a slightly different grey.
+///
+/// Deliberately not the same thing as `info` below. They happen to coincide in
+/// the default palette, and that coincidence is why the two get separate names:
+/// "this is our brand" and "this is an informational message" are different
+/// claims, and a theme that changes the first must not silently restyle the
+/// second.
+$accents: (
+  'default': (300: #93c5fd, 500: #2563eb, 700: #1e40af),
+  'sand': (300: #f0c088, 500: #96570f, 700: #5c3308),
+  'indigo': (300: #c4b5fd, 500: #6d28d9, 700: #4c1d95),
 );
 
 /// Semantic accent ramps, kept separate so a palette swap does not silently
@@ -102,6 +159,14 @@ $duration: (
   $found: map.get($status, $name);
   @if $found == null {
     @error 'Unknown status "#{$name}". Known: #{map.keys($status)}.';
+  }
+  @return map.get($found, $step);
+}
+
+@function accent($palette, $step: 500) {
+  $found: map.get($accents, $palette);
+  @if $found == null {
+    @error 'Palette "#{$palette}" has no accent ramp. Add one to $accents.';
   }
   @return map.get($found, $step);
 }

@@ -112,6 +112,14 @@ app configured for static prerendering while the SPA stays client-only, a shared
 Playwright base, a design-system library with browser-mode tests and a contrast
 checker.
 
+Nor a first screen that shows any of it. A generated app opens on its design
+system rather than on the Angular splash: light, dark and three palettes, a
+toggle in the shell, and every colour on the page resolving through tokens that
+`check:contrast` has verified in both modes. Switching is two attributes on
+`<html>`, so nothing re-renders — and the preference is applied before the first
+paint rather than a beat after it. Generate without `--ui-lib` and the app gets
+the same shell in system colours, with nothing to switch.
+
 And it does not emit a **dependency policy**. A generated workspace should be
 audit-clean on the day it is generated, and should tell you when it stops being
 so. That is most of what this package is.
