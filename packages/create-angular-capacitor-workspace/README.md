@@ -12,10 +12,19 @@ Requires Node ≥ 24.8 and npm ≥ 11.6. 24.8 is the first Node whose bundled np
 clears that floor; on anything older, `allowScripts` and
 `--strict-allow-scripts` are accepted and ignored.
 
-Interactive when no flags are given. Pressing Return through every question
-gives one app, a `ui` library and Playwright wiring, and no mobile target,
-marketing site or codegen, since each of those adds dependencies a workspace
-should carry only once someone has decided it needs them.
+Interactive when no flags are given. Questions with a list of options are
+answered with the arrow keys — `↑↓` to move, `Space` to toggle a Capacitor
+platform, `Enter` to confirm — and pressing Return through every question gives
+one app, a `ui` library and Playwright wiring, and no mobile target, marketing
+site or codegen, since each of those adds dependencies a workspace should carry
+only once someone has decided it needs them.
+
+Off a terminal the same questions are answered by number or by name on one
+line, so a run can be scripted:
+
+```bash
+printf 'storefront\nandroid,ios\nn\n' | npm create angular-capacitor-workspace@latest shop
+```
 
 Non-interactive when any flag is present, so CI and the integration tests take
 the same path users do.

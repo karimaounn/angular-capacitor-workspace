@@ -26,6 +26,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   source imports the package — a workspace that grew a real `provideAnimations`
   call keeps it.
 
+### Changed
+
+- **The interactive questions with a list of options are now answered with the
+  arrow keys**, the way `ng new` and every other scaffolder does it: `↑↓` moves,
+  `Space` toggles a platform, `Enter` confirms, and a number still jumps
+  straight to an option. Picking Android and iOS meant typing `android,ios` —
+  asking someone to spell out an option that is already on screen, and to know
+  that the answer is comma-separated. Still no prompt dependency: it is raw mode
+  and the same handful of escape codes the log already uses.
+
+  Off a terminal — a pipe, a CI job — the questions fall back to being answered
+  by number or by name on one line, as before. That path also stopped losing
+  piped answers: readline drops the lines that arrive while no question is
+  pending, so `printf 'shop\nios\n' | npm create …` used to hang on the second
+  question. Lines are now queued as they arrive, and a question with no default
+  that runs out of input fails with the question it was stuck on rather than
+  asking itself forever.
+
 ### Added
 
 - `doctor` infers an `animations` feature by scanning the workspace's own
