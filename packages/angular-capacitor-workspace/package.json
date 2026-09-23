@@ -1,6 +1,6 @@
 {
   "name": "angular-capacitor-workspace",
-  "version": "22.2.0",
+  "version": "22.2.1",
   "description": "Schematics, dependency policy and audit gate for an Angular workspace that ships as a web app, a Capacitor mobile app, a prerendered marketing site and shared libraries.",
   "keywords": [
     "angular",
