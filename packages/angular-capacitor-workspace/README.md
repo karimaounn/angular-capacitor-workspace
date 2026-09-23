@@ -160,8 +160,16 @@ ng generate angular-capacitor-workspace:packages cdk    # or --with cdk at gener
 schematic adds is the rest of it: a range taken from the Angular line rather
 than `latest`, the peer declaration every library in the workspace needs before
 it can publish a component built on the package, a feature token (`pkg:cdk`)
-that scopes a future policy remedy to the workspaces carrying it, and a README
-section on what the package is for and the stylesheet people forget.
+that scopes a future policy remedy to the workspaces carrying it, the global
+stylesheet the package ships unloaded — wired into every application's `styles`,
+ahead of the app's own so your rules still win — and a README section on what
+the package is for and what bites people.
+
+That last part is `ng add`'s setup half without its install half. `ng add`
+installs before it configures, and here the gate audits a resolved lockfile
+before anything reaches disk; it also resolves against the default project, and
+a workspace carrying several apps plus a marketing site has no default worth
+guessing at.
 
 The list is short on purpose. Everything in it has been resolved against the
 Angular line and run through the audit gate; anything else belongs on the end of

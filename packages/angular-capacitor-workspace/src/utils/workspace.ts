@@ -205,6 +205,42 @@ export function addStyleIncludePath(tree: Tree, projectName: string, path = 'dis
   });
 }
 
+/** A `styles` entry in `angular.json`: a path, or a path with build options. */
+type StyleEntry = string | { input?: string };
+
+function styleInput(entry: StyleEntry): string | undefined {
+  return typeof entry === 'string' ? entry : entry.input;
+}
+
+/**
+ * Puts global stylesheets at the front of an application's `styles`, once each.
+ *
+ * The front, not the end, and that is the whole reason this is a helper rather
+ * than a push. `styles` is concatenated in the order it is written, so a vendor
+ * sheet appended after the application's own wins every rule the application
+ * wrote to override it — same specificity, later wins, no warning from anyone.
+ * A sheet that arrives first is one the app can restyle, which is the only
+ * arrangement that leaves the user in charge of their own workspace.
+ *
+ * Idempotent on the path, so re-running for a package the app already has
+ * leaves the array — and any reordering someone did on purpose — alone.
+ */
+export function prependStyles(tree: Tree, projectName: string, styles: readonly string[]): void {
+  updateJson(tree, ANGULAR_JSON, (file) => {
+    const optionPath = ['projects', projectName, 'architect', 'build', 'options', 'styles'];
+    const existing = file.mustGet<StyleEntry[]>(
+      optionPath,
+      `the build \`styles\` of application "${projectName}", which the Angular ` +
+        `application schematic writes`,
+    );
+    const have = new Set(existing.map(styleInput));
+    const missing = styles.filter((style) => !have.has(style));
+    if (missing.length > 0) {
+      file.modify(optionPath, [...missing, ...existing]);
+    }
+  });
+}
+
 export const README_MD = '/README.md';
 export const SCRIPTS_TABLE_START = '<!-- angular-capacitor-workspace:scripts -->';
 export const SCRIPTS_TABLE_END = '<!-- /angular-capacitor-workspace:scripts -->';

@@ -51,6 +51,24 @@ describe('the shipped catalog', () => {
       { name: '@angular/cdk', range: expect.any(String), block: 'dependencies' },
     ]);
   });
+
+  it('wires the CDK overlay sheet, and only that one', () => {
+    // a11y-prebuilt.css is opt-in: it is needed only by `cdkVisuallyHidden`,
+    // and the README says how to add it.
+    expect(catalogEntry('cdk')?.appStyles).toEqual([
+      'node_modules/@angular/cdk/overlay-prebuilt.css',
+    ]);
+  });
+
+  it('gives every wired stylesheet a workspace-relative path', () => {
+    // How the Angular builder resolves a `styles` entry. A leading slash or a
+    // `./` prefix resolves somewhere else, or nowhere, without complaint.
+    for (const entry of CATALOG) {
+      for (const style of entry.appStyles ?? []) {
+        expect(style, `${entry.id} → ${style}`).toMatch(/^[^./]/);
+      }
+    }
+  });
 });
 
 describe('featuresFor', () => {

@@ -31,6 +31,7 @@ import {
   setDevServerPort,
 } from '../../utils/workspace';
 import { e2eScripts } from '../app';
+import { installedPackages } from '../packages';
 
 export interface MarketingOptions {
   name: string;
@@ -105,6 +106,10 @@ export function marketing(options: MarketingOptions): Rule {
       postbuildChecks(name),
       houseRules(),
       e2e ? e2eConfig(name, port, prefix) : (host: Tree) => host,
+
+      // See the app schematic: a site generated after a catalog package was
+      // added still needs that package's per-project half.
+      installedPackages(),
     ]);
   };
 }

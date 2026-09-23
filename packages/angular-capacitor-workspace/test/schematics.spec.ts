@@ -54,6 +54,15 @@ function scriptsTable(tree: UnitTestTree): string {
   return table;
 }
 
+/** A project's global `styles`, as plain paths. */
+function buildStyles(tree: UnitTestTree, project: string): string[] {
+  const options = JSON.parse(tree.readContent('/angular.json')).projects[project].architect.build
+    .options;
+  return (options.styles as Array<string | { input: string }>).map((style) =>
+    typeof style === 'string' ? style : style.input,
+  );
+}
+
 describe('workspace overlay', () => {
   let tree: UnitTestTree;
 
@@ -829,10 +838,52 @@ describe('packages', () => {
     expect(readme).toContain('overlay-prebuilt.css');
   });
 
+  it('wires the overlay stylesheet into the application', () => {
+    // Without it an overlay opens unpositioned and with no backdrop, and
+    // nothing anywhere reports a problem.
+    const styles = buildStyles(tree, 'shop');
+    expect(styles).toContain('node_modules/@angular/cdk/overlay-prebuilt.css');
+  });
+
+  it('puts it ahead of the application stylesheet, so the app can override it', () => {
+    // `styles` is concatenated in order: appended last, the vendor sheet beats
+    // every rule the app wrote to override it, at equal specificity.
+    const styles = buildStyles(tree, 'shop');
+    const vendor = styles.indexOf('node_modules/@angular/cdk/overlay-prebuilt.css');
+    const own = styles.findIndex((style) => style.endsWith('styles.scss'));
+    expect(own).toBeGreaterThan(-1);
+    expect(vendor).toBeLessThan(own);
+  });
+
+  it('leaves the library alone — it has no global stylesheet to prepend to', () => {
+    // ng-packagr's build target carries a `project`, not `options.styles`, so
+    // a rule that reached libraries would have to invent the block to write
+    // into. It does not: only `projectType: application` is touched.
+    const project = JSON.parse(tree.readContent('/angular.json')).projects.ui;
+    expect(project.architect.build.options?.styles).toBeUndefined();
+    expect(JSON.stringify(project)).not.toContain('overlay-prebuilt.css');
+  });
+
   it('is idempotent, so running it again in a live workspace changes nothing', async () => {
     const again = await runner().runSchematic('packages', { packages: ['cdk'] }, tree);
     expect(again.readContent('/README.md')).toBe(tree.readContent('/README.md'));
     expect(again.readContent('/package.json')).toBe(tree.readContent('/package.json'));
+    // A second run must not stack a second copy of the stylesheet.
+    expect(again.readContent('/angular.json')).toBe(tree.readContent('/angular.json'));
+  });
+
+  it('wires an app generated after the package was added', async () => {
+    // The schematic runs once, over the projects that exist at that moment. An
+    // app added later must not come up missing the stylesheet every other app
+    // in the workspace has.
+    const later = await runner().runSchematic('app', { name: 'admin' }, tree);
+    expect(buildStyles(later, 'admin')).toContain('node_modules/@angular/cdk/overlay-prebuilt.css');
+  });
+
+  it('declares the peer on a library generated after the package was added', async () => {
+    const later = await runner().runSchematic('ui-lib', { name: 'later' }, tree);
+    const library = JSON.parse(later.readContent('/projects/later/package.json'));
+    expect(library.peerDependencies['@angular/cdk']).toBe(latestVersions.Angular);
   });
 
   it('does nothing at all when nothing was asked for', async () => {

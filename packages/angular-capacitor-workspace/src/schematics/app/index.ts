@@ -28,6 +28,7 @@ import {
   type AngularProject,
 } from '../../utils/workspace';
 import type { MobilePlatform } from '../../api';
+import { installedPackages } from '../packages';
 
 export interface AppOptions {
   name: string;
@@ -89,6 +90,10 @@ export function app(options: AppOptions): Rule {
       appScripts(name),
       options.e2e === 'playwright' ? e2eConfig(name, port, prefix) : noop(),
       mobile.length > 0 ? schematic('mobile', { app: name, platforms: mobile }) : noop(),
+
+      // Last: whatever the workspace already carries from the catalog has a
+      // per-project half this app has not had applied to it yet.
+      installedPackages(),
     ]);
   };
 }

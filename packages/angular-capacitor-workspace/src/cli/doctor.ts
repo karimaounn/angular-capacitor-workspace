@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CATALOG, packageFeature } from '../catalog';
+import { installedCatalogIds, packageFeature } from '../catalog';
 import { POLICY } from '../policy/advisories';
 import { applyPolicy, type Manifest } from '../policy/apply';
 import type { Policy, PolicyContext, Tier } from '../policy/types';
@@ -65,10 +65,8 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
   // animations above — and it is not circular here: nothing prunes a package
   // the user asked for by name. The token exists so a remedy can be scoped to
   // the workspaces that carry it, and the entry is the only evidence there is.
-  for (const entry of CATALOG) {
-    if (entry.packages.some((pkg) => pkg.name in deps)) {
-      features.add(packageFeature(entry.id));
-    }
+  for (const id of installedCatalogIds(deps)) {
+    features.add(packageFeature(id));
   }
 
   if ('@capacitor/cli' in deps || '@capacitor/core' in deps) features.add('mobile');

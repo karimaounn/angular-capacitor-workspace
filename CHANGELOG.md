@@ -8,6 +8,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **`--with cdk` now wires the CDK's overlay stylesheet into every application**,
+  at the front of `styles` in `angular.json`, instead of telling you to do it in
+  the README. The CDK ships `overlay-prebuilt.css` unloaded, and nothing
+  anywhere reports its absence: a dialog, menu, tooltip or autocomplete opens
+  unpositioned and with no backdrop, which reads as a broken component rather
+  than a missing stylesheet. That is 703 bytes gzipped against a failure mode
+  that costs an afternoon to trace, and it is not a trade worth leaving to the
+  reader. `a11y-prebuilt.css` stays opt-in — only `cdkVisuallyHidden` needs it —
+  and the README says how to add it.
+
+  The front of the array, not the end, because `styles` is concatenated in the
+  order it is written: appended last, the vendor sheet would beat every
+  `.cdk-overlay-*` rule the app wrote to override it, at equal specificity and
+  with no warning from anyone.
+
+  This is `ng add`'s setup half without its install half, and the split is
+  deliberate. `ng add` installs before it configures, which is the opposite of
+  the ordering here — the gate resolves a lockfile and audits it _before_
+  anything reaches disk. It also resolves against the default project, and a
+  workspace bootstrapped with `--no-create-application` and then filled with
+  several apps and a marketing site has no default worth guessing at, so the new
+  `appStyles` field applies to every `projectType: application` by name.
+  Recorded for the next entry: `@angular/cdk`'s own `ng-add` is a single
+  `addDependency` call on a package the manifest already carries, so running it
+  would add nothing.
+
+  A project generated _after_ a catalog package was added gets its per-project
+  half too. `packages` is a one-shot over the projects that exist when it runs,
+  so an app created later would otherwise come up without the stylesheet every
+  other app has, and a library created later without a peer it needs before it
+  can publish — neither of which reports anything. The `app`, `marketing` and
+  `ui-lib` schematics now end by asking what the manifest already carries and
+  re-running it, which is the reasoning behind `addStyleIncludePath` applied to
+  the other direction: a cheap unconditional pass is what stops the order
+  someone generated their projects in from mattering. `doctor` and the
+  schematics now share one definition of which catalog packages a workspace
+  carries.
+
+  Libraries get no global stylesheet — ng-packagr's build target has no
+  `styles` to prepend to — and Storybook does not pick the sheet up — its
+  builder runs with no `styles` option on purpose, since `@storybook/angular`
+  routes a global sheet into the component-style pipeline where it never reaches
+  css-loader. A library component built on an overlay will look unpositioned
+  there while working in the app; the generated README carries the `staticDirs`
+  and `preview-head.html` snippet that fixes it.
+
 ## [22.2.1] — 2026-09-23
 
 ### Fixed

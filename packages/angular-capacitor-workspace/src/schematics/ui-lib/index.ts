@@ -26,6 +26,7 @@ import {
   readProject,
   readProjects,
 } from '../../utils/workspace';
+import { installedPackages } from '../packages';
 
 export interface UiLibOptions {
   name?: string;
@@ -93,6 +94,10 @@ export function uiLib(options: UiLibOptions = {}): Rule {
           libraryScripts(name, root, storybook),
           libraryDependencies(storybook),
           libraryGitignore(root),
+
+          // A catalog package already in the workspace declares itself a peer
+          // of every library, and this one did not exist when it was added.
+          installedPackages(),
         ]);
       },
     ]);
