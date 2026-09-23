@@ -1,5 +1,8 @@
 import { createInterface, type Interface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
+import { style } from 'angular-capacitor-workspace';
+
+const { bold, dim, MARK } = style;
 
 /**
  * A minimal prompt layer over `node:readline`.
@@ -10,6 +13,10 @@ import { stdin, stdout } from 'node:process';
  * advisories, between a user and their first command. The whole argument of
  * this generator is that the strongest remedy is not installing the package.
  * It would be a strange tool that did not take its own advice.
+ *
+ * The styling is the same handful of escape codes, borrowed from the library so
+ * the questions and the generation log read as one program. It collapses to
+ * plain text off a terminal, and under `NO_COLOR`.
  */
 export class Prompter {
   private readonly rl: Interface;
@@ -22,9 +29,20 @@ export class Prompter {
     this.rl.close();
   }
 
+  /**
+   * `? Question (default)` on its own line, then the cursor.
+   *
+   * Two lines rather than one because the answer then starts in the same column
+   * every time, which is what makes a run of ten questions scan as a list
+   * rather than as ragged prose.
+   */
+  private line(question: string, hint?: string): string {
+    const suffix = hint === undefined ? '' : ` ${dim(`(${hint})`)}`;
+    return `\n${MARK.prompt} ${bold(question)}${suffix}\n${MARK.cursor} `;
+  }
+
   async text(question: string, fallback?: string): Promise<string> {
-    const suffix = fallback === undefined ? '' : ` (${fallback})`;
-    const answer = (await this.rl.question(`${question}${suffix}: `)).trim();
+    const answer = (await this.rl.question(this.line(question, fallback))).trim();
     if (answer === '' && fallback !== undefined) {
       return fallback;
     }
@@ -35,8 +53,8 @@ export class Prompter {
   }
 
   async confirm(question: string, fallback = true): Promise<boolean> {
-    const suffix = fallback ? ' (Y/n)' : ' (y/N)';
-    const answer = (await this.rl.question(`${question}${suffix}: `)).trim().toLowerCase();
+    const hint = fallback ? 'Y/n' : 'y/N';
+    const answer = (await this.rl.question(this.line(question, hint))).trim().toLowerCase();
     if (answer === '') return fallback;
     return answer.startsWith('y');
   }
@@ -47,13 +65,15 @@ export class Prompter {
     choices: readonly { value: T; label: string }[],
     fallback: T,
   ): Promise<T> {
-    stdout.write(`${question}\n`);
-    choices.forEach((choice, index) => {
-      const marker = choice.value === fallback ? '*' : ' ';
-      stdout.write(`  ${marker} ${index + 1}) ${choice.label}\n`);
-    });
+    stdout.write(`\n${MARK.prompt} ${bold(question)}\n`);
+    for (const [index, choice] of choices.entries()) {
+      const isDefault = choice.value === fallback;
+      const marker = isDefault ? MARK.ok : ' ';
+      const label = isDefault ? choice.label : dim(choice.label);
+      stdout.write(`  ${marker} ${dim(`${index + 1}`)}  ${label}\n`);
+    }
 
-    const answer = (await this.rl.question(`Choose (${fallback}): `)).trim();
+    const answer = (await this.rl.question(`${MARK.cursor} ${dim(`(${fallback})`)} `)).trim();
     if (answer === '') return fallback;
 
     const byIndex = Number.parseInt(answer, 10);
@@ -64,7 +84,7 @@ export class Prompter {
     const byValue = choices.find((choice) => choice.value === answer);
     if (byValue) return byValue.value;
 
-    stdout.write('Not one of the options.\n');
+    stdout.write(`  ${MARK.warn} ${dim('Not one of the options.')}\n`);
     return this.select(question, choices, fallback);
   }
 
@@ -74,13 +94,13 @@ export class Prompter {
     choices: readonly { value: T; label: string }[],
     fallback: readonly T[] = [],
   ): Promise<T[]> {
-    stdout.write(`${question}\n`);
-    choices.forEach((choice, index) => {
-      stdout.write(`    ${index + 1}) ${choice.label}\n`);
-    });
+    stdout.write(`\n${MARK.prompt} ${bold(question)} ${dim('(comma-separated)')}\n`);
+    for (const [index, choice] of choices.entries()) {
+      stdout.write(`    ${dim(`${index + 1}`)}  ${dim(choice.label)}\n`);
+    }
 
     const hint = fallback.length > 0 ? fallback.join(',') : 'none';
-    const answer = (await this.rl.question(`Choose, comma-separated (${hint}): `)).trim();
+    const answer = (await this.rl.question(`${MARK.cursor} ${dim(`(${hint})`)} `)).trim();
     if (answer === '') return [...fallback];
     if (answer.toLowerCase() === 'none') return [];
 
@@ -94,7 +114,7 @@ export class Prompter {
           : choices.find((candidate) => candidate.value === token);
 
       if (!choice) {
-        stdout.write(`"${token}" is not one of the options.\n`);
+        stdout.write(`  ${MARK.warn} ${dim(`"${token}" is not one of the options.`)}\n`);
         return this.multi(question, choices, fallback);
       }
       if (!selected.includes(choice.value)) {

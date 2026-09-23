@@ -1,29 +1,46 @@
 import { parseArgs } from 'node:util';
-import type { AppSpec, GenerateOptions, MobilePlatform } from 'angular-capacitor-workspace';
+import {
+  style,
+  type AppSpec,
+  type GenerateOptions,
+  type MobilePlatform,
+} from 'angular-capacitor-workspace';
 
-export const USAGE = `npm create angular-capacitor-workspace@latest <directory> -- [options]
+const { bold, cyan, dim } = style;
 
-  --app <name>            app to create (repeatable)
-  --mobile android,ios    Capacitor platforms for the preceding --app
-  --marketing <name>      prerendered static site
-  --marketing-origin <url>
-                          its production origin, for canonical URLs and the
-                          sitemap (default: https://example.com, which its
-                          build warns about)
-  --ui-lib [name]         design-system library skeleton (default: ui)
-  --ui-lib-prefix <p>     selector prefix for its components (default: its name)
-  --codegen orval         OpenAPI client generation
-  --e2e playwright        end-to-end test wiring
-  --audit-level <lvl>     low|moderate|high|critical  (default: moderate)
-  --no-install            stop after generating; still writes the lockfile to audit
-  --dry-run               show what would be generated
-  -h, --help              this message
+/** `  --flag <v>   what it does`, with the flag lit and the prose quiet. */
+function option(flag: string, description: string): string {
+  // A flag too long for the column takes the line to itself, its description
+  // wrapping underneath — padding it would only push the prose out of line.
+  if (description === '') return `  ${cyan(flag)}`;
+  return `  ${cyan(flag.padEnd(22))}  ${dim(description)}`;
+}
 
-Interactive when no flags are given. Non-interactive when any flag is present,
-so CI and the integration tests take the same path users do.
+const CONTINUED = ' '.repeat(26);
 
-The \`--\` matters: without it npm reads the flags as its own configuration and
-passes on only their values.
+export const USAGE = `${bold('npm create angular-capacitor-workspace@latest')} <directory> -- [options]
+
+${option('--app <name>', 'app to create (repeatable)')}
+${option('--mobile android,ios', 'Capacitor platforms for the preceding --app')}
+${option('--marketing <name>', 'prerendered static site')}
+${option('--marketing-origin <url>', '')}
+${CONTINUED}${dim('its production origin, for canonical URLs and the')}
+${CONTINUED}${dim('sitemap (default: https://example.com, which its')}
+${CONTINUED}${dim('build warns about)')}
+${option('--ui-lib [name]', 'design-system library skeleton (default: ui)')}
+${option('--ui-lib-prefix <p>', 'selector prefix for its components (default: its name)')}
+${option('--codegen orval', 'OpenAPI client generation')}
+${option('--e2e playwright', 'end-to-end test wiring')}
+${option('--audit-level <lvl>', 'low|moderate|high|critical  (default: moderate)')}
+${option('--no-install', 'stop after generating; still writes the lockfile to audit')}
+${option('--dry-run', 'show what would be generated')}
+${option('-h, --help', 'this message')}
+
+${dim('Interactive when no flags are given. Non-interactive when any flag is present,')}
+${dim('so CI and the integration tests take the same path users do.')}
+
+${dim('The \`--\` matters: without it npm reads the flags as its own configuration and')}
+${dim('passes on only their values.')}
 `;
 
 export interface ParsedArgs {

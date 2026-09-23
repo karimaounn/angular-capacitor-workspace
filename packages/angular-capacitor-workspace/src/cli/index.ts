@@ -4,22 +4,31 @@ import { runGate } from '../gate';
 import { POLICY } from '../policy/advisories';
 import type { Severity } from '../gate/audit';
 import { applyFix, diagnose, formatDiagnosis } from './doctor';
+import { bold, cyan, dim, MARK, red } from '../style';
 
-const USAGE = `angular-capacitor-workspace <command> [options]
+/** `  --flag <v>   what it does`, with the flag lit and the prose quiet. */
+function option(flag: string, description: string): string {
+  // A flag too long for the column takes the line to itself, its description
+  // wrapping underneath — padding it would only push the prose out of line.
+  if (description === '') return `  ${cyan(flag)}`;
+  return `  ${cyan(flag.padEnd(18))}  ${dim(description)}`;
+}
 
-Commands
-  audit               Resolve a lockfile and fail on anything the policy does
-                      not account for. The same gate that runs at generation.
-  doctor [--fix]      Diff this workspace against the installed policy and
-                      report (or apply) the delta.
-  policy              Print the policy this version ships.
+const USAGE = `${bold('angular-capacitor-workspace')} <command> [options]
 
-Options
-  --cwd <dir>         Workspace root. Default: the current directory.
-  --audit-level <l>   low | moderate | high | critical. Default: moderate.
-  --fix               doctor only: write the changes instead of printing them.
-  --json              Machine-readable output.
-  -h, --help          This message.
+${bold('Commands')}
+${option('audit', 'Resolve a lockfile and fail on anything the policy does')}
+${' '.repeat(22)}${dim('not account for. The same gate that runs at generation.')}
+${option('doctor [--fix]', 'Diff this workspace against the installed policy and')}
+${' '.repeat(22)}${dim('report (or apply) the delta.')}
+${option('policy', 'Print the policy this version ships.')}
+
+${bold('Options')}
+${option('--cwd <dir>', 'Workspace root. Default: the current directory.')}
+${option('--audit-level <l>', 'low | moderate | high | critical. Default: moderate.')}
+${option('--fix', 'doctor only: write the changes instead of printing them.')}
+${option('--json', 'Machine-readable output.')}
+${option('-h, --help', 'This message.')}
 `;
 
 type Command = 'audit' | 'doctor' | 'policy';
@@ -54,7 +63,7 @@ function main(argv: string[]): number {
       process.stdout.write(`${JSON.stringify(POLICY, null, 2)}\n`);
       return 0;
     default:
-      process.stderr.write(`Unknown command "${command}".\n\n${USAGE}`);
+      process.stderr.write(`${MARK.fail} ${red(`Unknown command "${command}".`)}\n\n${USAGE}`);
       return 1;
   }
 }
@@ -63,7 +72,7 @@ function commandAudit(cwd: string, auditLevel: Severity, json: boolean): number 
   const result = runGate({
     cwd,
     auditLevel,
-    log: json ? undefined : (message) => process.stderr.write(`${message}\n`),
+    log: json ? undefined : (message) => process.stdout.write(`${message}\n`),
   });
 
   if (json) {
@@ -71,7 +80,7 @@ function commandAudit(cwd: string, auditLevel: Severity, json: boolean): number 
       `${JSON.stringify({ ok: result.ok, unhandled: result.unhandled, accepted: result.accepted }, null, 2)}\n`,
     );
   } else {
-    process.stdout.write(`${result.report}\n`);
+    process.stdout.write(`${result.report}\n\n`);
   }
 
   return result.ok ? 0 : 1;
@@ -90,8 +99,8 @@ function commandDoctor(cwd: string, fix: boolean, json: boolean): number {
     process.stdout.write(`${formatDiagnosis(diagnosis)}\n`);
     if (fix && diagnosis.drifts.length > 0) {
       process.stdout.write(
-        `\nApplied ${diagnosis.drifts.length} change(s) to package.json. ` +
-          `Run \`npm install\` to re-resolve the lockfile.\n`,
+        `\n${MARK.ok} Applied ${diagnosis.drifts.length} change(s) to package.json.\n` +
+          `${dim('Run `npm install` to re-resolve the lockfile.')}\n`,
       );
     }
   }
@@ -103,6 +112,6 @@ function commandDoctor(cwd: string, fix: boolean, json: boolean): number {
 try {
   process.exitCode = main(process.argv.slice(2));
 } catch (error) {
-  process.stderr.write(`${(error as Error).message}\n`);
+  process.stderr.write(`${MARK.fail} ${red((error as Error).message)}\n`);
   process.exitCode = 1;
 }

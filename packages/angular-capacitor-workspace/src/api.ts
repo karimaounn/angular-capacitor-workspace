@@ -9,6 +9,7 @@ import { applyPolicy, type Manifest } from './policy/apply';
 import { POLICY } from './policy/advisories';
 import type { Policy, PolicyDecision } from './policy/types';
 import { ANGULAR_CLI_RANGE } from './policy/versions';
+import { heading, progress } from './style';
 
 export type MobilePlatform = 'android' | 'ios';
 
@@ -144,7 +145,8 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
     // ── 1. Delegate the skeleton to Angular ─────────────────────────────────
     // Everything Angular owns stays Angular's. We never template a file the CLI
     // is willing to emit, which is what keeps this generator alive across minors.
-    log(`Bootstrapping an Angular workspace with @angular/cli${ANGULAR_CLI_RANGE}…`);
+    log(heading('Workspace'));
+    log(progress(`Bootstrapping with @angular/cli${ANGULAR_CLI_RANGE}…`));
     const bootstrap = spawnSync(
       'npx',
       [
@@ -192,7 +194,7 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
       // as the overlay's, and a count that silently excludes them is wrong in
       // the direction that matters.
       const everything = listFiles(directory);
-      log(`Dry run: ${everything.length} file(s) would be written to ${requested}.`);
+      log(progress(`Dry run: ${everything.length} file(s) would be written to ${requested}.`));
       return { directory: requested, files: everything, decisions, gate, installed: false };
     }
 
@@ -203,7 +205,8 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
     // ── 5. Install ────────────────────────────────────────────────────────
     let installed = false;
     if (options.install ?? true) {
-      log('Installing dependencies…');
+      log(heading('Install'));
+      log(progress('Installing dependencies…'));
       const install = spawnSync('npm', ['install'], {
         cwd: directory,
         encoding: 'utf8',
@@ -311,7 +314,7 @@ async function runOverlay(
   }
 
   for (const step of steps) {
-    log(`Running ${step.schematic}…`);
+    log(progress(`Running ${step.schematic}…`));
     await workflow
       .execute({
         collection,

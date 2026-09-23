@@ -3,11 +3,14 @@ import { basename, resolve } from 'node:path';
 import {
   generateWorkspace,
   PLACEHOLDER_ORIGIN,
+  style,
   type AppSpec,
   type GenerateOptions,
 } from 'angular-capacitor-workspace';
 import { ArgError, parseArguments, parseOrigin, USAGE } from './args';
 import { Prompter } from './prompts';
+
+const { bold, command, dim, heading, MARK, note, red } = style;
 
 async function main(argv: string[]): Promise<number> {
   const parsed = parseArguments(argv);
@@ -35,8 +38,8 @@ async function main(argv: string[]): Promise<number> {
 
   if (result.gate && !result.gate.ok) {
     process.stderr.write(
-      `\nThe audit gate failed, so nothing was installed.\n` +
-        `The workspace is on disk at ${result.directory} — inspect it, or delete it.\n`,
+      `\n${MARK.fail} ${red('The audit gate failed, so nothing was installed.')}\n` +
+        `${dim(`The workspace is on disk at ${result.directory} — inspect it, or delete it.`)}\n`,
     );
     return 1;
   }
@@ -173,7 +176,7 @@ async function askOrigin(prompter: Prompter): Promise<string | undefined> {
     return parseOrigin(answer);
   } catch (error) {
     if (!(error instanceof ArgError)) throw error;
-    process.stdout.write(`${error.message}\n`);
+    process.stdout.write(`  ${MARK.warn} ${dim(error.message)}\n`);
     return askOrigin(prompter);
   }
 }
@@ -188,22 +191,28 @@ function sanitize(value: string): string {
 }
 
 function summary(directory: string, options: GenerateOptions, installed: boolean): string {
-  const lines = ['', `Created ${directory}`, ''];
+  const lines = ['', `${MARK.ok} ${bold('Created')} ${directory}`];
 
   if (!installed) {
-    lines.push('Dependencies were not installed.', '');
-    lines.push(`  cd ${directory}`, '  npm install', '');
+    lines.push(heading('Next'), `  ${dim('Dependencies were not installed.')}`);
+    lines.push(`  ${command(`cd ${directory}`)}`, `  ${command('npm install')}`);
   } else {
-    lines.push(`  cd ${directory}`);
+    lines.push(heading('Next'), `  ${command(`cd ${directory}`)}`);
     if (options.uiLib) {
-      lines.push('  npm run build:libs   # libraries are consumed from dist/');
+      lines.push(
+        `  ${command('npm run build:libs'.padEnd(20))} ${note('# libraries are consumed from dist/')}`,
+      );
     }
-    lines.push('  npm start', '');
+    lines.push(`  ${command('npm start')}`);
   }
 
-  lines.push('The dependency policy is live in this workspace:');
-  lines.push('  npm run audit:policy   # the same gate that just ran');
-  lines.push('  npm run doctor         # drift from the installed policy');
+  lines.push(heading('The dependency policy is live in this workspace'));
+  lines.push(
+    `  ${command('npm run audit:policy'.padEnd(20))} ${note('# the same gate that just ran')}`,
+  );
+  lines.push(
+    `  ${command('npm run doctor'.padEnd(20))} ${note('# drift from the installed policy')}`,
+  );
   lines.push('');
   return lines.join('\n');
 }
@@ -213,8 +222,8 @@ function summary(directory: string, options: GenerateOptions, installed: boolean
  * must not read like a workspace anyone can `cd` into.
  */
 function dryRunSummary(directory: string, files: string[]): string {
-  const lines = ['', `Dry run — nothing was written to ${directory}.`, ''];
-  lines.push(`${files.length} file(s) would be created:`, '');
+  const lines = ['', `${bold('Dry run')} — nothing was written to ${directory}.`];
+  lines.push(heading(`${files.length} file(s) would be created`), '');
 
   // The whole tree is long and mostly Angular's. The interesting part is what
   // this generator adds on top, so show the roots and let --help point at the
@@ -226,10 +235,10 @@ function dryRunSummary(directory: string, files: string[]): string {
   }
 
   for (const [root, count] of [...roots].sort(([a], [b]) => a.localeCompare(b))) {
-    lines.push(count === 1 ? `  ${root}` : `  ${root.padEnd(24)} ${count} files`);
+    lines.push(count === 1 ? `  ${root}` : `  ${root.padEnd(24)} ${dim(`${count} files`)}`);
   }
 
-  lines.push('', 'Re-run without --dry-run to create it.', '');
+  lines.push('', dim('Re-run without --dry-run to create it.'), '');
   return lines.join('\n');
 }
 
@@ -239,12 +248,12 @@ main(process.argv.slice(2))
   })
   .catch((error: unknown) => {
     if (error instanceof ArgError) {
-      process.stderr.write(`${error.message}\n\n${USAGE}`);
+      process.stderr.write(`\n${MARK.fail} ${red(error.message)}\n\n${USAGE}`);
     } else {
       const detail = (error as { detail?: string }).detail;
-      process.stderr.write(`${(error as Error).message}\n`);
+      process.stderr.write(`\n${MARK.fail} ${red((error as Error).message)}\n`);
       if (detail) {
-        process.stderr.write(`\n${detail}\n`);
+        process.stderr.write(`\n${dim(detail)}\n`);
       }
     }
     process.exitCode = 1;

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { POLICY } from '../policy/advisories';
 import { applyPolicy, type Manifest } from '../policy/apply';
 import type { Policy, PolicyContext, Tier } from '../policy/types';
+import { bold, cyan, dim, green, MARK, red, yellow } from '../style';
 
 export interface Drift {
   tier: Tier | 'allowScripts';
@@ -278,22 +279,28 @@ export function applyFix(diagnosis: Diagnosis): void {
 
 export function formatDiagnosis(diagnosis: Diagnosis): string {
   const lines = [
-    `Workspace: ${diagnosis.cwd}`,
-    `Features:  ${diagnosis.features.join(', ') || '(none detected)'}`,
+    `${dim('Workspace')}  ${diagnosis.cwd}`,
+    `${dim('Features')}   ${diagnosis.features.map((f) => cyan(f)).join(dim(', ')) || dim('(none detected)')}`,
     '',
   ];
 
   if (diagnosis.drifts.length === 0) {
-    lines.push('No drift. This workspace matches the installed policy.');
+    lines.push(
+      `${MARK.ok} ${green('No drift.')} ${dim('This workspace matches the installed policy.')}`,
+    );
     return lines.join('\n');
   }
 
-  lines.push(`${diagnosis.drifts.length} difference(s) from the installed policy:`, '');
+  lines.push(
+    `${MARK.warn} ${bold(`${diagnosis.drifts.length} difference(s)`)} from the installed policy`,
+    '',
+  );
   for (const drift of diagnosis.drifts) {
-    lines.push(`  [${drift.tier}/${drift.kind}] ${drift.description}`);
-    lines.push(`      now:  ${drift.actual}`);
-    lines.push(`      want: ${drift.expected}`);
+    lines.push(`  ${yellow(`[${drift.tier}/${drift.kind}]`)} ${drift.description}`);
+    lines.push(`      ${dim('now ')} ${red(drift.actual)}`);
+    lines.push(`      ${dim('want')} ${green(drift.expected)}`);
+    lines.push('');
   }
-  lines.push('', 'Run with --fix to apply, then `npm install` to re-resolve the lockfile.');
+  lines.push(dim('Run with --fix to apply, then `npm install` to re-resolve the lockfile.'));
   return lines.join('\n');
 }

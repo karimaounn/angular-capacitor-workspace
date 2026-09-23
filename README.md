@@ -163,6 +163,7 @@ packages/
     src/policy/advisories.ts         ← the file you patch
     src/policy/versions.ts           ← pins for what ng new does not choose
     src/gate/                        lockfile resolve + npm audit + proposals
+    src/style.ts                     the terminal palette both CLIs print with
     src/schematics/                  workspace, app, marketing, ui-lib, mobile, codegen
     src/cli/                         audit, doctor
   create-angular-capacitor-workspace/

@@ -16,3 +16,10 @@ export type { Policy, PolicyContext, PolicyDecision, Tier } from './policy';
 
 export { diagnose } from './cli/doctor';
 export type { Diagnosis, Drift } from './cli/doctor';
+
+/**
+ * The terminal styling the CLIs print with, so `create-*` — and anything else
+ * wrapping this — renders its own output in the same palette rather than
+ * inventing a second one.
+ */
+export * as style from './style';
