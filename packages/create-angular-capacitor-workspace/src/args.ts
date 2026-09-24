@@ -6,6 +6,7 @@ import {
   unknownPackageMessage,
   type AppSpec,
   type GenerateOptions,
+  type MarketingSpec,
   type MobilePlatform,
 } from 'angular-capacitor-workspace';
 
@@ -25,11 +26,11 @@ export const USAGE = `${bold('npm create angular-capacitor-workspace@latest')} <
 
 ${option('--app <name>', 'app to create (repeatable)')}
 ${option('--mobile android,ios', 'Capacitor platforms for the preceding --app')}
-${option('--marketing <name>', 'prerendered static site')}
+${option('--marketing <name>', 'prerendered static site (repeatable)')}
 ${option('--marketing-origin <url>', '')}
-${CONTINUED}${dim('its production origin, for canonical URLs and the')}
-${CONTINUED}${dim('sitemap (default: https://example.com, which its')}
-${CONTINUED}${dim('build warns about)')}
+${CONTINUED}${dim('production origin of the preceding --marketing, for')}
+${CONTINUED}${dim('canonical URLs and the sitemap (default:')}
+${CONTINUED}${dim('https://example.com, which its build warns about)')}
 ${option('--ui-lib [name]', 'design-system library skeleton (default: ui)')}
 ${option('--ui-lib-prefix <p>', 'selector prefix for its components (default: its name)')}
 ${option('--codegen orval', 'OpenAPI client generation')}
@@ -105,9 +106,10 @@ export function parseOrigin(raw: string): string {
 }
 
 /**
- * Parses argv, binding each `--mobile` to the `--app` it follows.
+ * Parses argv, binding each `--mobile` to the `--app` it follows and each
+ * `--marketing-origin` to its `--marketing`.
  *
- * Position matters here and nowhere else in the CLI:
+ * Position matters for those two pairs and nowhere else in the CLI:
  *
  *     --app shop --mobile android --app admin
  *
@@ -125,8 +127,8 @@ export function parseArguments(argv: string[]): ParsedArgs {
     options: {
       app: { type: 'string', multiple: true },
       mobile: { type: 'string', multiple: true },
-      marketing: { type: 'string' },
-      'marketing-origin': { type: 'string' },
+      marketing: { type: 'string', multiple: true },
+      'marketing-origin': { type: 'string', multiple: true },
       'ui-lib': { type: 'string' },
       'ui-lib-prefix': { type: 'string' },
       codegen: { type: 'string' },
@@ -141,22 +143,14 @@ export function parseArguments(argv: string[]): ParsedArgs {
     },
   });
 
+  // Read off raw argv rather than out of `values`, which has thrown the
+  // interleaving away: see pairWithTrailing.
   const apps = pairAppsWithPlatforms(argv);
+  const sites = pairSitesWithOrigins(argv);
 
   const options: Partial<GenerateOptions> = {};
   if (apps.length > 0) options.apps = apps;
-  if (values.marketing) options.marketing = values.marketing;
-
-  const marketingOrigin = values['marketing-origin'];
-  if (marketingOrigin !== undefined) {
-    if (!options.marketing) {
-      throw new ArgError(
-        '--marketing-origin is the address of the marketing site, and there is no ' +
-          '--marketing. Write `--marketing site --marketing-origin https://example.org`.',
-      );
-    }
-    options.marketingOrigin = parseOrigin(marketingOrigin);
-  }
+  if (sites.length > 0) options.marketing = sites;
 
   if ('ui-lib' in values) {
     // A bare `--ui-lib` arrives here already filled in; `--ui-lib=` still
@@ -282,37 +276,87 @@ function parsePackages(raw: string[]): string[] {
 }
 
 function pairAppsWithPlatforms(argv: string[]): AppSpec[] {
-  const apps: AppSpec[] = [];
+  return pairWithTrailing<AppSpec>(argv, {
+    flag: 'app',
+    trailing: 'mobile',
+    wants: 'at least one platform',
+    example: '--app shop --mobile android',
+    attach: (app, raw) => {
+      app.mobile = parsePlatforms(raw);
+    },
+  });
+}
+
+function pairSitesWithOrigins(argv: string[]): MarketingSpec[] {
+  return pairWithTrailing<MarketingSpec>(argv, {
+    flag: 'marketing',
+    trailing: 'marketing-origin',
+    wants: 'a URL',
+    example: '--marketing site --marketing-origin https://example.org',
+    attach: (site, raw) => {
+      site.origin = parseOrigin(raw);
+    },
+  });
+}
+
+interface TrailingPair<T> {
+  /** The repeatable flag that opens an entry, without its dashes. */
+  flag: string;
+  /** The flag that qualifies the entry it follows. */
+  trailing: string;
+  /** What the trailing flag wants, for the error when it is handed nothing. */
+  wants: string;
+  /** A correct invocation, for the error when it comes first. */
+  example: string;
+  attach: (entry: T, raw: string) => void;
+}
+
+/**
+ * Reads a repeatable `--<flag> <name>` into a list, letting the flag that
+ * trails an entry qualify that entry alone.
+ *
+ * Shared by `--app`/`--mobile` and `--marketing`/`--marketing-origin` because
+ * both are the same shape, down to the mistake they have to catch: a
+ * qualifier written before anything it could qualify, which `parseArgs` is
+ * happy to accept and which would otherwise attach itself to whichever entry
+ * happened to be first.
+ */
+function pairWithTrailing<T extends { name: string }>(argv: string[], spec: TrailingPair<T>): T[] {
+  const entries: T[] = [];
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index]!;
+    // `--flag=value` and `--flag value` are the same thing here, and the
+    // second form consumes the argument after it.
+    const valueOf = (flag: string): string | undefined =>
+      arg.startsWith(`--${flag}=`) ? arg.slice(flag.length + 3) : argv[++index];
 
-    if (arg === '--app' || arg.startsWith('--app=')) {
-      const name = arg.startsWith('--app=') ? arg.slice('--app='.length) : argv[++index];
+    if (arg === `--${spec.flag}` || arg.startsWith(`--${spec.flag}=`)) {
+      const name = valueOf(spec.flag);
       if (!name) {
-        throw new ArgError('--app needs a name.');
+        throw new ArgError(`--${spec.flag} needs a name.`);
       }
-      apps.push({ name });
+      entries.push({ name } as T);
       continue;
     }
 
-    if (arg === '--mobile' || arg.startsWith('--mobile=')) {
-      const raw = arg.startsWith('--mobile=') ? arg.slice('--mobile='.length) : argv[++index];
+    if (arg === `--${spec.trailing}` || arg.startsWith(`--${spec.trailing}=`)) {
+      const raw = valueOf(spec.trailing);
       if (!raw) {
-        throw new ArgError('--mobile needs at least one platform.');
+        throw new ArgError(`--${spec.trailing} needs ${spec.wants}.`);
       }
-      const target = apps.at(-1);
+      const target = entries.at(-1);
       if (!target) {
         throw new ArgError(
-          '--mobile applies to the --app before it, and there is no --app yet. ' +
-            'Write `--app shop --mobile android`.',
+          `--${spec.trailing} applies to the --${spec.flag} before it, and there is ` +
+            `no --${spec.flag} yet. Write \`${spec.example}\`.`,
         );
       }
-      target.mobile = parsePlatforms(raw);
+      spec.attach(target, raw);
     }
   }
 
-  return apps;
+  return entries;
 }
 
 function parsePlatforms(raw: string): MobilePlatform[] {

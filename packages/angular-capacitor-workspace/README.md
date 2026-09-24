@@ -132,7 +132,7 @@ search engines:
   description). `PageMetaStrategy`, a `TitleStrategy`, turns that into the
   title, description, canonical, robots, Open Graph and JSON-LD tags. Because
   it also runs during prerender, the tags are in the static HTML.
-- **One origin.** `--origin` sets `SITE_ORIGIN` in `src/app/site.ts`, which
+- **Its own origin.** `--origin` sets `SITE_ORIGIN` in `src/app/site.ts`, which
   canonical URLs, the sitemap and the JSON-LD are all built from, and the
   `Sitemap:` line in `public/robots.txt`. Without `--origin` it is
   `https://example.com`, and every build warns until it is changed.
@@ -143,6 +143,13 @@ search engines:
   fell back to an empty shell), shares a title or description with another
   page, has a wrong canonical, or pins `data-theme` on `<html>`. Without these
   checks, a prerender that fails still looks like a successful build.
+
+Run it more than once for more than one site. A product site and a docs site
+are two sets of pages sharing a design system, not two repositories: each site
+gets its own project, dev-server port, scripts and origin, and they share the
+`scripts/` postbuild checks — which a second generation leaves alone, so
+checks someone has tuned survive it.
+
 - **Page budgets.** The initial bundle warns at 380 kB and fails at 450 kB,
   instead of Angular's app-sized 500 kB and 1 MB.
 - **E2E suite.** With `--e2e playwright`: hydration without console errors,
@@ -272,7 +279,7 @@ import { generateWorkspace, runGate, applyPolicy, POLICY } from "angular-capacit
 await generateWorkspace({
   directory: "./my-workspace",
   apps: [{ name: "shop", mobile: ["android"] }],
-  marketing: "site",
+  marketing: [{ name: "site", origin: "https://acme.example" }],
   uiLib: "ui",
   uiLibPrefix: "acme",
   e2e: "playwright",

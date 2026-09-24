@@ -8,6 +8,7 @@ import {
   style,
   type AppSpec,
   type GenerateOptions,
+  type MarketingSpec,
 } from 'angular-capacitor-workspace';
 import { ArgError, parseArguments, parseOrigin, USAGE } from './args';
 import { Prompter } from './prompts';
@@ -101,7 +102,10 @@ async function ask(
     apps.push(platforms.length > 0 ? { name: appName, mobile: platforms } : { name: appName });
 
     while (await prompter.confirm('Add another application?', false)) {
-      const name = await prompter.text('Name');
+      // Numbered, because a run of name questions that all read "Name" gives
+      // no way to tell which project is being named — and the answer to the
+      // one above has already collapsed into the transcript by then.
+      const name = await prompter.text(`Name of the ${ordinal(apps.length + 1)} application`);
       const more = await prompter.multi(
         `Capacitor platforms for ${name}?`,
         [
@@ -126,16 +130,18 @@ async function ask(
       uiLibPrefix = answer === uiLib ? undefined : answer;
     }
 
-    const wantsMarketing = await prompter.confirm('Add a prerendered marketing site?', false);
-    const marketing = wantsMarketing
-      ? await prompter.text('Marketing site name', 'site')
-      : undefined;
-
-    // Accepting the placeholder sends nothing, leaving the default in the
-    // schematic, the one place that owns it.
-    let marketingOrigin: string | undefined;
-    if (marketing) {
-      marketingOrigin = await askOrigin(prompter);
+    // Asked the way the applications are, and for the same reason: a product
+    // site and a docs site are one workspace's worth of pages sharing a design
+    // system, and a question that only ever takes one answer sends the second
+    // one to a second repository.
+    const marketing: MarketingSpec[] = [];
+    if (await prompter.confirm('Add a prerendered marketing site?', false)) {
+      marketing.push(await askSite(prompter, 'Name of the first marketing site', 'site'));
+      while (await prompter.confirm('Add another marketing site?', false)) {
+        marketing.push(
+          await askSite(prompter, `Name of the ${ordinal(marketing.length + 1)} marketing site`),
+        );
+      }
     }
 
     const e2e = (await prompter.confirm('Wire up Playwright end-to-end tests?', true))
@@ -176,7 +182,6 @@ async function ask(
       uiLib,
       uiLibPrefix,
       marketing,
-      marketingOrigin,
       e2e,
       codegen,
       packages,
@@ -185,6 +190,46 @@ async function ask(
   } finally {
     prompter.close();
   }
+}
+
+/**
+ * `1` → `first`, for the questions that name one project out of several.
+ *
+ * Named as far as the tenth and numbered after that: nobody generates eleven
+ * of anything in one run, but a question reading "the undefinedth application"
+ * if somebody does is worse than the three lines that prevent it.
+ */
+const ORDINALS = [
+  'first',
+  'second',
+  'third',
+  'fourth',
+  'fifth',
+  'sixth',
+  'seventh',
+  'eighth',
+  'ninth',
+  'tenth',
+];
+
+function ordinal(position: number): string {
+  if (position <= ORDINALS.length) return ORDINALS[position - 1]!;
+  // 11th to 13th are the exception the st/nd/rd rule forgets.
+  const teen = position % 100 >= 11 && position % 100 <= 13;
+  return `${position}${teen ? 'th' : (['th', 'st', 'nd', 'rd'][position % 10] ?? 'th')}`;
+}
+
+/** One site: its name, then the address its canonical URLs will be built on. */
+async function askSite(
+  prompter: Prompter,
+  question: string,
+  fallback?: string,
+): Promise<MarketingSpec> {
+  const name = await prompter.text(question, fallback);
+  const origin = await askOrigin(prompter);
+  // Accepting the placeholder sends nothing, leaving the default in the
+  // schematic, the one place that owns it.
+  return origin === undefined ? { name } : { name, origin };
 }
 
 /**

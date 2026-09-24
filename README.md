@@ -35,7 +35,8 @@ itself:
 npm create angular-capacitor-workspace@latest acme -- \
   --app storefront --mobile android,ios \
   --app admin \
-  --marketing site --ui-lib ui --e2e playwright --with cdk
+  --marketing site --marketing-origin https://acme.example \
+  --ui-lib ui --e2e playwright --with cdk
 ```
 
 That gives:
@@ -213,8 +214,8 @@ and audit for real, in a temp directory, against the live registry:
 | Row         | Apps | Mobile       | Marketing | ui  | codegen |
 | ----------- | ---- | ------------ | --------- | --- | ------- |
 | `minimal`   | 1    | —            | —         | —   | —       |
-| `full`      | 1    | android      | yes       | yes | yes     |
-| `multi-app` | 2    | android, ios | yes       | yes | —       |
+| `full`      | 1    | android      | 1         | yes | yes     |
+| `multi-app` | 2    | android, ios | 2         | yes | —       |
 | `lib-only`  | —    | —            | —         | yes | —       |
 
 The minimal row runs on every PR; the full matrix runs nightly alongside the

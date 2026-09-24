@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **More than one marketing site per workspace.** `--marketing` is now
+  repeatable, the way `--app` is, and `--marketing-origin` binds to the
+  `--marketing` before it rather than to the workspace — so
+  `--marketing site --marketing-origin https://acme.example --marketing docs
+--marketing-origin https://docs.acme.example` gives each site its own set of
+  canonical URLs. The interactive run asks "Add another marketing site?" after
+  the first, like it already did for applications.
+
+  The `marketing` schematic already supported being run twice; what did not was
+  everything upstream of it. A product site and a docs site are two sets of
+  pages sharing a design system, and a flag that took one answer sent the
+  second one to a second repository. Each site gets its own project, dev-server
+  port, `start:`/`build:`/`test:` scripts and entry in `npm run build`, while
+  sharing the `scripts/` postbuild checks and the AGENTS.md section.
+
 ### Fixed
 
 - **Every per-project script now builds the libraries first.** The root
@@ -26,6 +43,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   into one that was generated without it.
 
 ### Changed
+
+- **`GenerateOptions.marketing` is a list.** It was `marketing?: string` with a
+  separate `marketingOrigin?: string`; it is now
+  `marketing?: { name: string; origin?: string }[]`, mirroring `apps`, and
+  `marketingOrigin` is gone — an origin belongs to a site, not to a workspace.
+  Callers of the programmatic API pass `marketing: [{ name: "site" }]`. The
+  `marketing` schematic's own options are unchanged.
 
 - **A mobile app writes its setup into the root README.** Adding a platform
   used to be a sentence in the scripts table pointing at `npx cap add`, with

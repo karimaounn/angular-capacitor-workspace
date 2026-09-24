@@ -56,6 +56,22 @@ describe('--ui-lib', () => {
   });
 });
 
+describe('--marketing', () => {
+  it('takes the flag repeated, one site per name', () => {
+    expect(
+      parseArguments(['ws', '--marketing', 'site', '--marketing', 'docs']).options.marketing,
+    ).toEqual([{ name: 'site' }, { name: 'docs' }]);
+  });
+
+  it('is absent unless asked for', () => {
+    expect(parseArguments(['ws', '--app', 'shop']).options.marketing).toBeUndefined();
+  });
+
+  it('needs a name, rather than generating a site called the empty string', () => {
+    expect(() => parseArguments(['ws', '--marketing='])).toThrow(/--marketing needs a name/);
+  });
+});
+
 describe('--marketing-origin', () => {
   it('rides along with the site it names, trimmed to the origin', () => {
     const { options } = parseArguments([
@@ -65,11 +81,43 @@ describe('--marketing-origin', () => {
       '--marketing-origin',
       'https://Acme.example/',
     ]);
-    expect(options.marketingOrigin).toBe('https://acme.example');
+    expect(options.marketing).toEqual([{ name: 'site', origin: 'https://acme.example' }]);
   });
 
-  it('is left unset when not given, so the schematic writes its placeholder', () => {
-    expect(parseArguments(['ws', '--marketing', 'site']).options.marketingOrigin).toBeUndefined();
+  it('binds to the site before it, not to all of them', () => {
+    // The same rule --mobile follows, and the same mistake it would otherwise
+    // make: one address on every canonical URL in the workspace.
+    const { options } = parseArguments([
+      'ws',
+      '--marketing',
+      'site',
+      '--marketing-origin',
+      'https://acme.example',
+      '--marketing',
+      'docs',
+      '--marketing-origin',
+      'https://docs.acme.example',
+    ]);
+    expect(options.marketing).toEqual([
+      { name: 'site', origin: 'https://acme.example' },
+      { name: 'docs', origin: 'https://docs.acme.example' },
+    ]);
+  });
+
+  it('leaves the sites it does not follow to the schematic placeholder', () => {
+    const { options } = parseArguments([
+      'ws',
+      '--marketing',
+      'site',
+      '--marketing',
+      'docs',
+      '--marketing-origin',
+      'https://docs.acme.example',
+    ]);
+    expect(options.marketing).toEqual([
+      { name: 'site' },
+      { name: 'docs', origin: 'https://docs.acme.example' },
+    ]);
   });
 
   it('refuses to be the address of a site nobody asked for', () => {

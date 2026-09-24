@@ -44,8 +44,10 @@ const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/di
  * marketing site's AXE crawl. It also carries `--with cdk`, which is where a
  * catalog range meets the real resolver: a CDK the registry does not have at
  * the Angular line fails the install here rather than in someone's project;
- * `multi-app` proves per-app ports and script naming survive more than one
- * app, and that a site generated without an origin still builds; `lib-only`
+ * `multi-app` proves per-project ports and script naming survive more than one
+ * app *and* more than one marketing site — two sites are two sets of canonical
+ * URLs, a shared postbuild script and two entries in `npm run build` — and that
+ * a site generated without an origin still builds; `lib-only`
  * proves the library stands alone, which is what `ng add` into an existing
  * workspace produces.
  */
@@ -94,6 +96,10 @@ const ROWS = {
       'admin',
       '--marketing',
       'site',
+      '--marketing',
+      'docs',
+      '--marketing-origin',
+      'https://docs.example',
       '--ui-lib',
       'ui',
       '--e2e',

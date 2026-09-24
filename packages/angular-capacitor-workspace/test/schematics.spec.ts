@@ -833,6 +833,51 @@ describe('marketing', () => {
     expect(readme).toContain('404/index.html');
   });
 
+  it('gives a second site its own port, scripts and place in the build', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const one = await runner().runSchematic('marketing', { name: 'site' }, base);
+    const two = await runner().runSchematic('marketing', { name: 'docs' }, one);
+
+    const ports = (t: UnitTestTree) =>
+      Object.fromEntries(
+        Object.entries(JSON.parse(t.readContent('/angular.json')).projects).map(
+          ([name, project]) => [
+            name,
+            (project as { architect: { serve: { options: { port: number } } } }).architect.serve
+              .options.port,
+          ],
+        ),
+      );
+    expect(ports(two)).toEqual({ site: 4200, docs: 4201 });
+
+    expect(scripts(two)['start:docs']).toBe('ng serve docs');
+    expect(scripts(two)['build:docs']).toBe('ng build docs');
+    expect(scripts(two)['build']).toBe('npm run build:site && npm run build:docs');
+    // One command serves one site, so the first keeps `npm start`.
+    expect(scripts(two)['start']).toBe('npm run start:site');
+  });
+
+  it('gives each site its own origin, so their canonicals do not collide', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const one = await runner().runSchematic(
+      'marketing',
+      { name: 'site', origin: 'https://acme.example' },
+      base,
+    );
+    const two = await runner().runSchematic(
+      'marketing',
+      { name: 'docs', origin: 'https://docs.acme.example' },
+      one,
+    );
+
+    expect(two.readContent('/projects/site/web/src/app/site.ts')).toContain(
+      "export const SITE_ORIGIN = 'https://acme.example';",
+    );
+    expect(two.readContent('/projects/docs/web/src/app/site.ts')).toContain(
+      "export const SITE_ORIGIN = 'https://docs.acme.example';",
+    );
+  });
+
   it('adds the prerendered-site rules to AGENTS.md once, however many sites there are', async () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const one = await runner().runSchematic('marketing', { name: 'site' }, base);

@@ -5,7 +5,13 @@
  * this; anything it can do, a script can do.
  */
 export { featuresFor, generateWorkspace, GenerateError } from './api';
-export type { AppSpec, GenerateOptions, GenerateResult, MobilePlatform } from './api';
+export type {
+  AppSpec,
+  GenerateOptions,
+  GenerateResult,
+  MarketingSpec,
+  MobilePlatform,
+} from './api';
 export { PLACEHOLDER_ORIGIN } from './schematics/marketing';
 
 /**

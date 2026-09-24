@@ -22,17 +22,25 @@ export interface AppSpec {
   mobile?: MobilePlatform[];
 }
 
+export interface MarketingSpec {
+  name: string;
+  /**
+   * Production origin of this site, for its canonical URLs, sitemap and
+   * robots.txt. Defaults to a placeholder the site's build warns about.
+   */
+  origin?: string;
+}
+
 export interface GenerateOptions {
   /** Absolute or relative path of the workspace to create. */
   directory: string;
   apps?: AppSpec[];
-  /** Name of the prerendered marketing app, when one is wanted. */
-  marketing?: string;
   /**
-   * Production origin of the marketing site, for its canonical URLs, sitemap
-   * and robots.txt. Defaults to a placeholder the site's build warns about.
+   * Prerendered marketing sites. Several are allowed, the way several apps
+   * are: a product site and a docs site are one workspace's worth of pages
+   * that share a design system, not two repositories.
    */
-  marketingOrigin?: string;
+  marketing?: MarketingSpec[];
   /** Name of the design-system library, or `false` to skip it. */
   uiLib?: string | false;
   /** Selector prefix for the design-system components. Defaults to `uiLib`. */
@@ -98,7 +106,7 @@ export function featuresFor(options: GenerateOptions): Set<string> {
   const apps = options.apps ?? [];
 
   if (apps.length > 0) features.add('app');
-  if (options.marketing) features.add('marketing');
+  if ((options.marketing ?? []).length > 0) features.add('marketing');
   if (options.uiLib) {
     features.add('ui-lib');
     // The ui library carries Storybook, and Storybook is what forces
@@ -345,13 +353,16 @@ async function runOverlay(
     });
   }
 
-  if (options.marketing) {
+  for (const site of options.marketing ?? []) {
     steps.push({
       schematic: 'marketing',
       options: {
-        name: options.marketing,
+        name: site.name,
         e2e: options.e2e ?? false,
-        ...(options.marketingOrigin ? { origin: options.marketingOrigin } : {}),
+        // Omitted rather than defaulted, so the placeholder lives in the
+        // schema alone and a site without an origin is told apart from one
+        // that was given the placeholder on purpose.
+        ...(site.origin ? { origin: site.origin } : {}),
       },
     });
   }

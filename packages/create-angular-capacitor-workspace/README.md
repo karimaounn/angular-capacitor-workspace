@@ -16,7 +16,7 @@ Interactive when no flags are given. Questions with a list of options are
 answered with the arrow keys — `↑↓` to move, `Space` to toggle a Capacitor
 platform, `Enter` to confirm — and pressing Return through every question gives
 one app, a `ui` library and Playwright wiring, and no mobile target, marketing
-site or codegen, since each of those adds dependencies a workspace should carry
+sites or codegen, since each of those adds dependencies a workspace should carry
 only once someone has decided it needs them.
 
 Off a terminal the same questions are answered by number or by name on one
@@ -41,11 +41,11 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
 ```
   --app <name>            app to create (repeatable)
   --mobile android,ios    Capacitor platforms for the preceding --app
-  --marketing <name>      prerendered static site
+  --marketing <name>      prerendered static site (repeatable)
   --marketing-origin <url>
-                          its production origin, for canonical URLs and the
-                          sitemap (default: https://example.com, which its
-                          build warns about)
+                          production origin of the preceding --marketing, for
+                          canonical URLs and the sitemap (default:
+                          https://example.com, which its build warns about)
   --ui-lib [name]         design-system library skeleton (default: ui)
   --ui-lib-prefix <p>     selector prefix for its components (default: its name)
   --codegen orval         OpenAPI client generation
@@ -58,16 +58,23 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
   -h, --help
 ```
 
-`--mobile` binds to the `--app` before it, so
+`--mobile` binds to the `--app` before it, and `--marketing-origin` to the
+`--marketing` before it, so
 
 ```bash
 npm create angular-capacitor-workspace@latest shop -- \
   --app storefront --mobile android,ios \
   --app admin \
-  --marketing site --ui-lib ui --e2e playwright
+  --marketing site --marketing-origin https://acme.example \
+  --marketing docs --marketing-origin https://docs.acme.example \
+  --ui-lib ui --e2e playwright
 ```
 
-gives the mobile targets to `storefront` and leaves `admin` web-only.
+gives the mobile targets to `storefront` and leaves `admin` web-only, and gives
+each site its own canonical origin. Both flags are repeatable: sites, like
+apps, get their own dev-server port, their own `start:`/`build:`/`test:` scripts
+and their own entry in `npm run build`, while sharing the design system and the
+postbuild checks.
 
 To see what would be generated, and whether it would pass the audit gate,
 without writing anything:
