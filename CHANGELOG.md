@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.3.1] — 2026-09-24
+
 ### Changed
 
 - **An answered question in `create-angular-capacitor-workspace` now reads as an
@@ -361,7 +363,8 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.0...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.1...HEAD
+[22.3.1]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.0...v22.3.1
 [22.3.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.2.1...v22.3.0
 [22.2.1]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.2.0...v22.2.1
 [22.2.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.1.0...v22.2.0

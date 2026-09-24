@@ -1,6 +1,6 @@
 {
   "name": "angular-capacitor-workspace-monorepo",
-  "version": "22.3.0",
+  "version": "22.3.1",
   "private": true,
   "description": "Monorepo for the angular-capacitor-workspace generator and its create-* bootstrap.",
   "license": "MIT",
