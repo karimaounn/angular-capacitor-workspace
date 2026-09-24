@@ -8,6 +8,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **An answered question in `create-angular-capacitor-workspace` now reads as an
+  answer.** The mark turns from a cyan `?` to a green `✓`, the answer moves up
+  beside the question in cyan, and the `(default)` hint is dropped — whatever it
+  offered has by then been decided. The list prompts already left their answer
+  behind this way; the typed ones left a column of question marks standing next
+  to hints, with the answers underneath in whatever colour the terminal echoed
+  them, so a finished run scrolled back as a list of things that looked unasked.
+
+  Pressing Return now shows the default as the answer rather than nothing at
+  all. A transcript that leaves the accepted defaults blank cannot be told apart
+  from one nobody answered, which is the transcript people paste into an issue.
+  `confirm` shows `Yes` or `No` rather than the bare `y` that was typed, for the
+  same reason the list prompts show labels and not values.
+
+  The redraw walks back over exactly the rows the question occupied, counting
+  the wrapping the terminal did, so a long question or a long answer on a narrow
+  terminal collapses as cleanly as a short one.
+
+- **A rejected answer no longer gets a green check.** `text` takes an optional
+  `validate`, and the production URL question passes its origin parsing into it.
+  The reason is shown against the question itself, after the hint, and the
+  question is then asked again in the same two rows. It used to be answered,
+  checked afterwards, and then asked again below the complaint about it, which
+  left the screen carrying two copies of the question with only the lower one
+  live. A required question left empty re-asks in place for the same reason.
+
+### Fixed
+
+- **The `›` cursor no longer vanishes as soon as anything is typed.** It was
+  written before handing the line to `readline`, which repaints the line it owns
+  from the first column on every keystroke and so wiped it — the answer ended up
+  in a column nothing had accounted for. It is now passed to `rl.question()`, so
+  readline repaints it along with the rest.
+
+- **Piped runs echo the answer they took.** Off a terminal nothing echoes stdin,
+  so every question in a CI log ended on a bare `› ` and the log recorded which
+  questions were asked but not how they were answered — including which defaults
+  a scripted run had silently accepted.
+
 ## [22.3.0] — 2026-09-23
 
 ### Added

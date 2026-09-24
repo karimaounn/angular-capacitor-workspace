@@ -20,6 +20,8 @@ const CURSOR_SHOW = '\u001B[?25h';
 const rewind = (n: number) => `\u001B[${n}A\r\u001B[0J`;
 /** Colour codes, which occupy no columns when the width of a line is measured. */
 const ANSI = /\u001B\[[0-9;]*m/g;
+/** What a typed answer is preceded by, on the line below its question. */
+const CURSOR = `${MARK.cursor} `;
 
 /**
  * A minimal prompt layer over `node:readline` and raw stdin.
@@ -61,19 +63,52 @@ export class Prompter {
   }
 
   /**
-   * `? Question (default)` on its own line, then the cursor.
+   * `? Question (default)`, with the cursor to follow on the line below.
    *
    * Two lines rather than one because the answer then starts in the same column
    * every time, which is what makes a run of ten questions scan as a list
-   * rather than as ragged prose.
+   * rather than as ragged prose. The frame is handed back rather than written
+   * and forgotten, because answering the question redraws over exactly the rows
+   * it took up.
    */
-  private line(question: string, hint?: string): string {
+  private frame(question: string, hint?: string, warning?: string): string {
     const suffix = hint === undefined ? '' : ` ${dim(`(${hint})`)}`;
-    return `\n${MARK.prompt} ${bold(question)}${suffix}\n${MARK.cursor} `;
+    const problem = warning === undefined ? '' : ` ${MARK.warn} ${dim(warning)}`;
+    return `\n${MARK.prompt} ${bold(question)}${suffix}${problem}\n`;
+  }
+
+  /** The rows a question and its answer occupy, which is what a redraw walks back over. */
+  private occupied(asked: string, typed: string): number {
+    return rows(`${asked}${CURSOR}${typed}\n`);
   }
 
   /**
-   * One typed answer.
+   * Replaces the question just answered with `✓ Question answer`.
+   *
+   * Scrollback from a finished run should read as a list of decisions, not as a
+   * column of question marks standing next to the defaults nobody can tell were
+   * taken. So the two lines the question occupied collapse into one: the mark
+   * turns, the hint goes — whatever it offered has now been decided — and the
+   * answer sits to the right of the question, where the list prompts already
+   * put theirs. Off a terminal nothing can be redrawn, so the answer is echoed
+   * after the cursor instead, which piped input otherwise leaves dangling.
+   */
+  private settle(asked: string, typed: string, question: string, answer: string): void {
+    if (!this.interactive) {
+      stdout.write(`${answer}\n`);
+      return;
+    }
+    const summary = `\n${MARK.ok} ${bold(question)} ${cyan(answer)}\n`;
+    stdout.write(rewind(this.occupied(asked, typed)) + summary);
+  }
+
+  /** Clears an answer that was not taken, so the question is asked again in place. */
+  private retry(asked: string, typed: string): void {
+    stdout.write(this.interactive ? rewind(this.occupied(asked, typed)) : '\n');
+  }
+
+  /**
+   * One typed line.
    *
    * On a terminal readline earns its keep — echo, backspace, kill-line — and is
    * held open across questions; a list prompt releases it before taking stdin
@@ -81,12 +116,16 @@ export class Prompter {
    * nothing to edit, and readline's own line reading loses answers, so the
    * queue below reads them instead.
    */
-  private async ask(prompt: string): Promise<string> {
-    stdout.write(prompt);
+  private async read(cursor = CURSOR): Promise<string> {
     if (this.interactive) {
       this.rl ??= createInterface({ input: stdin, output: stdout });
-      return (await this.rl.question('')).trim();
+      // Handed to readline rather than written ahead of it: readline redraws
+      // the line it owns from the first column on every keystroke, so a cursor
+      // printed beforehand is wiped by the first character typed — and the
+      // answer then sits in a column the redraw below has not accounted for.
+      return (await this.rl.question(cursor)).trim();
     }
+    stdout.write(cursor);
     return (await this.nextLine()).trim();
   }
 
@@ -136,27 +175,58 @@ export class Prompter {
     this.rl = undefined;
   }
 
-  async text(question: string, fallback?: string): Promise<string> {
-    const answer = await this.ask(this.line(question, fallback));
-    if (answer === '' && fallback !== undefined) {
-      return fallback;
-    }
-    if (answer === '') {
-      // A question with no default and no more input to read would otherwise
-      // ask itself forever, which off a terminal is a hung CI job.
-      if (this.exhausted) {
-        throw new Error(`Ran out of input at "${question}".`);
+  /**
+   * One typed answer, asked until it is one.
+   *
+   * `validate` gives back the reason an answer is no good, and that reason is
+   * shown against the question rather than printed beneath it: a rejected
+   * answer should leave the screen as it found it, or a fat-fingered URL ends
+   * up with three copies of its question on screen and only the last one live.
+   */
+  async text(
+    question: string,
+    fallback?: string,
+    validate?: (value: string) => string | undefined,
+  ): Promise<string> {
+    let warning: string | undefined;
+    for (;;) {
+      const asked = this.frame(question, fallback, warning);
+      stdout.write(asked);
+      const typed = await this.read();
+      // An empty line takes the default, which is then shown as the answer —
+      // the alternative being a transcript that cannot tell a run that accepted
+      // every default from one that was never answered at all.
+      const answer = typed === '' && fallback !== undefined ? fallback : typed;
+
+      if (answer === '') {
+        // A question with no default and no more input to read would otherwise
+        // ask itself forever, which off a terminal is a hung CI job.
+        if (this.exhausted) {
+          throw new Error(`Ran out of input at "${question}".`);
+        }
+        warning = undefined;
+        this.retry(asked, typed);
+        continue;
       }
-      return this.text(question, fallback);
+
+      warning = validate?.(answer);
+      if (warning !== undefined) {
+        this.retry(asked, typed);
+        continue;
+      }
+
+      this.settle(asked, typed, question, answer);
+      return answer;
     }
-    return answer;
   }
 
   async confirm(question: string, fallback = true): Promise<boolean> {
-    const hint = fallback ? 'Y/n' : 'y/N';
-    const answer = (await this.ask(this.line(question, hint))).toLowerCase();
-    if (answer === '') return fallback;
-    return answer.startsWith('y');
+    const asked = this.frame(question, fallback ? 'Y/n' : 'y/N');
+    stdout.write(asked);
+    const typed = await this.read();
+    const answer = typed === '' ? fallback : typed.toLowerCase().startsWith('y');
+    this.settle(asked, typed, question, answer ? 'Yes' : 'No');
+    return answer;
   }
 
   /** Single choice from a list: arrow keys and Return, or a number typed. */
@@ -200,7 +270,7 @@ export class Prompter {
     // Leave the answer behind, so scrollback reads as a transcript of the run
     // rather than as a list of questions whose answers scrolled away.
     const label = choices.find((choice) => choice.value === chosen)!.label;
-    stdout.write(`\n${MARK.prompt} ${bold(question)} ${cyan(label)}\n`);
+    stdout.write(`\n${MARK.ok} ${bold(question)} ${cyan(label)}\n`);
     return chosen;
   }
 
@@ -272,7 +342,7 @@ export class Prompter {
               .map((choice) => choice.label)
               .join(', '),
           );
-    stdout.write(`\n${MARK.prompt} ${bold(question)} ${answer}\n`);
+    stdout.write(`\n${MARK.ok} ${bold(question)} ${answer}\n`);
     return selected;
   }
 
@@ -351,14 +421,16 @@ export class Prompter {
       stdout.write(`  ${marker} ${dim(`${index + 1}`)}  ${label}\n`);
     }
 
-    const answer = await this.ask(`${MARK.cursor} ${dim(`(${fallback})`)} `);
-    if (answer === '') return fallback;
+    const answer = await this.read(`${CURSOR}${dim(`(${fallback})`)} `);
+    const chosen = answer === '' ? fallback : match(choices, answer)?.value;
+    if (chosen === undefined) {
+      stdout.write(`\n  ${MARK.warn} ${dim('Not one of the options.')}\n`);
+      return this.selectByLine(question, choices, fallback);
+    }
 
-    const choice = match(choices, answer);
-    if (choice) return choice.value;
-
-    stdout.write(`  ${MARK.warn} ${dim('Not one of the options.')}\n`);
-    return this.selectByLine(question, choices, fallback);
+    // Nothing echoes piped input, so the answer is written where it was typed.
+    stdout.write(`${choices.find((choice) => choice.value === chosen)?.label ?? chosen}\n`);
+    return chosen;
   }
 
   private async multiByLine<T extends string>(
@@ -372,22 +444,29 @@ export class Prompter {
     }
 
     const hint = fallback.length > 0 ? fallback.join(',') : 'none';
-    const answer = await this.ask(`${MARK.cursor} ${dim(`(${hint})`)} `);
-    if (answer === '') return [...fallback];
-    if (answer.toLowerCase() === 'none') return [];
+    const answer = await this.read(`${CURSOR}${dim(`(${hint})`)} `);
 
     const selected: T[] = [];
-    for (const part of answer.split(',')) {
-      const token = part.trim();
-      const choice = match(choices, token);
-      if (!choice) {
-        stdout.write(`  ${MARK.warn} ${dim(`"${token}" is not one of the options.`)}\n`);
-        return this.multiByLine(question, choices, fallback);
-      }
-      if (!selected.includes(choice.value)) {
-        selected.push(choice.value);
+    if (answer === '') {
+      selected.push(...fallback);
+    } else if (answer.toLowerCase() !== 'none') {
+      for (const part of answer.split(',')) {
+        const token = part.trim();
+        const choice = match(choices, token);
+        if (!choice) {
+          stdout.write(`\n  ${MARK.warn} ${dim(`"${token}" is not one of the options.`)}\n`);
+          return this.multiByLine(question, choices, fallback);
+        }
+        if (!selected.includes(choice.value)) {
+          selected.push(choice.value);
+        }
       }
     }
+
+    const labels = choices
+      .filter((choice) => selected.includes(choice.value))
+      .map((choice) => choice.label);
+    stdout.write(`${labels.length === 0 ? 'none' : labels.join(', ')}\n`);
     return selected;
   }
 }

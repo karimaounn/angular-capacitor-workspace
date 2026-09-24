@@ -187,19 +187,27 @@ async function ask(
   }
 }
 
+/**
+ * Checked while the question is still on screen, rather than after it, so a
+ * mistyped URL is corrected in place instead of leaving an answered-looking
+ * question above the complaint about it.
+ */
 async function askOrigin(prompter: Prompter): Promise<string | undefined> {
   const answer = await prompter.text(
     'Its production URL, for canonical links and the sitemap',
     PLACEHOLDER_ORIGIN,
+    (value) => {
+      if (value === PLACEHOLDER_ORIGIN) return undefined;
+      try {
+        parseOrigin(value);
+        return undefined;
+      } catch (error) {
+        if (!(error instanceof ArgError)) throw error;
+        return error.message;
+      }
+    },
   );
-  if (answer === PLACEHOLDER_ORIGIN) return undefined;
-  try {
-    return parseOrigin(answer);
-  } catch (error) {
-    if (!(error instanceof ArgError)) throw error;
-    process.stdout.write(`  ${MARK.warn} ${dim(error.message)}\n`);
-    return askOrigin(prompter);
-  }
+  return answer === PLACEHOLDER_ORIGIN ? undefined : parseOrigin(answer);
 }
 
 function sanitize(value: string): string {
