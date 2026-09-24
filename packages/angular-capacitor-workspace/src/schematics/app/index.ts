@@ -24,6 +24,7 @@ import {
   claimDefaultStart,
   documentScripts,
   findDesignSystem,
+  hookLibraryBuild,
   importDesignSystemStyles,
   nextFreePort,
   readProject,
@@ -96,6 +97,10 @@ export function app(options: AppOptions): Rule {
       appScripts(name),
       options.e2e === 'playwright' ? e2eConfig(name, port, prefix) : noop(),
       mobile.length > 0 ? schematic('mobile', { app: name, platforms: mobile }) : noop(),
+
+      // After every script this app owns exists, because the hooks are named
+      // after them.
+      (host: Tree) => hookLibraryBuild(host, name),
 
       // Last: whatever the workspace already carries from the catalog has a
       // per-project half this app has not had applied to it yet.

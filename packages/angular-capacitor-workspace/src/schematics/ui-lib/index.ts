@@ -19,6 +19,7 @@ import {
   addScripts,
   addStyleIncludePath,
   aggregateTests,
+  hookLibraryBuild,
   importDesignSystemStyles,
   appendToScript,
   documentScripts,
@@ -288,7 +289,7 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
     documentScripts(tree, {
       'build:libs':
         'builds every library into `dist/`, where apps import them from; ' +
-        '`npm start` and `npm test` run it first',
+        'every other npm script here runs it first',
       'watch:libs': 'rebuilds libraries on change',
       [`test:${name}`]: `component tests for \`${name}\`, in a real browser engine`,
       'setup:test-browsers': 'downloads the browser engines those tests run in — once per machine',
@@ -300,8 +301,8 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
     aggregateTests(tree);
 
     // `ng serve` does not build workspace libraries, and an app that imports
-    // from dist/ cannot start until one exists. These two hooks cover the
-    // entry points npm can reach; the README covers the two it cannot.
+    // from dist/ cannot start until one exists. These three cover the
+    // workspace-wide entry points.
     prependHook(tree, 'prestart', 'npm run build:libs');
     prependHook(tree, 'pretest', 'npm run build:libs');
 
@@ -309,6 +310,16 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
     // library's tokens: a build from a fresh clone would otherwise fail in Sass,
     // on a path that does not exist yet rather than one that is wrong.
     prependHook(tree, 'prebuild', 'npm run build:libs');
+
+    // And the same for the per-project entry points of whatever is already
+    // here. An app generated after this library hooks its own; one that
+    // predates it — every app, when `ng add` retrofits a design system — has
+    // nothing else to do it.
+    for (const [projectName, project] of Object.entries(readProjects(tree))) {
+      if (project.projectType !== 'library') {
+        hookLibraryBuild(tree, projectName);
+      }
+    }
 
     if (storybook) {
       const prepare = `npm run docs:compodoc && npm run styles:tokens`;

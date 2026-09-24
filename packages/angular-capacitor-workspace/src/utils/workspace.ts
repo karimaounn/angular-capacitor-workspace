@@ -147,6 +147,33 @@ export function prependHook(tree: Tree, hookName: string, command: string): void
   });
 }
 
+/**
+ * Makes a project's own entry points build the libraries first.
+ *
+ * The root `prestart`, `pretest` and `prebuild` hooks cover `npm start`,
+ * `npm test` and `npm run build` — and nothing else. Every project adds four
+ * more entry points of its own, and in a workspace that imports libraries from
+ * `dist/` all four fail on a fresh clone: `start:` and `e2e:` cannot resolve
+ * the import, `test:` the same, `build:` dies in Sass on a path nothing has
+ * created yet. npm hooks each of them under its own `pre` name, which is the
+ * only place a fix can go.
+ *
+ * Only the scripts the project actually has, and only once `build:libs`
+ * exists: a `pre` hook for a script nobody can run is dead weight, and one
+ * calling a script that does not exist fails on first use.
+ */
+export function hookLibraryBuild(tree: Tree, projectName: string): void {
+  const scripts = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
+  if (!scripts['build:libs']) {
+    return;
+  }
+  for (const verb of ['start', 'build', 'test', 'e2e']) {
+    if (scripts[`${verb}:${projectName}`]) {
+      prependHook(tree, `pre${verb}:${projectName}`, 'npm run build:libs');
+    }
+  }
+}
+
 /** Registers a directory as an npm workspace member. */
 export function addWorkspaceMember(tree: Tree, pattern: string): void {
   updateJson(tree, PACKAGE_JSON, (file) => {
@@ -272,12 +299,6 @@ export function importDesignSystemStyles(tree: Tree, projectName: string, librar
     return;
   }
 
-  // `npm run build:<project>` is an entry point npm cannot hook from `prebuild`,
-  // which only covers the script literally named `build`. Without this, the
-  // first per-project build in a fresh clone fails in Sass, on a path under
-  // dist/ that nothing has created yet.
-  prependHook(tree, `prebuild:${projectName}`, 'npm run build:libs');
-
   tree.overwrite(
     path,
     `${statement}\n\n` +
@@ -387,6 +408,52 @@ export function documentScripts(tree: Tree, scripts: Record<string, string>): vo
 /** `start` and `test` are the two scripts npm runs without `run`. */
 function invocation(script: string): string {
   return script === 'start' || script === 'test' ? `npm ${script}` : `npm run ${script}`;
+}
+
+export const MOBILE_SECTION_START = '<!-- angular-capacitor-workspace:mobile -->';
+export const MOBILE_SECTION_END = '<!-- /angular-capacitor-workspace:mobile -->';
+
+/**
+ * Written once, ahead of the first app's block: the heading a reader sees,
+ * and the one sentence of "why" that no per-app block should have to repeat.
+ */
+const MOBILE_INTRO = `## Mobile
+
+Each mobile app is a Capacitor shell, registered as its own npm workspace
+member so its plugins resolve from there instead of the workspace root.`;
+
+/**
+ * Appends one app's mobile setup to the README's Mobile section, idempotently.
+ *
+ * The empty section markers ship in the workspace template unconditionally —
+ * same placement whether or not this workspace has a mobile app — so a
+ * workspace generated with none renders nothing between them (no heading, no
+ * empty section) and a mobile app added later with `ng generate` still has
+ * an anchor to write into, not only one chosen at generation time.
+ */
+export function documentMobile(tree: Tree, block: string): void {
+  if (!tree.exists(README_MD)) {
+    return;
+  }
+  const current = tree.read(README_MD)!.toString('utf8');
+  const start = current.indexOf(MOBILE_SECTION_START);
+  const end = current.indexOf(MOBILE_SECTION_END, start);
+  if (start === -1 || end === -1) {
+    return;
+  }
+
+  const existing = current.slice(start + MOBILE_SECTION_START.length, end);
+  const heading = block.match(/^###.+$/m)?.[0];
+  if (heading && existing.includes(heading)) {
+    return;
+  }
+
+  const head = current.slice(0, start + MOBILE_SECTION_START.length);
+  const tail = current.slice(end);
+  const body = existing.trim()
+    ? `${existing.trim()}\n\n${block.trim()}`
+    : `${MOBILE_INTRO}\n\n${block.trim()}`;
+  tree.overwrite(README_MD, `${head}\n\n${body}\n\n${tail}`);
 }
 
 /** Appends lines to `.gitignore` under a labelled section, idempotently. */

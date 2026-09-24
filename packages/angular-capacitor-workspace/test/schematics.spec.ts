@@ -183,13 +183,37 @@ describe('workspace overlay', () => {
       { uiLib: 'ui' },
       await baseWorkspace(),
     );
-    expect(withLib.readContent('/README.md')).toContain('npm run build:libs   # required once');
+    expect(withLib.readContent('/README.md')).toContain(
+      'npm run build:libs   # before the first serve',
+    );
+  });
+
+  it('states the Node and npm floor it declares, without restating it', () => {
+    // Below the npm floor `allowScripts` is accepted and ignored, so a reader
+    // on an older npm has a workspace that looks gated and is not. The numbers
+    // come from the same manifest `engines` does — a template literal here
+    // could disagree with what the workspace actually requires.
+    const engines = JSON.parse(tree.readContent('/package.json')).engines;
+    const readme = tree.readContent('/README.md');
+    expect(readme).toContain(`Node ${engines.node.replace('>=', '')}+`);
+    expect(readme).toContain(`npm ${engines.npm.replace('>=', '')}+`);
+  });
+
+  it('shows how to add to the workspace, since the table promises rows will appear', () => {
+    expect(tree.readContent('/README.md')).toContain(
+      'ng generate angular-capacitor-workspace:app <name>',
+    );
   });
 
   it('starts the README scripts table with the policy commands', () => {
     const table = scriptsTable(tree);
     expect(table).toContain('| `npm run audit:policy` |');
     expect(table).toContain('| `npm run doctor` |');
+  });
+
+  it('puts the Scripts table after everything else in the README', () => {
+    const readme = tree.readContent('/README.md');
+    expect(readme.indexOf('## Scripts')).toBeGreaterThan(readme.indexOf('## Dependency policy'));
   });
 
   it('does not invent a build:libs script before any library exists', () => {
@@ -424,10 +448,51 @@ describe('app, in a workspace that already has a design system', () => {
     );
   });
 
-  it('builds the libraries before a per-app build, which npm cannot hook', () => {
-    // `prebuild` only covers the script named `build`; `npm run build:shop` on a
-    // fresh clone would otherwise fail in Sass on a path under dist/.
-    expect(JSON.parse(tree.readContent('/package.json')).scripts['prebuild:shop']).toContain(
+  it('builds the libraries before every entry point of its own, which npm cannot hook', () => {
+    // The root `prestart`/`pretest`/`prebuild` cover `npm start`, `npm test`
+    // and `npm run build` and nothing else. On a fresh clone each per-app
+    // script fails without its own hook: `build:` in Sass, the rest on an
+    // import that resolves to a directory nothing has created.
+    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
+    for (const hook of ['prestart:shop', 'prebuild:shop', 'pretest:shop']) {
+      expect(scripts[hook]).toContain('npm run build:libs');
+    }
+    // This app has no e2e suite, and a hook for a script nobody can run is a
+    // key that only ever has to be explained.
+    expect(scripts['pree2e:shop']).toBeUndefined();
+  });
+
+  it('hooks the e2e script too, when the app has one', async () => {
+    const base = await runner().runSchematic(
+      'workspace',
+      { e2e: 'playwright' },
+      await baseWorkspace(),
+    );
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, base);
+    const withApp = await runner().runSchematic(
+      'app',
+      { name: 'shop', e2e: 'playwright' },
+      withLib,
+    );
+    expect(JSON.parse(withApp.readContent('/package.json')).scripts['pree2e:shop']).toContain(
+      'npm run build:libs',
+    );
+  });
+
+  it('adds no library hooks to a workspace that has no libraries', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    const scripts = JSON.parse(withApp.readContent('/package.json')).scripts;
+    // There is no `build:libs` to call, so a hook calling it would fail on the
+    // first `npm run start:shop`.
+    expect(scripts['prestart:shop']).toBeUndefined();
+  });
+
+  it('retrofits the hooks onto apps that predate the library', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withApp);
+    expect(JSON.parse(withLib.readContent('/package.json')).scripts['prestart:shop']).toContain(
       'npm run build:libs',
     );
   });
@@ -514,6 +579,74 @@ describe('mobile', () => {
     );
     expect(table).toContain('| `npm run preflight:shop` |');
     expect(table).not.toContain(':ios');
+  });
+
+  it("documents the app's mobile setup in the README, not in a separate file", () => {
+    expect(tree.files).not.toContain('/projects/shop/mobile/README.md');
+
+    const readme = tree.readContent('/README.md');
+    expect(readme).toContain('## Mobile');
+    expect(readme).toContain('### Shop');
+    expect(readme).toContain('npm run --workspace projects/shop/mobile cap -- add android');
+    expect(readme).toContain('npm run run:shop:android');
+    expect(readme).toContain('npm run preflight:shop');
+    expect(readme).toContain('`com.testws.shop`');
+  });
+
+  it('puts the web build before `cap add`, which syncs it into the platform it adds', () => {
+    // `cap add` ends in a copy from webDir. Told to add a platform first, a
+    // reader on a fresh clone gets "Could not find the web assets directory"
+    // as the very first native command they run.
+    const readme = tree.readContent('/README.md');
+    expect(readme.indexOf('npm run build:shop')).toBeLessThan(readme.indexOf('cap -- add android'));
+    expect(readme.indexOf('npm run preflight:shop')).toBeLessThan(
+      readme.indexOf('npm run build:shop'),
+    );
+  });
+
+  it('reads the requirements as a list, however many platforms there are', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const both = await runner().runSchematic(
+      'app',
+      { name: 'shop', mobile: ['android', 'ios'] },
+      base,
+    );
+    // Three requirements joined by `and` alone reads as two — "the Android SDK
+    // and Xcode" is one item to anybody skimming.
+    const readme = both.readContent('/README.md').replace(/\n\s+/g, ' ');
+    expect(readme).toContain('a JDK (17+), the Android SDK and Xcode');
+
+    // The preflight script looks for Xcode on macOS only, so an Android-only
+    // app is neither told to have it nor told why it went unchecked.
+    const android = tree.readContent('/README.md').replace(/\n\s+/g, ' ');
+    expect(android).toContain('a JDK (17+) and the Android SDK');
+    expect(android).not.toContain('Xcode (the iOS');
+  });
+
+  it('wraps the steps it writes, like the prose it writes them into', () => {
+    // Every lead line carries an interpolated path or app id, so nothing about
+    // its length is knowable when it is written.
+    const section = tree
+      .readContent('/README.md')
+      .split('<!-- angular-capacitor-workspace:mobile -->')[1]!
+      .split('<!-- /angular-capacitor-workspace:mobile -->')[0]!;
+    expect(section.split('\n').filter((line) => line.length > 80)).toEqual([]);
+  });
+
+  it('adds one Mobile section however many apps have a native target', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const one = await runner().runSchematic('app', { name: 'shop', mobile: ['android'] }, base);
+    const two = await runner().runSchematic('app', { name: 'admin', mobile: ['android'] }, one);
+    const readme = two.readContent('/README.md');
+    expect(readme.match(/## Mobile/g)).toHaveLength(1);
+    expect(readme).toContain('### Shop');
+    expect(readme).toContain('### Admin');
+  });
+
+  it('adds no Mobile section when no app has a native target', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    expect(withApp.readContent('/README.md')).not.toContain('## Mobile');
   });
 });
 

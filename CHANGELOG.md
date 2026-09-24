@@ -8,6 +8,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every per-project script now builds the libraries first.** The root
+  `prestart`, `pretest` and `prebuild` hooks cover `npm start`, `npm test` and
+  `npm run build` — and nothing else. Each project adds four entry points of
+  its own, and in a workspace that imports libraries from `dist/` all four fail
+  on a fresh clone: `start:<app>`, `test:<app>` and `e2e:<app>` on an import
+  that resolves to a directory nothing has created, `build:<app>` in Sass on
+  the same path. Only `prebuild:<app>` was hooked.
+
+  npm hooks each entry point under its own `pre` name, which is the only place
+  a fix can go, so the app, marketing and mobile schematics now write all four
+  — and only the ones a project actually has, and only once `build:libs`
+  exists. The library schematic retrofits the same hooks onto every app already
+  in the workspace, which is every app when `ng add` brings a design system
+  into one that was generated without it.
+
+### Changed
+
+- **A mobile app writes its setup into the root README.** Adding a platform
+  used to be a sentence in the scripts table pointing at `npx cap add`, with
+  the order that works left implicit — `cap add` ends by syncing the web build
+  into the project it just created, so it fails outright until that build
+  exists. The `mobile` schematic now appends a numbered block per app under a
+  `## Mobile` heading: preflight, then the web build, then `cap add` per
+  platform, then the one command that builds, syncs and runs. The section
+  markers ship in the workspace template unconditionally, so a workspace with
+  no mobile app renders nothing between them and one that gains an app later
+  still has an anchor to write into.
+
+- **The generated README rewritten.** It states the Node and npm floor before
+  `npm install` — below the npm floor the `allowScripts` allowlist is accepted
+  and silently ignored, so the workspace looks gated and is not, and both
+  numbers are read from the same `engines` block the workspace declares. The
+  layout tree names what each directory is, the theming section points at real
+  paths under the design system rather than paths relative to nothing, the
+  scripts table moves last, and a new "Adding to this workspace" section lists
+  the schematics that extend it.
+
 ## [22.3.2] — 2026-09-24
 
 ### Fixed

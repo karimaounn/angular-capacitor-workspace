@@ -16,6 +16,7 @@ import { JsonFile } from '../../utils/json-file';
 import {
   addScripts,
   addWorkspaceMember,
+  documentMobile,
   documentScripts,
   PACKAGE_JSON,
   readProject,
@@ -52,6 +53,7 @@ export function mobile(options: MobileOptions): Rule {
     const workspace = workspaceName(tree);
     const mobileRoot = `${appRoot}/${MOBILE_SUBDIR}`;
     const appId = options.appId ?? defaultAppId(workspace, app);
+    const appName = options.appName ?? strings.classify(app);
 
     const templates = apply(url('./files'), [
       applyTemplates({
@@ -60,7 +62,7 @@ export function mobile(options: MobileOptions): Rule {
         workspace,
         platforms: [...platforms],
         appId,
-        appName: options.appName ?? strings.classify(app),
+        appName,
         webDir: webDirFor(tree, app, mobileRoot),
         versions: Object.fromEntries(
           Object.entries(VERSIONS).map(([name, pin]) => [name, pin.range]),
@@ -74,10 +76,121 @@ export function mobile(options: MobileOptions): Rule {
       (host: Tree) => {
         addWorkspaceMember(host, mobileRoot);
         mobileScripts(host, app, mobileRoot, [...platforms]);
+        documentMobile(host, mobileReadmeBlock(app, appName, [...platforms], appId, mobileRoot));
       },
       helperScripts(app),
     ]);
   };
+}
+
+/**
+ * The per-app block folded into the root README's Mobile section: one
+ * numbered step per command, each in its own code block, rather than the
+ * commands buried inside prose.
+ *
+ * The order is the order that works. `cap add` finishes by syncing the web
+ * build into the platform it just created, so it fails outright until that
+ * build exists — which is why the web build comes first and the preflight
+ * check, whose whole job is to fail before a native toolchain does, comes
+ * before both.
+ */
+function mobileReadmeBlock(
+  app: string,
+  appName: string,
+  platforms: MobilePlatform[],
+  appId: string,
+  mobileRoot: string,
+): string {
+  const needs = list([
+    ...(platforms.includes('android') ? ['a JDK (17+)', 'the Android SDK'] : []),
+    ...(platforms.includes('ios') ? ['Xcode'] : []),
+  ]);
+  // The preflight script only looks for Xcode on macOS, because only macOS can
+  // build for iOS. Saying so here stops the check reading as a broken one on
+  // the machine where it deliberately says nothing.
+  const caveat = platforms.includes('ios') ? ' (the iOS checks run on macOS only)' : '';
+
+  const steps = [
+    [
+      `Check this machine has what a native build needs — ${needs}${caveat}:`,
+      [`npm run preflight:${app}`],
+    ],
+    [
+      'Build the web app, then add each platform once. `cap add` copies that ' +
+        'build into the native project it creates, so it has to exist first:',
+      [
+        `npm run build:${app}`,
+        ...platforms.map((platform) => `npm run --workspace ${mobileRoot} cap -- add ${platform}`),
+      ],
+    ],
+    [
+      'From then on, one command builds, syncs and runs it on a device or emulator:',
+      platforms.map((platform) => `npm run run:${app}:${platform}`),
+    ],
+    [
+      `Before publishing, change its app id — \`${appId}\`, set in ` +
+        `\`${mobileRoot}/capacitor.config.ts\`. Once an app is live in a store ` +
+        `the id is permanent.`,
+      [],
+    ],
+  ] as const;
+
+  const body = steps
+    .map(([lead, lines], index) => {
+      const step = `${index + 1}. ${wrap(lead, STEP_INDENT.length)}`;
+      return lines.length > 0 ? `${step}\n\n${codeBlock(lines)}` : step;
+    })
+    .join('\n\n');
+
+  return `### ${appName}\n\n${body}`;
+}
+
+/** `['a', 'b', 'c']` → `a, b and c`. */
+function list(parts: readonly string[]): string {
+  if (parts.length < 3) {
+    return parts.join(' and ');
+  }
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/** The indent that puts a line under a numbered-list marker rather than beside it. */
+const STEP_INDENT = '   ';
+
+/**
+ * Wraps prose to the width the rest of the README is written at.
+ *
+ * The lead lines carry an app id and a path interpolated into them, so their
+ * length is not knowable when they are written — left alone they run to
+ * whatever those values happen to add up to, in a file every other line of
+ * which stops at 78 columns.
+ */
+function wrap(text: string, indent: number, width = 78): string {
+  // Uniform, because `1. ` is exactly as wide as the indent every later line
+  // carries: each rendered line starts at the same column.
+  const limit = width - indent;
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    if (line && `${line} ${word}`.length > limit) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) {
+    lines.push(line);
+  }
+  return lines.join(`\n${STEP_INDENT}`);
+}
+
+/** A bash code block, indented to nest under a numbered-list step. */
+function codeBlock(lines: readonly string[]): string {
+  return [
+    `${STEP_INDENT}\`\`\`bash`,
+    ...lines.map((line) => `${STEP_INDENT}${line}`),
+    `${STEP_INDENT}\`\`\``,
+  ].join('\n');
 }
 
 /**
@@ -153,7 +266,7 @@ function mobileScripts(
     // exists. This row is where someone reading the table first hits that.
     [`sync:${app}`]:
       `builds \`${app}\` and copies it into every native project — ` +
-      `add each platform once first, with \`npx cap add <platform>\` in \`${mobileRoot}\``,
+      `add each platform once first, as the Mobile section above describes`,
   };
 
   for (const platform of platforms) {

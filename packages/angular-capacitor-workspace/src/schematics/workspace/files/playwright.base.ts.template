@@ -48,8 +48,8 @@ export function defineAngularAppE2eConfig(options: AngularAppE2eOptions): Playwr
 
     webServer: {
       // Libraries are consumed from dist/, and `ng serve` does not build them.
-      // The root `pree2e` script runs `build:libs` first; this command assumes
-      // it has.
+      // The app's `pree2e:<app>` hook runs `build:libs` first; this command
+      // assumes it has.
       command: `npx ng serve ${project} --port ${port} --configuration development`,
       url: baseURL,
       // Locally, reuse a server the developer already has running. In CI there

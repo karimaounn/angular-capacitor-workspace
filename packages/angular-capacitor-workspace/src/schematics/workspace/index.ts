@@ -54,6 +54,13 @@ export function workspaceOverlay(options: WorkspaceOverlayOptions = {}): Rule {
         angularLine: ANGULAR_LINE,
         e2e: options.e2e ?? false,
         uiLib: options.uiLib ?? '',
+        mobile: options.mobile ?? false,
+        libRoot: libraryRoot(options.uiLib),
+        // The README states the floor a reader has to meet before
+        // `npm install`. Same source as the `engines` block written below, so
+        // the prose cannot claim a version the manifest does not require.
+        nodeFloor: floorOf(ownManifest().engines?.['node']),
+        npmFloor: floorOf(ownManifest().engines?.['npm']),
         // `__dot__` in a template path becomes a leading dot, which is how a
         // schematic emits `.github/` — a literal `.github` directory inside the
         // package would be picked up by tooling looking for *our* workflows.
@@ -78,6 +85,27 @@ export function workspaceOverlay(options: WorkspaceOverlayOptions = {}): Rule {
 function workspaceName(tree: Tree): string {
   const file = new JsonFile(tree, PACKAGE_JSON);
   return file.mustGet<string>(['name'], 'the workspace name');
+}
+
+/**
+ * Where the design-system library will live, for the README to point at.
+ *
+ * Predicted rather than read: the README is written by this overlay, and the
+ * library schematic that creates the directory runs after it. The prediction
+ * is Angular's own rule — `<newProjectRoot>/<name minus its scope>` — and the
+ * alternative is paths in the theming section that are relative to nothing a
+ * reader can `cd` to.
+ */
+function libraryRoot(uiLib: string | undefined): string {
+  return uiLib ? `projects/${uiLib.replace(/^@/, '')}` : '';
+}
+
+/**
+ * `>=24.8.0` → `24.8.0`. The number a reader checks their own against, without
+ * the range syntax that only npm cares about.
+ */
+function floorOf(range: string | undefined): string {
+  return (range ?? '').replace(/^[^\d]*/, '');
 }
 
 /**

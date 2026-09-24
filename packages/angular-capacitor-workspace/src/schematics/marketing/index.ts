@@ -26,6 +26,7 @@ import {
   claimDefaultStart,
   documentScripts,
   findDesignSystem,
+  hookLibraryBuild,
   importDesignSystemStyles,
   nextFreePort,
   PACKAGE_JSON,
@@ -109,6 +110,10 @@ export function marketing(options: MarketingOptions): Rule {
       postbuildChecks(name),
       houseRules(),
       e2e ? e2eConfig(name, port, prefix) : (host: Tree) => host,
+
+      // After every script this site owns exists, because the hooks are named
+      // after them.
+      (host: Tree) => hookLibraryBuild(host, name),
 
       // See the app schematic: a site generated after a catalog package was
       // added still needs that package's per-project half.
