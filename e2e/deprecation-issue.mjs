@@ -22,7 +22,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { renderIssue, staleWaivers } from './deprecations.mjs';
+import { dormantWaivers, renderIssue, staleWaivers } from './deprecations.mjs';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -55,22 +55,42 @@ const allRows = new Set(reports.flatMap((report) => report.allRows ?? []));
 
 // Absence is only evidence once every row has reported. Anything less and a
 // waiver is missing because nothing exercised it, not because it went stale.
-const complete = [...allRows].every((row) => covered.has(row));
-const seen = new Set(rows.flatMap((row) => row.deprecations.waived.map((entry) => entry.package)));
-const stale = complete ? staleWaivers(seen) : [];
+const rowsComplete = [...allRows].every((row) => covered.has(row));
+
+// A row that predates `direct` cannot answer "is the package still in the
+// tree", and falling back to the warnings would reinstate exactly the
+// conflation `staleWaivers` exists to avoid — so it is treated as a run that
+// cannot be judged rather than one with nothing present.
+const recorded = rows.length > 0 && rows.every((row) => Array.isArray(row.direct));
+const judgeable = rowsComplete && recorded;
+
+const present = new Set(rows.flatMap((row) => row.direct ?? []));
+const warned = new Set(
+  rows.flatMap((row) => row.deprecations.waived.map((entry) => entry.package)),
+);
+const stale = judgeable ? staleWaivers(present) : [];
+const dormant = judgeable ? dormantWaivers(present, warned) : [];
 
 const findings = rows.flatMap((row) => row.deprecations.findings);
 
+const caveat = !rowsComplete
+  ? ' (partial run — staleness not assessed)'
+  : !recorded
+    ? ' (rows recorded no direct dependencies — staleness not assessed)'
+    : '';
+
 console.log(
-  `${rows.length} row(s) reported; ${findings.length} unexpected, ${stale.length} stale waiver(s)` +
-    `${complete ? '' : ' (partial run — staleness not assessed)'}.`,
+  `${rows.length} row(s) reported; ${findings.length} unexpected, ${stale.length} stale waiver(s), ` +
+    `${dormant.length} dormant${caveat}.`,
 );
 
+// Dormant waivers are context, never a failure: the package is still needed and
+// there is nothing to do but wait and see whether the marker returns.
 if (findings.length === 0 && stale.length === 0) {
   process.exit(0);
 }
 
-const body = renderIssue(rows, stale);
+const body = renderIssue(rows, stale, dormant);
 if (values.out) {
   writeFileSync(values.out, body);
 } else {

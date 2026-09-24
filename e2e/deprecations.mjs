@@ -30,8 +30,10 @@
  * `revisitWhen` is the analogue of the `until` date on an accepted advisory.
  * There is no wall-clock expiry to enforce here — a deprecation does not become
  * more urgent by sitting — so the check that keeps this list honest is the
- * staleness sweep below: an entry that stops appearing in any row is an
- * exemption for nothing and is reported so it can be deleted.
+ * staleness sweep below: an entry whose package no longer appears in any
+ * generated manifest is an exemption for nothing and is reported so it can be
+ * deleted. An entry whose package is still there but has stopped warning is a
+ * different thing and is only noted; see `dormantWaivers`.
  */
 export const EXPECTED = [
   {
@@ -87,14 +89,41 @@ export function classify(deprecations) {
 }
 
 /**
- * Waivers no row exercised.
+ * Waivers whose package no longer appears in any generated manifest.
  *
- * Only meaningful after a complete run: `--row minimal` carries no Storybook,
- * so both entries are legitimately absent and reporting them there would train
+ * Staleness is judged on the package being gone from the tree, not on its
+ * deprecation warning going quiet. In an install log those two look identical
+ * — the package simply stops being mentioned — and they mean opposite things.
+ * A package nothing installs any more is an exemption for nothing and the entry
+ * should go. A package still forced into the tree whose maintainer dropped the
+ * marker is a waiver between jobs, and deleting that one arms the trap: the
+ * marker comes back, the entry is gone, and the nightly goes red on a morning
+ * nothing here changed — which is the failure this whole file exists to avoid.
+ *
+ * Angular 22.2.0 is the case in point. It shipped on 2026-09-23 without the
+ * `deprecated` markers every release from 21.0.0 to 22.1.9 carried, so both
+ * entries below stopped warning overnight while remaining required peers of
+ * `@storybook/angular` and direct entries in the generated manifest.
+ *
+ * `present` is the union of the direct dependency names across every row. Only
+ * meaningful after a complete run: `--row minimal` carries no Storybook, so
+ * both entries are legitimately absent and reporting them there would train
  * everyone to ignore this. The caller decides whether the run was complete.
  */
-export function staleWaivers(seen) {
-  return EXPECTED.filter((entry) => !seen.has(entry.package));
+export function staleWaivers(present) {
+  return EXPECTED.filter((entry) => !present.has(entry.package));
+}
+
+/**
+ * Waivers whose package is still installed but no longer warns.
+ *
+ * Reported as context, never failed on. It is the honest answer to "why did the
+ * waived list go empty", and the first thing to check before believing a
+ * `revisitWhen` has come true — an upstream release that merely forgot to run
+ * `npm deprecate` looks exactly like one that undeprecated on purpose.
+ */
+export function dormantWaivers(present, warned) {
+  return EXPECTED.filter((entry) => present.has(entry.package) && !warned.has(entry.package));
 }
 
 /** One line per deprecation, for the console summary. */
@@ -113,20 +142,31 @@ export function summarise({ findings, waived, transitive }) {
  * context that follows exists to stop the next person re-deriving why the
  * waived ones are waived.
  */
-export function renderIssue(rows, stale = []) {
+export function renderIssue(rows, stale = [], dormant = []) {
   const withFindings = rows.filter((row) => row.deprecations.findings.length > 0);
 
+  // The heading tracks what is actually in the body. A stale waiver is not a
+  // deprecated package — it is the absence of one — and an issue that says
+  // "unexpected deprecations" over a list of things that stopped being
+  // deprecated sends the reader looking for a package that is not there.
   const lines = [
-    '## Unexpected deprecations in generated workspaces',
+    withFindings.length > 0
+      ? '## Unexpected deprecations in generated workspaces'
+      : '## Deprecation waivers that no longer match anything',
     '',
     `Generated ${new Date().toISOString().slice(0, 10)} from a real install of each matrix row.`,
     '',
-    'Each package below is one this generator writes into a generated manifest ' +
-      'itself, and is not a required peer of anything it installs — so it is ' +
-      'removable here, in this repo. Transitive deprecations are listed at the ' +
-      "end as context; they are not this repo's to fix.",
-    '',
   ];
+
+  if (withFindings.length > 0) {
+    lines.push(
+      'Each package below is one this generator writes into a generated manifest ' +
+        'itself, and is not a required peer of anything it installs — so it is ' +
+        'removable here, in this repo. Transitive deprecations are listed at the ' +
+        "end as context; they are not this repo's to fix.",
+      '',
+    );
+  }
 
   for (const row of withFindings) {
     lines.push(`### Row: \`${row.row}\``, '');
@@ -147,13 +187,34 @@ export function renderIssue(rows, stale = []) {
 
   if (stale.length > 0) {
     lines.push(
-      '### Waivers that no row exercised',
+      '### Waivers whose package has left the tree',
       '',
-      'These are listed in `EXPECTED` but no longer appear in any install. An',
-      'exemption for a package that is no longer there is surface for nothing —',
-      'delete them.',
+      'These are listed in `EXPECTED`, but no row declares the package any more —',
+      'not merely "it stopped warning", which is reported separately and is not a',
+      'reason to delete anything. An exemption for a package nothing installs is',
+      'surface for nothing; delete them.',
       '',
       ...stale.map((entry) => `- \`${entry.package}\` — waived because: ${entry.reason}`),
+      '',
+    );
+  }
+
+  if (dormant.length > 0) {
+    lines.push(
+      '### Waivers that are still needed but stopped warning',
+      '',
+      'The package is still a direct entry in a generated manifest, but the',
+      'registry no longer reports it deprecated. **Do not delete these.** An',
+      'upstream release that forgot to run `npm deprecate` looks exactly like one',
+      'that undeprecated on purpose, and if the marker comes back to an entry that',
+      'has been deleted the nightly goes red with no warning and nothing changed',
+      'here. Confirm against the `revisitWhen` below before touching them.',
+      '',
+      ...dormant.map(
+        (entry) =>
+          `- \`${entry.package}\` — required peer of \`${entry.peerOf}\`. ` +
+          `_Revisit when: ${entry.revisitWhen}_`,
+      ),
       '',
     );
   }

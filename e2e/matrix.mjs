@@ -194,7 +194,7 @@ function reportDeprecations() {
         {
           selected,
           allRows: Object.keys(ROWS),
-          rows: installed.map(({ row, deprecations }) => ({ row, deprecations })),
+          rows: installed.map(({ row, deprecations, direct }) => ({ row, deprecations, direct })),
         },
         null,
         2,
@@ -210,6 +210,31 @@ function reportDeprecations() {
 
   console.log(`${findings.length} unexpected deprecation(s).`);
   return false;
+}
+
+/**
+ * The dependency names the generated manifest declares.
+ *
+ * Recorded so the merge can tell a waiver whose package has left the tree from
+ * one whose package is still there and merely stopped warning — the two are
+ * indistinguishable in an install log and mean opposite things. See
+ * `staleWaivers` in e2e/deprecations.mjs.
+ *
+ * Read off disk rather than inferred from the warnings, because the whole point
+ * is to still be true when there are no warnings.
+ */
+function directDependencies(directory) {
+  const manifest = join(directory, 'package.json');
+  if (!existsSync(manifest)) return [];
+
+  const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
+  return [
+    ...new Set([
+      ...Object.keys(pkg.dependencies ?? {}),
+      ...Object.keys(pkg.devDependencies ?? {}),
+      ...Object.keys(pkg.optionalDependencies ?? {}),
+    ]),
+  ].sort();
 }
 
 /** `npm pack` the schematics package and return a `file:` spec for the tarball. */
@@ -269,6 +294,7 @@ function runRow(name, row) {
 
     const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : {};
     const deprecations = classify(report.deprecations ?? []);
+    const direct = directDependencies(report.directory ?? target);
     if (report.installed) {
       console.log(`  deprecations … ${summarise(deprecations)}`);
       for (const finding of deprecations.findings) {
@@ -291,6 +317,7 @@ function runRow(name, row) {
       steps,
       installed: Boolean(report.installed),
       deprecations,
+      direct,
     };
   } finally {
     if (!values.keep && steps.every((s) => s.ok)) {

@@ -46,11 +46,18 @@ afterEach(() => {
   rmSync(out, { force: true });
 });
 
+/** Every package a row with Storybook declares that this check cares about. */
+const STORYBOOK_DIRECT = [
+  '@angular-devkit/build-angular',
+  '@angular/platform-browser-dynamic',
+  '@storybook/angular',
+];
+
 /** One row's report, as `matrix.mjs --deprecation-json` writes it. */
-function writeRow(row, deprecations, selected = [row]) {
+function writeRow(row, deprecations, { selected = [row], direct = STORYBOOK_DIRECT } = {}) {
   writeFileSync(
     join(reports, `deprecations-${row}.json`),
-    JSON.stringify({ selected, allRows: ALL_ROWS, rows: [{ row, deprecations }] }),
+    JSON.stringify({ selected, allRows: ALL_ROWS, rows: [{ row, deprecations, direct }] }),
   );
 }
 
@@ -74,7 +81,7 @@ describe('exit codes', () => {
   // and fails the run on any non-zero. Changing them changes the nightly.
 
   it('is clean and files nothing when every row reported and nothing is unexpected', () => {
-    writeRow('minimal', empty());
+    writeRow('minimal', empty(), { direct: ['@angular/core'] });
     for (const row of ['full', 'multi-app', 'lib-only']) {
       writeRow(row, { findings: [], waived: WAIVED, transitive: [] });
     }
@@ -114,22 +121,65 @@ describe('staleness across rows', () => {
   it('does not judge a waiver on a partial run', () => {
     // `minimal` forces no Storybook peer, so both waivers are legitimately
     // absent. Calling them stale here would train everyone to ignore this.
-    writeRow('minimal', empty());
+    writeRow('minimal', empty(), { direct: ['@angular/core'] });
 
     const result = run();
     expect(result.code).toBe(0);
     expect(result.output).toContain('partial run');
   });
 
-  it('reports a waiver that a complete run never exercised', () => {
-    writeRow('minimal', empty());
+  it('reports a waiver whose package no row declares any more', () => {
+    writeRow('minimal', empty(), { direct: ['@angular/core'] });
     for (const row of ['full', 'multi-app', 'lib-only']) {
-      writeRow(row, { findings: [], waived: [WAIVED[0]], transitive: [] });
+      writeRow(
+        row,
+        { findings: [], waived: [WAIVED[0]], transitive: [] },
+        // @angular/platform-browser-dynamic is gone from the manifest: the
+        // waiver really is surface for nothing.
+        { direct: ['@angular-devkit/build-angular', '@storybook/angular'] },
+      );
     }
 
     const result = run();
     expect(result).toMatchObject({ code: 1, filed: true });
     expect(result.output).not.toContain('partial run');
+  });
+
+  it('stays green when a waived package stops warning but is still declared', () => {
+    // The 2026-09-24 nightly. Angular 22.2.0 shipped without the `deprecated`
+    // markers its whole line had carried, so every row reported an empty
+    // `waived` list while still declaring both packages. Nothing in this repo
+    // changed and nothing here is actionable, so this must not file an issue —
+    // the old check called both waivers stale and told the nightly to delete
+    // them, which would have armed the trap for the day the markers returned.
+    writeRow('minimal', empty(), { direct: ['@angular/core'] });
+    for (const row of ['full', 'multi-app', 'lib-only']) {
+      writeRow(row, empty());
+    }
+
+    const result = run();
+    expect(result).toMatchObject({ code: 0, filed: false });
+    expect(result.output).toContain('2 dormant');
+  });
+
+  it('will not judge staleness from rows that recorded no direct dependencies', () => {
+    // A report written before `direct` existed cannot say whether the package is
+    // still in the tree, and reading the silence as absence is the conflation
+    // this check was changed to avoid.
+    for (const row of ALL_ROWS) {
+      writeFileSync(
+        join(reports, `deprecations-${row}.json`),
+        JSON.stringify({
+          selected: [row],
+          allRows: ALL_ROWS,
+          rows: [{ row, deprecations: empty() }],
+        }),
+      );
+    }
+
+    const result = run();
+    expect(result).toMatchObject({ code: 0, filed: false });
+    expect(result.output).toContain('staleness not assessed');
   });
 
   it('reads the rows from nested artifact directories', () => {

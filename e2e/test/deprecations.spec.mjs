@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { classify, EXPECTED, renderIssue, staleWaivers, summarise } from '../deprecations.mjs';
+import {
+  classify,
+  dormantWaivers,
+  EXPECTED,
+  renderIssue,
+  staleWaivers,
+  summarise,
+} from '../deprecations.mjs';
 
 /** The five warnings a `full` row actually produced, verbatim. */
 const OBSERVED = [
@@ -74,14 +81,49 @@ describe('classify', () => {
   });
 });
 
+const ALL_WAIVED = EXPECTED.map((entry) => entry.package);
+
 describe('staleWaivers', () => {
-  it('reports a waiver that no row exercised any more', () => {
+  it('reports a waiver whose package has left the generated manifest', () => {
     const stale = staleWaivers(new Set(['@angular-devkit/build-angular']));
     expect(stale.map((entry) => entry.package)).toEqual(['@angular/platform-browser-dynamic']);
   });
 
-  it('is empty when every waiver was seen', () => {
-    expect(staleWaivers(new Set(EXPECTED.map((entry) => entry.package)))).toEqual([]);
+  it('is empty when every waived package is still declared', () => {
+    expect(staleWaivers(new Set(ALL_WAIVED))).toEqual([]);
+  });
+
+  it('does not call a waiver stale just because the package stopped warning', () => {
+    // Angular 22.2.0, 2026-09-23: published without the `deprecated` markers
+    // every release from 21.0.0 to 22.1.9 carried. Both packages were still
+    // required peers of @storybook/angular and still written into the manifest,
+    // so nothing here had gone stale — but the old check read the silence as
+    // absence and told the nightly to delete both. Deleting them would have
+    // armed the trap for the day the markers came back.
+    expect(staleWaivers(new Set(ALL_WAIVED))).toEqual([]);
+  });
+});
+
+describe('dormantWaivers', () => {
+  it('reports a waived package that is still declared but no longer warns', () => {
+    const dormant = dormantWaivers(new Set(ALL_WAIVED), new Set());
+    expect(dormant.map((entry) => entry.package)).toEqual(ALL_WAIVED);
+  });
+
+  it('says nothing about a package that is still warning', () => {
+    expect(dormantWaivers(new Set(ALL_WAIVED), new Set(ALL_WAIVED))).toEqual([]);
+  });
+
+  it('says nothing about a package that has left the tree — that is stale, not dormant', () => {
+    // The two are mutually exclusive by construction, so a package that is gone
+    // must be reported once, under the heading that carries the right advice.
+    const present = new Set(['@angular-devkit/build-angular']);
+    expect(dormantWaivers(present, new Set()).map((entry) => entry.package)).toEqual([
+      '@angular-devkit/build-angular',
+    ]);
+    expect(staleWaivers(present).map((entry) => entry.package)).toEqual([
+      '@angular/platform-browser-dynamic',
+    ]);
   });
 });
 
@@ -133,8 +175,30 @@ describe('renderIssue', () => {
 
   it('asks for a stale waiver to be deleted', () => {
     const body = renderIssue(rows, [EXPECTED[0]]);
-    expect(body).toContain('Waivers that no row exercised');
+    expect(body).toContain('Waivers whose package has left the tree');
     expect(body).toContain(EXPECTED[0].package);
+  });
+
+  it('tells the reader not to delete a dormant waiver', () => {
+    // The opposite instruction to the stale one, on a list that looks identical
+    // — so the body has to say which it is.
+    const body = renderIssue(rows, [], [EXPECTED[0]]);
+
+    expect(body).toContain('Waivers that are still needed but stopped warning');
+    expect(body).toContain('Do not delete these');
+    expect(body).toContain(EXPECTED[0].revisitWhen);
+    expect(body).not.toContain('Waivers whose package has left the tree');
+  });
+
+  it('does not claim unexpected deprecations when there are none', () => {
+    // The nightly of 2026-09-24 filed exactly this body — zero findings — under
+    // a heading announcing unexpected deprecated packages, which sent the reader
+    // looking for a package that was not there.
+    const clean = [{ row: 'full', deprecations: classify([]) }];
+    const body = renderIssue(clean, EXPECTED, []);
+
+    expect(body).toContain('## Deprecation waivers that no longer match anything');
+    expect(body).not.toContain('Unexpected deprecations');
   });
 });
 
