@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.4.0] — 2026-09-24
+
 ### Added
 
 - **More than one marketing site per workspace.** `--marketing` is now
@@ -469,7 +471,8 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.2...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.4.0...HEAD
+[22.4.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.2...v22.4.0
 [22.3.2]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.1...v22.3.2
 [22.3.1]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.0...v22.3.1
 [22.3.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.2.1...v22.3.0
