@@ -366,11 +366,16 @@ function libraryDependencies(storybook: boolean): Rule {
     // Written directly rather than through addDependencies so the pins are
     // authoritative: these versions were resolved together and verified to
     // install cleanly at the Angular line.
+    //
+    // Authoritative includes overwriting what the Angular schematic already
+    // wrote. `ng new` emits its own `vitest` range, and @angular/cli 22.2 moved
+    // it to `^5.0.0` while the browser provider's vitest peer is an exact
+    // version — deferring to the emitted range resolved vitest one line above
+    // the provider and failed the install on ERESOLVE. Whichever range the CLI
+    // of the day writes, the pair here is what was verified together.
     updateJson(tree, '/package.json', (file) => {
       for (const [name, range] of Object.entries(pins(wanted))) {
-        if (!file.has(['devDependencies', name])) {
-          file.modify(['devDependencies', name], range);
-        }
+        file.modify(['devDependencies', name], range);
       }
       file.sortKeys(['devDependencies']);
     });

@@ -1,4 +1,5 @@
 import type { Policy } from './types';
+import { VERSIONS } from './versions';
 
 /**
  * The dependency policy for generated workspaces.
@@ -138,17 +139,33 @@ export const POLICY: Policy = {
    */
   floors: [
     {
+      package: '@types/node',
+      min: '24.0.0',
+      range: VERSIONS['@types/node'].range,
+      reason:
+        'Angular writes @types/node itself whenever a project has a server ' +
+        "target — `^20.17.19` on the 22.1 line, its own tooling's floor — and it " +
+        'does so after this overlay has run, so the pin in schematics/workspace ' +
+        'is not the last word. A generated workspace declares `node >= 24.8.0`, ' +
+        'so those are types for a Node it refuses to run, and vitest 5 peers ' +
+        '`@types/node: ^22.0.0 || >=24.0.0`, which `^20` cannot satisfy: the ' +
+        'install failed ERESOLVE and nothing was written. The policy runs after ' +
+        'the whole overlay, which is what makes this the rung that holds — and ' +
+        'the one that reaches workspaces already generated with `^20`.',
+    },
+    {
       package: 'vitest',
       min: '4.1.11',
       range: '^4.1.11',
       advisories: ['GHSA-82fw-gwwq-j7x9'],
       reason:
         'Path traversal / arbitrary file read via the @vitest/mocker redirect ' +
-        'mock, affecting vitest <= 4.1.10. Angular 22 emits `vitest: ^4.0.8`, ' +
-        'and @angular/build peers the 4.x line, so upgrading to 5.x is not ' +
-        'available. Verified 2026-09-19: under Storybook, npm backtracks ' +
-        '`^4.0.8` onto 4.1.10 (vulnerable) to satisfy the rest of the tree, so ' +
-        'the caret alone does not hold. The floor does.',
+        'mock, affecting vitest <= 4.1.10. Verified 2026-09-19: under Storybook, ' +
+        'npm backtracks the `^4.0.8` Angular used to emit onto 4.1.10 ' +
+        '(vulnerable) to satisfy the rest of the tree, so the caret alone does ' +
+        'not hold. The floor does. Generated workspaces now pin the 5.x line ' +
+        '(see policy/versions.ts), which is unaffected and sits above this ' +
+        'floor; the floor stays for workspaces still on 4.x.',
     },
   ],
 

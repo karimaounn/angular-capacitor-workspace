@@ -31,27 +31,49 @@ export const ANGULAR_LINE = '22';
 /** Accepted `@angular/cli` range for the `ng new` bootstrap. */
 export const ANGULAR_CLI_RANGE = `^${ANGULAR_LINE}`;
 
-export const VERSIONS_SYNCED_AT = '2026-09-19';
+export const VERSIONS_SYNCED_AT = '2026-09-24';
 
 export const VERSIONS = {
   // ── Unit testing ────────────────────────────────────────────────────────
-  // Angular 22 emits `vitest: ^4.0.8` for a generated application. We raise it
-  // to the Tier 3 floor; see policy/advisories.ts for GHSA-82fw-gwwq-j7x9.
+  // These two are one pin in two places: `@vitest/browser-playwright` peers
+  // vitest at an exact version, so both entries must name the same release and
+  // both must be exact. A caret on either side is an ERESOLVE waiting for the
+  // next vitest patch — and it is what @angular/cli 22.2 shipped, which emits
+  // `vitest: ^5.0.0`. See the overwrite in schematics/ui-lib.
   vitest: {
-    range: '^4.1.11',
-    constraint: '@angular/build:unit-test peers vitest ^4.0.8 — the 5.x line is not available.',
+    range: '5.0.1',
+    constraint:
+      'Exact, and identical to @vitest/browser-playwright, whose vitest peer is ' +
+      'exact. @angular/build:unit-test peers `^4.0.8 || ^5.0.0`, so the 5.x ' +
+      'line is available as of Angular 22.2.',
   },
   // Browser-mode testing. @angular/build's unit-test builder probes for
   // `@vitest/browser-<provider>` and silently falls back to jsdom when it finds
   // none — so this package being present is the difference between "component
   // tests run in a real engine" and "component tests claim to".
   '@vitest/browser-playwright': {
-    range: '4.1.11',
-    constraint: 'Peers `vitest: 4.1.11` exactly, not a range. Pinned, not caret.',
+    range: '5.0.1',
+    constraint: 'Peers `vitest: 5.0.1` exactly, not a range. Pinned, not caret.',
   },
 
   // ── End-to-end ──────────────────────────────────────────────────────────
   '@playwright/test': { range: '^1.63.0' },
+  // Added for `playwright.base.ts`, which reads process.env and is type-checked
+  // by each app's e2e script.
+  //
+  // Pinned rather than delegated to `latestVersions`. Angular writes the range
+  // its own tooling floors at — `^20.17.19` on the 22.1 line — and a generated
+  // workspace declares `node >= 24.8.0`, so delegating typed the workspace
+  // against a Node it refuses to run on. vitest 5 then made the mismatch fatal:
+  // it peers `@types/node` at `^22.0.0 || >=24.0.0`, which `^20` cannot satisfy,
+  // and the install failed ERESOLVE before anything was written.
+  '@types/node': {
+    range: '^24.13.6',
+    constraint:
+      'The major must match the `engines.node` floor the workspace declares — ' +
+      'types ahead of the runtime compile against APIs the engine does not ' +
+      'have. Also satisfies vitest 5, which peers `^22.0.0 || >=24.0.0`.',
+  },
   // Injected into each page by the marketing site's accessibility spec. Loaded
   // as a file rather than through a Playwright wrapper, which would add a
   // package that exists only to call `axe.run`.

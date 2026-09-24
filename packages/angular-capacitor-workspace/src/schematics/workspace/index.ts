@@ -14,7 +14,6 @@ import {
   type Rule,
   type Tree,
 } from '@angular-devkit/schematics';
-import { latestVersions } from '@schematics/angular/utility/latest-versions';
 import { ANGULAR_LINE, pins } from '../../policy/versions';
 import { JsonFile, updateJson } from '../../utils/json-file';
 import {
@@ -126,10 +125,14 @@ function rootDependencies(options: WorkspaceOverlayOptions): Rule {
     if (options.e2e === 'playwright') {
       // `playwright.base.ts` reads `process.env`, and each app's e2e script
       // type-checks it. Angular only adds @types/node alongside a server
-      // target, so a workspace of client-rendered apps would not have it. The
-      // range is the one Angular's own schematics write — delegated, like every
-      // other version Angular has an opinion about, so the two never disagree.
-      addDependencies(tree, { '@types/node': latestVersions['@types/node']! });
+      // target, so a workspace of client-rendered apps would not have it.
+      //
+      // The range is ours, not Angular's. This was delegated to
+      // `latestVersions` on the reasoning that applies to everything Angular
+      // has an opinion about — but Angular's opinion here is the floor its own
+      // tooling supports, and it sat below both the Node this workspace
+      // requires and the one vitest peers. See policy/versions.ts.
+      addDependencies(tree, pins(['@types/node']));
     }
 
     // This package installs itself into the workspace it generates.

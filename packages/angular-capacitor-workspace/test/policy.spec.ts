@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import * as semver from 'semver';
 import { describe, expect, it } from 'vitest';
 import { applyPolicy, PolicyError } from '../src/policy/apply';
 import type { Manifest } from '../src/policy/apply';
 import { POLICY } from '../src/policy/advisories';
 import type { Policy, PolicyContext } from '../src/policy/types';
 import { isGuardSatisfied } from '../src/policy/guards';
+import { VERSIONS } from '../src/policy/versions';
 
 function ctx(partial: Partial<PolicyContext> = {}): PolicyContext {
   return {
@@ -235,6 +239,33 @@ describe('the shipped policy', () => {
     expect(prune).toMatchObject({ outcome: 'skipped', guard: 'animations' });
   });
 
+  it('raises the @types/node range Angular writes for a server target', () => {
+    // Angular's server schematic adds `^20.17.19` after the overlay has run, so
+    // the policy — which runs last — is the rung that holds. Left alone it is
+    // types for a Node the workspace refuses to run, and vitest 5's peer
+    // rejects it outright.
+    const { manifest, decisions } = applyPolicy(
+      { devDependencies: { '@types/node': '^20.17.19' } },
+      ctx(),
+      POLICY,
+    );
+    expect(manifest.devDependencies?.['@types/node']).toBe(VERSIONS['@types/node'].range);
+
+    const floor = decisions.find(
+      (decision) => decision.tier === 'floor' && decision.packages.includes('@types/node'),
+    );
+    expect(floor).toMatchObject({ outcome: 'applied' });
+  });
+
+  it('leaves a @types/node range that already types the right Node', () => {
+    const { manifest } = applyPolicy(
+      { devDependencies: { '@types/node': '^26.0.0' } },
+      ctx(),
+      POLICY,
+    );
+    expect(manifest.devDependencies?.['@types/node']).toBe('^26.0.0');
+  });
+
   it('writes the install-script allowlist', () => {
     const { manifest } = applyPolicy({}, ctx(), POLICY);
     expect(manifest.allowScripts).toMatchObject({ esbuild: true });
@@ -253,5 +284,54 @@ describe('the shipped policy', () => {
       POLICY,
     );
     expect(Object.keys(manifest.devDependencies!)).toEqual(['axios', 'zod']);
+  });
+});
+
+/**
+ * The pins in versions.ts that no resolver checks for us.
+ *
+ * `@vitest/browser-playwright` peers vitest at an exact version, so the two
+ * ranges are really one decision. Bumping either alone installs nothing and
+ * fails the audit gate on ERESOLVE, at generation time, in a user's terminal.
+ */
+describe('version pins', () => {
+  it('pins vitest and its browser provider to the same exact version', () => {
+    const vitest = VERSIONS['vitest'].range;
+    const provider = VERSIONS['@vitest/browser-playwright'].range;
+
+    expect(
+      semver.valid(vitest),
+      `vitest pin "${vitest}" must be exact, not a range`,
+    ).not.toBeNull();
+    expect(
+      semver.valid(provider),
+      `@vitest/browser-playwright pin "${provider}" must be exact, not a range`,
+    ).not.toBeNull();
+    expect(provider).toBe(vitest);
+  });
+
+  it('types the Node the generated workspace requires, not an older one', () => {
+    // The workspace declares this package's own `engines.node`, and @types/node
+    // is pinned rather than delegated to Angular's `latestVersions`, which
+    // writes the floor Angular's tooling supports (`^20` on the 22.1 line).
+    // Types below the engine describe a Node the workspace refuses to run; they
+    // are also what vitest 5's `^22.0.0 || >=24.0.0` peer rejected, taking the
+    // whole install down with it.
+    const engines = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as {
+      engines: { node: string };
+    };
+
+    const node = semver.minVersion(engines.engines.node);
+    const types = semver.minVersion(VERSIONS['@types/node'].range);
+    expect(node).not.toBeNull();
+    expect(types).not.toBeNull();
+    expect(types!.major).toBe(node!.major);
+    expect(semver.satisfies(types!, '^22.0.0 || >=24.0.0')).toBe(true);
+  });
+
+  it('keeps the vitest pin at or above the advisory floor', () => {
+    const floor = POLICY.floors.find((rule) => rule.package === 'vitest');
+    expect(floor).toBeDefined();
+    expect(semver.lt(VERSIONS['vitest'].range, floor!.min)).toBe(false);
   });
 });

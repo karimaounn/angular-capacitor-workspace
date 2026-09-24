@@ -5,6 +5,7 @@ import { SchematicTestRunner, type UnitTestTree } from '@angular-devkit/schemati
 import { latestVersions } from '@schematics/angular/utility/latest-versions';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { assertKnownProviders } from '../src/schematics/marketing';
+import { VERSIONS } from '../src/policy/versions';
 
 // The schematic engine `require()`s factories by path, so it needs the compiled
 // collection — the same artefact published to npm, which is the right thing to
@@ -145,12 +146,18 @@ describe('workspace overlay', () => {
     );
   });
 
-  it('adds @types/node for the Playwright base, at the range Angular itself writes', () => {
+  it('adds @types/node for the Playwright base, at our range and not Angular’s', () => {
     // The base reads process.env and the e2e scripts type-check it. Angular
     // only adds @types/node with a server target, so an app-only workspace
     // would otherwise fail its first `npm run e2e` on a missing type.
+    //
+    // The range is pinned rather than taken from `latestVersions`, which writes
+    // the floor Angular's own tooling supports: below the Node this workspace
+    // declares, and below the one vitest 5 peers. Delegating it failed the
+    // install ERESOLVE.
     const devDependencies = JSON.parse(tree.readContent('/package.json')).devDependencies;
-    expect(devDependencies['@types/node']).toBe(latestVersions['@types/node']);
+    expect(devDependencies['@types/node']).toBe(VERSIONS['@types/node'].range);
+    expect(devDependencies['@types/node']).not.toBe(latestVersions['@types/node']);
   });
 
   it('creates an empty paths map for libraries to fill', () => {
@@ -868,6 +875,20 @@ describe('ui-lib', () => {
     expect(devDependencies['@angular-devkit/architect']).toBeDefined();
     expect(devDependencies['@angular/platform-browser-dynamic']).toBeDefined();
     expect(devDependencies['@angular/animations']).toBeUndefined();
+  });
+
+  it('overwrites the vitest range Angular emitted, so the browser provider matches', () => {
+    // @vitest/browser-playwright peers vitest at an exact version. @angular/cli
+    // 22.2 emits `vitest: ^5.0.0`, and any CLI release can move that range
+    // again; deferring to it resolved vitest above the provider's peer and the
+    // install died on ERESOLVE before anything was written.
+    const devDependencies = JSON.parse(tree.readContent('/package.json')).devDependencies;
+
+    expect(devDependencies['vitest']).toBe(VERSIONS['vitest'].range);
+    expect(devDependencies['@vitest/browser-playwright']).toBe(
+      VERSIONS['@vitest/browser-playwright'].range,
+    );
+    expect(devDependencies['vitest']).not.toBe(latestVersions['vitest']);
   });
 
   it('emits no source that imports the deprecated animations package', () => {

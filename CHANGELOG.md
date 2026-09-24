@@ -8,6 +8,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Generation no longer dies in the audit gate on an unsatisfiable vitest
+  peer.** `@angular/cli` 22.2 moved the range `ng new` emits from
+  `vitest: ^4.0.8` to `^5.0.0`, and the library schematic deferred to whatever
+  the CLI had written. `@vitest/browser-playwright` peers vitest at an exact
+  version, not a range, so the tree asked for vitest 5.0.1 and for the provider
+  that peers 4.1.11 — npm refused it, the gate could not resolve a lockfile, and
+  nothing was installed.
+
+  Both are now pinned to 5.0.1, exact, and the schematic writes its pin over the
+  emitted range rather than around it. The pair is one decision in two places,
+  so any CLI release is free to move vitest without taking generation with it. A
+  test asserts the two pins name the same exact version, and another asserts the
+  generated manifest carries the pin and not the range Angular emitted.
+
+  The Tier 3 floor at `vitest ^4.1.11` (GHSA-82fw-gwwq-j7x9) stays for
+  workspaces still on the 4.x line. The 5.x line is unaffected and sits above
+  it, and `@angular/build:unit-test` peers `^4.0.8 || ^5.0.0`, so `doctor` has
+  nothing to raise in a workspace generated from here on.
+
+- **`@types/node` now types the Node the workspace actually requires.** It was
+  delegated to Angular's `latestVersions`, on the reasoning that applies to
+  everything Angular has an opinion about. But Angular's opinion here is the
+  floor its own tooling supports — `^20.17.19` on the 22.1 line — while a
+  generated workspace declares `engines.node >= 24.8.0`. Every workspace with an
+  e2e suite or a server target was being type-checked against a Node it refuses
+  to run.
+
+  vitest 5 turned that from wrong into fatal: it peers
+  `@types/node: ^22.0.0 || >=24.0.0`, which `^20` cannot satisfy, so the audit
+  gate could not resolve a lockfile for any workspace with a marketing app or
+  Playwright. The range is now pinned at `^24.13.6`, and a test ties its major to
+  the `engines.node` floor rather than to a literal.
+
+  The pin alone is not enough, because Angular's `server` schematic writes
+  `@types/node` after the overlay has run. A Tier 3 floor does the rest: the
+  policy is applied after the whole overlay, and it is the only rung that also
+  repairs workspaces already generated with `^20` — `npx angular-capacitor-workspace doctor --fix`
+  raises it in place.
+
 ## [22.3.1] — 2026-09-24
 
 ### Changed
