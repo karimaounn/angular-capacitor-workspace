@@ -53,6 +53,7 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
   --with <pkg>            extra package to wire in (repeatable, comma-separated)
                         • cdk — overlays, a11y, drag & drop, virtual scrolling
                         • aria — WAI-ARIA patterns as headless directives
+                        • service-worker — offline app shell, versioned updates
   --audit-level <lvl>     low|moderate|high|critical  (default: moderate)
   --no-install            stop after generating; still writes the lockfile to audit
   --dry-run               show what would be generated

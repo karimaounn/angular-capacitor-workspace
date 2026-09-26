@@ -1296,3 +1296,175 @@ describe('packages aria', () => {
     expect(both.readContent('/angular.json')).toBe(tree.readContent('/angular.json'));
   });
 });
+
+describe('packages service-worker', () => {
+  let tree: UnitTestTree;
+
+  beforeAll(async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    // A marketing site as well: it is an application too, so it gets the same
+    // wiring, and its `app.config.ts` is the marketing template's rather than
+    // Angular's — the second shape the provider insertion has to handle.
+    const withSite = await runner().runSchematic(
+      'marketing',
+      { name: 'site', origin: 'https://acme.example' },
+      withApp,
+    );
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withSite);
+    tree = await runner().runSchematic('packages', { packages: ['service-worker'] }, withLib);
+  });
+
+  it('installs the package at the framework range, which it peers exactly', () => {
+    const manifest = JSON.parse(tree.readContent('/package.json'));
+    expect(manifest.dependencies['@angular/service-worker']).toBe(latestVersions.Angular);
+  });
+
+  it('writes an ngsw-config.json per project, not one for the workspace', () => {
+    // `serviceWorker` is a per-target option, and two applications do not cache
+    // the same set of files.
+    expect(tree.files).toContain('/projects/shop/web/ngsw-config.json');
+    expect(tree.files).not.toContain('/ngsw-config.json');
+  });
+
+  it('gives the config a $schema that resolves from where it sits', () => {
+    const config = JSON.parse(tree.readContent('/projects/shop/web/ngsw-config.json'));
+    expect(config.$schema).toBe('../../../node_modules/@angular/service-worker/config/schema.json');
+  });
+
+  it('still matches the default Angular itself would have written', () => {
+    // The content is a copy, so this is the guard on it: when a later Angular
+    // minor changes its own default, this fails in CI rather than quietly
+    // leaving every generated workspace on the old one. Update both together.
+    const template = readFileSync(
+      join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'node_modules',
+        '@schematics',
+        'angular',
+        'service-worker',
+        'files',
+        'ngsw-config.json.template',
+      ),
+      'utf8',
+    );
+    const angular = JSON.parse(template.replace('<%= relativePathToWorkspaceRoot %>', '../../..'));
+    expect(JSON.parse(tree.readContent('/projects/shop/web/ngsw-config.json'))).toEqual(angular);
+  });
+
+  it('enables it on the production configuration only, so `ng serve` is untouched', () => {
+    const build = JSON.parse(tree.readContent('/angular.json')).projects.shop.architect.build;
+    expect(build.configurations.production.serviceWorker).toBe(
+      'projects/shop/web/ngsw-config.json',
+    );
+    expect(build.options?.serviceWorker).toBeUndefined();
+    expect(build.configurations.development?.serviceWorker).toBeUndefined();
+  });
+
+  it('registers it, gated on dev mode and on the Capacitor shell', () => {
+    // The mobile sibling ships whatever the web build emitted, so a worker that
+    // registered on device would serve the shell it cached before the last
+    // native update.
+    const config = tree.readContent('/projects/shop/web/src/app/app.config.ts');
+    expect(config).toContain("provideServiceWorker('ngsw-worker.js'");
+    expect(config).toContain('enabled: !isDevMode() && !inNativeShell');
+    expect(config).toContain("registrationStrategy: 'registerWhenStable:30000'");
+  });
+
+  it('asks the platform rather than whether the Capacitor global exists', () => {
+    // `@capacitor/core` assigns `globalThis.Capacitor` from its module
+    // initialiser on every platform, browser included — so a plugin with a web
+    // implementation imported into shared code would make a presence check true
+    // in the browser and silently stop registering the worker on the web.
+    const config = tree.readContent('/projects/shop/web/src/app/app.config.ts');
+    expect(config).toContain('Capacitor?.isNativePlatform() ===');
+    expect(config).not.toContain("'Capacitor' in globalThis");
+  });
+
+  it('does not import @capacitor/core, which the web app never declared', () => {
+    // It is a dependency of the `mobile/` sibling, and a web-only app has no
+    // mobile sibling at all. The comment above the constant names the package —
+    // an import statement is the thing that would not resolve.
+    const config = tree.readContent('/projects/shop/web/src/app/app.config.ts');
+    expect(config).not.toMatch(/^import .*'@capacitor\/core';$/m);
+  });
+
+  it('imports what it added, into the groups those imports belong to', () => {
+    const config = tree.readContent('/projects/shop/web/src/app/app.config.ts');
+    expect(config).toMatch(
+      /import \{ ApplicationConfig, provideBrowserGlobalErrorListeners, isDevMode \} from '@angular\/core';/,
+    );
+    expect(config).toContain("import { provideServiceWorker } from '@angular/service-worker';");
+    // Above the relative imports, not below them.
+    expect(config.indexOf("from '@angular/service-worker'")).toBeLessThan(
+      config.indexOf("from './app.routes'"),
+    );
+  });
+
+  it('keeps every provider that was already there', () => {
+    const config = tree.readContent('/projects/shop/web/src/app/app.config.ts');
+    expect(config).toContain('provideBrowserGlobalErrorListeners()');
+    expect(config).toContain('provideRouter(routes)');
+  });
+
+  it('skips a prerendered site, which wants to be current more than cached', () => {
+    // Crawlers do not run a service worker, and a returning visitor would keep
+    // getting the previous deploy. The README section says how to add it to a
+    // docs site, where it does pay.
+    expect(tree.files).not.toContain('/projects/site/web/ngsw-config.json');
+    expect(tree.readContent('/projects/site/web/src/app/app.config.ts')).not.toContain(
+      'provideServiceWorker',
+    );
+    const site = JSON.parse(tree.readContent('/angular.json')).projects.site;
+    expect(site.architect.build.configurations.production.serviceWorker).toBeUndefined();
+  });
+
+  it('leaves the skipped site otherwise untouched', () => {
+    const config = tree.readContent('/projects/site/web/src/app/app.config.ts');
+    expect(config).toContain('{ provide: TitleStrategy, useClass: PageMetaStrategy }');
+    expect(config).not.toContain('isDevMode');
+  });
+
+  it('recognises the site by outputMode, not by name or path', () => {
+    // The same signal `inferFeatures` reads. An app someone configures to
+    // prerender is a prerendered site, whatever it is called.
+    const site = JSON.parse(tree.readContent('/angular.json')).projects.site;
+    expect(site.architect.build.options.outputMode).toBe('static');
+    const shop = JSON.parse(tree.readContent('/angular.json')).projects.shop;
+    expect(shop.architect.build.options.outputMode).toBeUndefined();
+  });
+
+  it('leaves the library alone — registration belongs to an application', () => {
+    expect(tree.files).not.toContain('/projects/ui/ngsw-config.json');
+    const project = JSON.parse(tree.readContent('/angular.json')).projects.ui;
+    expect(JSON.stringify(project)).not.toContain('serviceWorker');
+  });
+
+  it('is idempotent, so running it again in a live workspace changes nothing', async () => {
+    const again = await runner().runSchematic('packages', { packages: ['service-worker'] }, tree);
+    for (const path of [
+      '/package.json',
+      '/angular.json',
+      '/README.md',
+      '/projects/shop/web/ngsw-config.json',
+      '/projects/shop/web/src/app/app.config.ts',
+    ]) {
+      expect(again.readContent(path), path).toBe(tree.readContent(path));
+    }
+  });
+
+  it('wires an app generated after the package was added', async () => {
+    const later = await runner().runSchematic('app', { name: 'admin' }, tree);
+    expect(later.files).toContain('/projects/admin/web/ngsw-config.json');
+    expect(later.readContent('/projects/admin/web/src/app/app.config.ts')).toContain(
+      'provideServiceWorker',
+    );
+    expect(
+      JSON.parse(later.readContent('/angular.json')).projects.admin.architect.build.configurations
+        .production.serviceWorker,
+    ).toBe('projects/admin/web/ngsw-config.json');
+  });
+});

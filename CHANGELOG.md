@@ -28,6 +28,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   library peers, the generated README, the `pkg:` feature tokens — sees the
   expanded set rather than the part that was typed.
 
+- **`--with service-worker` adds `@angular/service-worker`**, wired per
+  application rather than per default project: an `ngsw-config.json` in each
+  project root, `serviceWorker` on the production build configuration only, and
+  `provideServiceWorker` in each `app.config.ts`.
+
+  Prerendered sites are skipped, recognised by the `outputMode: 'static'` that
+  `inferFeatures` already reads. Not a limitation — it works there — but a
+  marketing site's value is being current and being crawlable, and a worker helps
+  with neither: crawlers do not run one, and a returning visitor keeps getting the
+  previous deploy until the worker has fetched the new version and they navigate
+  again. It also only half works, since the default asset group does not include
+  the per-route HTML a prerender writes. A docs site is the case where it pays, so
+  the generated README says how to add it to one.
+
+  The registration is guarded with `enabled: !isDevMode() && !inNativeShell`.
+  The mobile sibling is not a second build — `sync:<app>` runs `build:<app>` and
+  copies `dist/<app>/browser` into the native projects — so an unguarded worker
+  would ship on device, where the assets are already local files and the only
+  thing it can do is serve the shell it cached before the last native update.
+
+  `inNativeShell` asks `globalThis.Capacitor?.isNativePlatform()`, not whether
+  the global exists: `@capacitor/core` assigns it from its module initialiser on
+  every platform, so a plugin with a web implementation in shared code would make
+  a presence check true in the browser and silently stop registering the worker on
+  the web. It reads the global rather than importing `@capacitor/core` because
+  that package is declared by the `mobile/` sibling, and a web-only app does not
+  have it at all.
+
+  Done by hand rather than by delegating to
+  `@schematics/angular:service-worker`, which adds its dependency through
+  `addDependency` and so queues a `NodePackageInstallTask` — an install fired
+  from inside the workflow runs before the gate has resolved and audited a
+  lockfile, and its schema has no `skipInstall`. The `ngsw-config.json` content
+  is Angular's own default, with a test that diffs the two.
+
+  Catalog entries can now carry `appSetup`, naming per-application wiring that is
+  neither a dependency nor a stylesheet.
+
 ### Changed
 
 - **`--help` bullets the `--with` catalog.** One unmarked row indented under the

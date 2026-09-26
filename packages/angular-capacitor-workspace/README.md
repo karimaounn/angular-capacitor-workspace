@@ -44,15 +44,15 @@ ng generate angular-capacitor-workspace:codegen
 ng generate angular-capacitor-workspace:packages cdk
 ```
 
-| Schematic   | Emits                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                                 |
-| `app`       | a client-rendered app at `projects/<name>/web`, a starter shell, room for a `mobile/` sibling     |
-| `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks                 |
-| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, themes, contrast checker    |
-| `mobile`    | a Capacitor sibling registered as its own npm workspace member                                    |
-| `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point                  |
-| `packages`  | curated packages — the Angular CDK and Angular Aria — at ranges resolved against the Angular line |
+| Schematic   | Emits                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                                        |
+| `app`       | a client-rendered app at `projects/<name>/web`, a starter shell, room for a `mobile/` sibling            |
+| `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks                        |
+| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, themes, contrast checker           |
+| `mobile`    | a Capacitor sibling registered as its own npm workspace member                                           |
+| `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point                         |
+| `packages`  | curated packages — the CDK, Angular Aria, a service worker — at ranges resolved against the Angular line |
 
 `ng generate angular-capacitor-workspace:<schematic> --help` lists every
 option, including ones not shown above: `--prefix` and `--port` on `app` and
@@ -186,14 +186,22 @@ access to the spec still starts.
 ng generate angular-capacitor-workspace:packages cdk aria    # or --with at generation
 ```
 
-| Id     | Package         | Adds                                                                     |
-| ------ | --------------- | ------------------------------------------------------------------------ |
-| `cdk`  | `@angular/cdk`  | overlays, a11y, drag & drop, virtual scrolling — behaviour, no styling   |
-| `aria` | `@angular/aria` | listbox, combobox, menu, tabs, tree, grid — WAI-ARIA patterns, no markup |
+| Id               | Package                   | Adds                                                                     |
+| ---------------- | ------------------------- | ------------------------------------------------------------------------ |
+| `cdk`            | `@angular/cdk`            | overlays, a11y, drag & drop, virtual scrolling — behaviour, no styling   |
+| `aria`           | `@angular/aria`           | listbox, combobox, menu, tabs, tree, grid — WAI-ARIA patterns, no markup |
+| `service-worker` | `@angular/service-worker` | an `ngsw-config.json`, the production build option and the registration  |
 
 `aria` brings `cdk` with it: `@angular/aria` peers `@angular/cdk` at an exact
 version, so the two have to come from one resolution rather than from npm's
 auto-install.
+
+`service-worker` wires every application except a prerendered site, and
+registers nothing inside the Capacitor shell. A marketing site wants to be
+current and crawlable, which a worker helps with neither; on device the mobile
+sibling ships whatever the web build emitted, so a worker there serves the shell
+it cached before the last native update. The generated README section explains
+both, and how to opt a docs site in.
 
 `npm install @angular/cdk` is one command and needs no generator. What the
 schematic adds is the rest of it: a range taken from the Angular line rather

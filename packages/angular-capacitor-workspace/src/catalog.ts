@@ -88,6 +88,21 @@ export interface CatalogEntry {
    * `styles` entry.
    */
   appStyles?: readonly string[];
+  /**
+   * Per-application wiring this entry needs that is not a dependency or a
+   * stylesheet — named here, done in `schematics/packages`.
+   *
+   * A tag rather than data. A service worker is three edits per application
+   * (a config file, a build option, a provider), and describing those three
+   * declaratively would mean three fields that exist for one entry and a
+   * mini-language to express the provider in. Naming the wiring keeps this file
+   * what it is — a list of packages and what they are for — and keeps the edits
+   * where the other per-project rules already live, next to `wireAppStyles` and
+   * `declareAsLibraryPeer`.
+   *
+   * Add a member and a branch in `wire()` together.
+   */
+  appSetup?: 'service-worker';
   /** Markdown for the generated README, under `## <title>`. */
   guidance: string;
 }
@@ -233,6 +248,123 @@ Both track the framework, so upgrade all three in one step; \`npm update
 Angular Material is the other end of this trade: use it when you want
 components that look finished without styling them. Aria is for when the visual
 design is yours and only the accessibility is not.
+`,
+  },
+  {
+    id: 'service-worker',
+    title: 'Service worker',
+    summary: 'offline app shell, versioned updates',
+    packages: [
+      {
+        name: '@angular/service-worker',
+        // Peers `@angular/core` at an exact version — stricter even than Aria's
+        // CDK peer — so this is the one range in the catalog that has no choice
+        // but to be the framework's.
+        range: latestVersions.Angular,
+        block: 'dependencies',
+      },
+    ],
+    // No library peer. A library that registered a service worker would decide
+    // caching for every application that consumed it; registration belongs to
+    // the application, which is where `appSetup` puts it.
+    appSetup: 'service-worker',
+    guidance: `
+[\`@angular/service-worker\`](https://angular.dev/ecosystem/service-workers)
+serves your application from a cache it versions itself. On a repeat visit the
+shell comes off disk instead of the network; when a build is deployed, the
+worker notices the new hash manifest, fetches the new files and switches to them
+as a set, so a visitor never gets half of one build and half of the next.
+
+Three things were wired for you, per application — prerendered marketing sites
+excepted, for the reason below:
+
+- \`ngsw-config.json\` in the project root — which files to prefetch and which
+  to fetch lazily. Yours to edit; nothing rewrites it.
+- \`serviceWorker\` on the **production** build configuration only, so
+  \`ng serve\` is untouched. Nothing is emitted in development.
+- \`provideServiceWorker\` in \`app.config.ts\`.
+
+**It is off inside the Capacitor shell, on purpose.** The mobile sibling is not
+a second build: \`npm run sync:<app>\` runs \`build:<app>\` and copies
+\`dist/<app>/browser\` into the native projects, so whatever the web app emits
+is what ships on device. A service worker there is at best pointless — the
+assets are already local files — and at worst the reason a native update appears
+to do nothing, because the worker keeps serving the shell it cached from the
+version before. So the registration is guarded:
+
+\`\`\`ts
+const inNativeShell =
+  (globalThis as { Capacitor?: { isNativePlatform(): boolean } }).Capacitor?.isNativePlatform() ===
+  true;
+
+provideServiceWorker('ngsw-worker.js', {
+  enabled: !isDevMode() && !inNativeShell,
+  registrationStrategy: 'registerWhenStable:30000',
+}),
+\`\`\`
+
+Two things about that check are deliberate. It asks
+\`isNativePlatform()\` rather than whether \`window.Capacitor\` exists,
+because \`@capacitor/core\` assigns that global from its module initialiser on
+every platform — so a plugin with a web implementation imported into shared code
+(\`@capacitor/preferences\`, \`@capacitor/share\`) would make the global
+present in the browser too, and a presence check would quietly stop registering
+the worker on the web. And it reads the global rather than importing
+\`@capacitor/core\`, because that package is declared by the \`mobile/\`
+sibling: a web-only app does not have it at all, and importing it from
+\`web/\` would be a dependency the web app never declared. If your web app does
+declare it, replace the constant with
+\`import { Capacitor } from '@capacitor/core'\` and
+\`!Capacitor.isNativePlatform()\` — it is the same question, asked more
+plainly.
+
+The worker's files still ship inside the native bundle; unregistered, they are a
+few inert kilobytes.
+
+**Prerendered sites were skipped**, and that is a default rather than a
+limitation — it works there. A marketing site's job is to be current and to be
+crawlable, and a worker helps with neither: crawlers do not run one, and a
+returning visitor keeps getting the previous deploy until the worker has fetched
+the new version and they navigate again. A price, a launch date or a correction
+is the worst thing to serve a week late. It also only half works, because the
+default asset group prefetches \`/index.html\` and the hashed bundles but not
+the per-route HTML a prerender writes — so a cached navigation to \`/about\`
+gets the home page's document and client-routes the rest of the way, losing the
+prerendered page that was the point. And the site is probably behind a CDN
+already doing the caching, without the staleness.
+
+A **docs** site is the case where it does pay: offline reading, and instant
+repeat navigation through pages people read in sequence. To add it to one site,
+copy what the applications got — three things, none of them generated for you:
+
+\`\`\`bash
+# 1. the config, next to the site's other files
+cp projects/<app>/web/ngsw-config.json projects/<site>/web/ngsw-config.json
+\`\`\`
+
+\`\`\`jsonc
+// 2. angular.json → projects.<site>.architect.build.configurations.production
+"serviceWorker": "projects/<site>/web/ngsw-config.json"
+\`\`\`
+
+Then 3, the same \`provideServiceWorker\` block in the site's
+\`app.config.ts\` — \`inNativeShell\` is not needed there, so
+\`enabled: !isDevMode()\` is enough. While you are in \`ngsw-config.json\`,
+add the routes you want available offline to the \`app\` asset group; the
+default list does not include them.
+
+**Updates are not automatic on the page the visitor is looking at.** The worker
+downloads the new version in the background and activates it on the next
+navigation. If you want a "reload for the latest" prompt, that is
+\`SwUpdate.versionUpdates\` and a few lines of your own UI; Angular does not
+ship one.
+
+There is no web app manifest here. \`@angular/pwa\` would add one along with a
+set of placeholder icons, and an app name, theme colour and icon set are design
+decisions, not wiring — the cache is the part worth generating.
+
+Its version tracks the framework's exactly: upgrade it in the same step as
+\`@angular/core\`, never on its own.
 `,
   },
 ];

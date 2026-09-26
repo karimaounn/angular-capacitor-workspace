@@ -87,6 +87,23 @@ describe('the shipped catalog', () => {
     expect(catalogEntry('aria')?.packages[0]?.range).toBe(catalogEntry('cdk')?.packages[0]?.range);
   });
 
+  it('carries the service worker as an application concern, not a library one', () => {
+    const sw = catalogEntry('service-worker');
+    expect(sw?.appSetup).toBe('service-worker');
+    // A library that registered a service worker would decide caching for every
+    // application consuming it.
+    expect(sw?.libraryPeer).toBeUndefined();
+    expect(sw?.packages).toEqual([
+      { name: '@angular/service-worker', range: expect.any(String), block: 'dependencies' },
+    ]);
+  });
+
+  it('keeps the service worker on the framework range, which it peers exactly', () => {
+    expect(catalogEntry('service-worker')?.packages[0]?.range).toBe(
+      catalogEntry('cdk')?.packages[0]?.range,
+    );
+  });
+
   it('only ever requires an id that is in the catalog', () => {
     for (const entry of CATALOG) {
       for (const id of entry.requires ?? []) {
