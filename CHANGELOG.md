@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`--with aria` adds [Angular Aria](https://angular.dev/guide/aria/overview)**,
+  the WAI-ARIA patterns as headless directives — listbox, combobox, select,
+  multiselect, autocomplete, menu, menubar, toolbar, accordion, tabs, tree,
+  grid — at a range resolved against the Angular line, declared as a peer of
+  every library in the workspace, with a README section on it.
+
+  It is the catalog's natural second entry: this generator's reason to exist is
+  a design-system library with a Storybook and a contrast checker in front of
+  it, and Aria is the accessibility half of that library without a single
+  opinion about how it looks.
+
+  `--with aria` brings `cdk` with it. `@angular/aria` peers `@angular/cdk` at an
+  _exact_ version, so the two have to come out of one resolution rather than
+  from npm's peer auto-install, which writes a range nobody chose. Catalog
+  entries can now declare `requires`, and every consumer — the manifest, the
+  library peers, the generated README, the `pkg:` feature tokens — sees the
+  expanded set rather than the part that was typed.
+
+### Changed
+
+- **`--help` bullets the `--with` catalog.** One unmarked row indented under the
+  option's description read as the description continuing; two of them would
+  have read as prose. The summaries still line up with every other description
+  in the help, with the bullet hanging into the gutter to their left.
+
 ## [22.4.0] — 2026-09-24
 
 ### Added

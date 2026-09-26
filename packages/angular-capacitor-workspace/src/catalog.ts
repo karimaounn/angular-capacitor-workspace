@@ -48,6 +48,20 @@ export interface CatalogEntry {
   summary: string;
   packages: readonly CatalogPackage[];
   /**
+   * Other catalog ids this entry cannot work without.
+   *
+   * For a package whose own peer range names another catalog package — not for
+   * "these two go nicely together". `@angular/aria` peers `@angular/cdk` at an
+   * *exact* version, so an `aria` that did not bring `cdk` would either leave
+   * the peer to npm's auto-install, which writes no range anyone chose, or fail
+   * ERESOLVE the first time the two drifted apart.
+   *
+   * Resolved transitively by `resolveCatalog`, so every consumer — the
+   * manifest, the library peers, the README, the feature tokens — sees the
+   * whole set rather than the part that was typed.
+   */
+  requires?: readonly string[];
+  /**
    * Also declare the packages as peers of every library in the workspace.
    *
    * For a package a design-system library legitimately builds on. A library
@@ -152,6 +166,75 @@ The CDK's version tracks Angular's: upgrade it in the same step as the
 framework, never on its own.
 `,
   },
+  {
+    id: 'aria',
+    title: 'Angular Aria',
+    summary: 'WAI-ARIA patterns as headless directives',
+    packages: [
+      {
+        name: '@angular/aria',
+        // Released in lockstep with the framework, like the CDK, and delegated
+        // to `latestVersions` for the same reason. It is stricter than the CDK
+        // about it: its `@angular/cdk` peer is an exact version rather than a
+        // range, so both must come from the same resolution.
+        range: latestVersions.Angular,
+        block: 'dependencies',
+      },
+    ],
+    // Not a convenience. `@angular/aria` peers `@angular/cdk` exactly, and its
+    // directives import `@angular/cdk/a11y`, `/bidi` and `/platform` at
+    // runtime.
+    requires: ['cdk'],
+    libraryPeer: true,
+    // No stylesheet of its own: headless is the whole point, and the popup
+    // patterns leave positioning to your CSS or to the CDK overlay, whose sheet
+    // the `cdk` entry above already wires in.
+    guidance: `
+[\`@angular/aria\`](https://angular.dev/guide/aria/overview) is the
+[WAI-ARIA patterns](https://www.w3.org/WAI/ARIA/apg/patterns/) as directives:
+listbox, combobox, select, multiselect, autocomplete, menu, menubar, toolbar,
+accordion, tabs, tree, grid. Each brings the keyboard model, the ARIA
+attributes, focus management and right-to-left handling. Each brings no markup
+and no CSS.
+
+Where the CDK gives you mechanics — an overlay, a focus trap, a virtual
+viewport — Aria gives you a pattern's behaviour. \`[ngListbox]\` over a list of
+\`[ngOption]\`s is a conformant listbox with typeahead, arrow navigation and a
+correct \`aria-activedescendant\`, and it looks like an unstyled \`<ul>\` until
+you style it. That is the deal, not a bug — it is why this is the layer to build
+a design system on, and why it is a peer of every library in this workspace
+alongside the CDK.
+
+**Nothing positions a popup for you.** The combobox family and the menus wire
+the trigger to the popup — \`aria-expanded\`, \`aria-controls\`, the open and
+close contract, focus return — and leave the popup wherever your CSS puts it.
+Unstyled, it renders in flow, below the trigger, clipped by the first ancestor
+with \`overflow: hidden\`, which reads as a broken dropdown rather than as one
+nobody has positioned yet. Use the CDK overlay — installed with this entry, its
+stylesheet already in every application's \`styles\` — or CSS anchor
+positioning if your browser targets allow it.
+
+**Test harnesses ship per pattern**, as CDK component harnesses:
+
+\`\`\`ts
+import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { ListboxHarness } from '@angular/aria/listbox/testing';
+
+const listbox = await TestbedHarnessEnvironment.harnessForFixture(fixture, ListboxHarness);
+\`\`\`
+
+They belong in the library's browser-mode Vitest specs rather than in jsdom: a
+keyboard contract asserted against a fake event loop is a test of the fake.
+
+**\`@angular/aria\` peers \`@angular/cdk\` at an exact version**, not a range.
+Both track the framework, so upgrade all three in one step; \`npm update
+@angular/aria\` on its own is an \`ERESOLVE\` waiting for the next CDK patch.
+
+Angular Material is the other end of this trade: use it when you want
+components that look finished without styling them. Aria is for when the visual
+design is yours and only the accessibility is not.
+`,
+  },
 ];
 
 /** Catalog ids, in the order they are offered. */
@@ -173,18 +256,42 @@ export function unknownPackageMessage(id: string): string {
 }
 
 /**
+ * The ids a request expands to: those asked for, plus whatever they `requires`,
+ * transitively.
+ *
+ * Lenient about ids it does not know, so the caller gets to report a typo in its
+ * own words — `resolveCatalog` with the catalog attached, the CLI with the usage
+ * attached — rather than having this throw first with neither.
+ */
+export function withRequired(ids: readonly string[]): Set<string> {
+  const wanted = new Set<string>();
+  const queue = [...ids];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (wanted.has(id)) continue;
+    wanted.add(id);
+    queue.push(...(catalogEntry(id)?.requires ?? []));
+  }
+  return wanted;
+}
+
+/**
  * Resolves ids to entries, in catalog order, ignoring repeats.
  *
  * Catalog order rather than the order they were typed, so `--with cdk --with x`
  * and `--with x --with cdk` produce byte-identical manifests and READMEs.
+ *
+ * Only the ids that were asked for are checked against the catalog: a bad
+ * `requires` is a bug in this file, and the shipped-catalog test is what catches
+ * it.
  */
 export function resolveCatalog(ids: readonly string[]): CatalogEntry[] {
-  const wanted = new Set(ids);
-  for (const id of wanted) {
+  for (const id of new Set(ids)) {
     if (!catalogEntry(id)) {
       throw new Error(unknownPackageMessage(id));
     }
   }
+  const wanted = withRequired(ids);
   return CATALOG.filter((entry) => wanted.has(entry.id));
 }
 

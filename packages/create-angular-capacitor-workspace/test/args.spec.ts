@@ -200,11 +200,25 @@ describe('the usage text', () => {
     // They are rendered from the catalog, so a summary written one clause too
     // long wraps `--help` into nonsense. Fail here rather than there. Colour is
     // off when stdout is not a terminal, so these are real columns.
-    const rows = USAGE.split('\n').filter((line) =>
-      CATALOG_IDS.some((id) => line.trimStart().startsWith(`${id} `)),
-    );
+    expect(catalogRows()).toHaveLength(CATALOG_IDS.length);
+    expect(catalogRows().filter((row) => row.length > 80)).toEqual([]);
+  });
 
-    expect(rows).toHaveLength(CATALOG_IDS.length);
-    expect(rows.filter((row) => row.length > 80)).toEqual([]);
+  it('bullets them, so the catalog reads as a list and not as a wrapped line', () => {
+    // `--with`'s description is one line and the catalog rows sit under it at
+    // the same indent. Unmarked, the first one reads as the description
+    // continuing and the rest read as prose; the bullet is what makes them
+    // choices. It hangs left of the description column, so the summaries still
+    // line up with every other description in the help.
+    for (const row of catalogRows()) {
+      expect(row).toMatch(/^ {24}• /);
+    }
   });
 });
+
+/** The `--with` rows, found the way a reader finds them: by the id they offer. */
+function catalogRows(): string[] {
+  return USAGE.split('\n').filter((line) =>
+    CATALOG_IDS.some((id) => line.trimStart().startsWith(`• ${id} `)),
+  );
+}

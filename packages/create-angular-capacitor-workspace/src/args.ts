@@ -22,6 +22,22 @@ function option(flag: string, description: string): string {
 
 const CONTINUED = ' '.repeat(26);
 
+/**
+ * A nested row under an option's description: `• thing — what it is`.
+ *
+ * The text lines up with the description column and the bullet hangs into the
+ * gutter to its left, so several rows under one option read as a list of choices
+ * rather than as a description that wrapped — which is what the single catalog
+ * row used to look like, and what two of them would look like.
+ *
+ * Whatever goes here has to fit an 80-column terminal alongside the 26-column
+ * indent; `test/args.spec.ts` fails when a catalog summary is written one clause
+ * too long.
+ */
+function item(text: string): string {
+  return `${' '.repeat(CONTINUED.length - 2)}${dim(`• ${text}`)}`;
+}
+
 export const USAGE = `${bold('npm create angular-capacitor-workspace@latest')} <directory> -- [options]
 
 ${option('--app <name>', 'app to create (repeatable)')}
@@ -36,7 +52,7 @@ ${option('--ui-lib-prefix <p>', 'selector prefix for its components (default: it
 ${option('--codegen orval', 'OpenAPI client generation')}
 ${option('--e2e playwright', 'end-to-end test wiring')}
 ${option('--with <pkg>', 'extra package to wire in (repeatable, comma-separated)')}
-${CATALOG.map((entry) => `${CONTINUED}${dim(`${entry.id} — ${entry.summary}`)}`).join('\n')}
+${CATALOG.map((entry) => item(`${entry.id} — ${entry.summary}`)).join('\n')}
 ${option('--audit-level <lvl>', 'low|moderate|high|critical  (default: moderate)')}
 ${option('--no-install', 'stop after generating; still writes the lockfile to audit')}
 ${option('--dry-run', 'show what would be generated')}

@@ -26,6 +26,7 @@ export {
   packageFeature,
   resolveCatalog,
   unknownPackageMessage,
+  withRequired,
 } from './catalog';
 export type { CatalogEntry, CatalogPackage, DependencyBlock } from './catalog';
 

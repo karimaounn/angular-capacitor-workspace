@@ -1249,3 +1249,50 @@ describe('packages', () => {
     );
   });
 });
+
+describe('packages aria', () => {
+  let tree: UnitTestTree;
+
+  beforeAll(async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withApp);
+    // Asked for on its own, which is the interesting case: it has to arrive
+    // with the CDK.
+    tree = await runner().runSchematic('packages', { packages: ['aria'] }, withLib);
+  });
+
+  it('brings the CDK, whose peer range Aria names exactly', () => {
+    const manifest = JSON.parse(tree.readContent('/package.json'));
+    expect(manifest.dependencies['@angular/aria']).toBe(latestVersions.Angular);
+    expect(manifest.dependencies['@angular/cdk']).toBe(latestVersions.Angular);
+  });
+
+  it('declares both as peers of the library, which is what publishes', () => {
+    const library = JSON.parse(tree.readContent('/projects/ui/package.json'));
+    expect(library.peerDependencies['@angular/aria']).toBe(latestVersions.Angular);
+    expect(library.peerDependencies['@angular/cdk']).toBe(latestVersions.Angular);
+  });
+
+  it('documents both, in catalog order rather than the order they were typed', () => {
+    const readme = tree.readContent('/README.md');
+    expect(readme).toContain('## Angular Aria');
+    expect(readme.indexOf('## Angular CDK')).toBeLessThan(readme.indexOf('## Angular Aria'));
+  });
+
+  it('wires the CDK overlay sheet, which is what positions an Aria popup', () => {
+    // Aria ships no stylesheet of its own, and nothing it renders is positioned
+    // for you — an unstyled combobox popup sits in flow under its trigger.
+    expect(buildStyles(tree, 'shop')).toContain('node_modules/@angular/cdk/overlay-prebuilt.css');
+  });
+
+  it('produces the same workspace whether or not the CDK was asked for too', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withApp);
+    const both = await runner().runSchematic('packages', { packages: ['aria', 'cdk'] }, withLib);
+    expect(both.readContent('/package.json')).toBe(tree.readContent('/package.json'));
+    expect(both.readContent('/README.md')).toBe(tree.readContent('/README.md'));
+    expect(both.readContent('/angular.json')).toBe(tree.readContent('/angular.json'));
+  });
+});

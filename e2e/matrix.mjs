@@ -41,9 +41,12 @@ const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/di
  * `full` is the only row where Storybook forces the devkit peer, Capacitor
  * drags in xcode and orval drags in undici — three different rungs of the
  * ladder at once, and the only row that runs the e2e suites, including the
- * marketing site's AXE crawl. It also carries `--with cdk`, which is where a
- * catalog range meets the real resolver: a CDK the registry does not have at
- * the Angular line fails the install here rather than in someone's project;
+ * marketing site's AXE crawl. It also carries `--with aria`, which is where a
+ * catalog range meets the real resolver: a CDK or an Aria the registry does not
+ * have at the Angular line fails the install here rather than in someone's
+ * project. Asked for as `aria` alone rather than `cdk,aria` on purpose — that is
+ * the path where `requires` has to produce the CDK, and Aria peers it at an
+ * exact version, so npm is the judge of whether the two ranges agree;
  * `multi-app` proves per-project ports and script naming survive more than one
  * app *and* more than one marketing site — two sites are two sets of canonical
  * URLs, a shared postbuild script and two entries in `npm run build` — and that
@@ -73,7 +76,7 @@ const ROWS = {
       '--e2e',
       'playwright',
       '--with',
-      'cdk',
+      'aria',
     ],
     checks: [
       'build:libs',

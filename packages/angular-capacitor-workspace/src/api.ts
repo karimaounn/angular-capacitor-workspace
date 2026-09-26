@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { NodeWorkflow } from '@angular-devkit/schematics/tools';
-import { packageFeature, resolveCatalog } from './catalog';
+import { packageFeature, resolveCatalog, withRequired } from './catalog';
 import { runGate, type GateResult, type Severity } from './gate';
 import { collectDeprecations, type Deprecation } from './gate/deprecations';
 import { formatDecisions } from './gate/report';
@@ -116,10 +116,12 @@ export function featuresFor(options: GenerateOptions): Set<string> {
   if (options.codegen) features.add('codegen');
   if (options.e2e) features.add(`e2e:${options.e2e}`);
 
-  // One token per catalog package asked for, so a policy remedy can be scoped
-  // to the workspaces that carry it — the way `onlyWhen: ['codegen']` scopes the
-  // undici override to the workspaces that have orval.
-  for (const id of options.packages ?? []) {
+  // One token per catalog package the request expands to, so a policy remedy can
+  // be scoped to the workspaces that carry it — the way `onlyWhen: ['codegen']`
+  // scopes the undici override to the workspaces that have orval. Expanded
+  // rather than taken literally: `--with aria` installs the CDK too, and a
+  // remedy scoped to `pkg:cdk` has to reach it.
+  for (const id of withRequired(options.packages ?? [])) {
     features.add(packageFeature(id));
   }
 

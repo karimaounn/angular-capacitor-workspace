@@ -24,6 +24,17 @@ describe('resolveCatalog', () => {
   it('is empty for an empty request, rather than a default set', () => {
     expect(resolveCatalog([])).toEqual([]);
   });
+
+  it('pulls in what an entry requires, so a peer is never left to npm', () => {
+    // `--with aria` alone has to produce a workspace that resolves: the aria
+    // peer on the CDK is an exact version, so the CDK has to be declared at a
+    // range we chose rather than auto-installed at whatever npm picks.
+    expect(resolveCatalog(['aria']).map((entry) => entry.id)).toEqual(['cdk', 'aria']);
+  });
+
+  it('asks for something once when it was asked for and required both', () => {
+    expect(resolveCatalog(['aria', 'cdk']).map((entry) => entry.id)).toEqual(['cdk', 'aria']);
+  });
 });
 
 describe('the shipped catalog', () => {
@@ -60,6 +71,30 @@ describe('the shipped catalog', () => {
     ]);
   });
 
+  it('carries Aria as a runtime dependency that brings the CDK with it', () => {
+    const aria = catalogEntry('aria');
+    expect(aria?.libraryPeer).toBe(true);
+    expect(aria?.requires).toEqual(['cdk']);
+    expect(aria?.packages).toEqual([
+      { name: '@angular/aria', range: expect.any(String), block: 'dependencies' },
+    ]);
+    // Headless: there is no stylesheet to wire, and the popup patterns borrow
+    // the CDK overlay's, which the `cdk` entry already prepends.
+    expect(aria?.appStyles).toBeUndefined();
+  });
+
+  it('gives Aria and the CDK the same range, since Aria peers it exactly', () => {
+    expect(catalogEntry('aria')?.packages[0]?.range).toBe(catalogEntry('cdk')?.packages[0]?.range);
+  });
+
+  it('only ever requires an id that is in the catalog', () => {
+    for (const entry of CATALOG) {
+      for (const id of entry.requires ?? []) {
+        expect(catalogEntry(id), `${entry.id} requires "${id}"`).toBeDefined();
+      }
+    }
+  });
+
   it('gives every wired stylesheet a workspace-relative path', () => {
     // How the Angular builder resolves a `styles` entry. A leading slash or a
     // `./` prefix resolves somewhere else, or nowhere, without complaint.
@@ -75,6 +110,16 @@ describe('featuresFor', () => {
   it('contributes a token per catalog package, so a remedy can be scoped to it', () => {
     const features = featuresFor({ directory: 'ws', packages: ['cdk'] });
     expect(features).toContain('pkg:cdk');
+  });
+
+  it('contributes a token for a package that came along, not only the one typed', () => {
+    // A policy remedy scoped to `pkg:cdk` has to reach a workspace that asked
+    // for aria, because that workspace has the CDK.
+    const features = featuresFor({ directory: 'ws', packages: ['aria'] });
+    expect([...features].filter((token) => token.startsWith('pkg:')).sort()).toEqual([
+      'pkg:aria',
+      'pkg:cdk',
+    ]);
   });
 
   it('contributes none when none were asked for', () => {
