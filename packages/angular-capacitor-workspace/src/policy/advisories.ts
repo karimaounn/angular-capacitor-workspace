@@ -16,7 +16,7 @@ import { VERSIONS } from './versions';
  * unverified remedy is indistinguishable from a superstition six months later.
  */
 export const POLICY: Policy = {
-  reviewed: '2026-09-19',
+  reviewed: '2026-09-30',
 
   /**
    * Tier 1 — never installed.
@@ -94,6 +94,23 @@ export const POLICY: Policy = {
         'session ids, which is API-compatible across the major. Verified ' +
         '2026-09-19: this single override takes the Storybook row from 7 ' +
         'moderate advisories to 0.',
+      onlyWhen: ['storybook'],
+    },
+    {
+      spec: { '@storybook/builder-webpack5': { 'webpack-dev-middleware': '^7.4.6' } },
+      advisories: ['GHSA-g84c-rxfj-3j2c'],
+      reason:
+        '@storybook/angular -> @storybook/builder-webpack5 -> ' +
+        'webpack-dev-middleware@6. A publicPath that does not end in a slash ' +
+        'lets a request walk out of the served root, so the dev server hands ' +
+        'back arbitrary files to anyone who can reach it. The advisory covers ' +
+        '<7.4.5 and 8.0.0-8.2.x, which leaves the entire 6.x line vulnerable ' +
+        'with nothing to upgrade to: the fix only exists across a major. ' +
+        'builder-webpack5 still declares `^6.1.2` as of Storybook 10.6.1 ' +
+        '(latest), so there is no upstream release to wait for. 7.4.6 needs ' +
+        'node >= 18.12 and a generated workspace already requires >= 24.8. ' +
+        'Verified 2026-09-30: the override takes the `full` and `lib-only` ' +
+        'rows from 1 high advisory to 0, with no ERESOLVE.',
       onlyWhen: ['storybook'],
     },
     {
