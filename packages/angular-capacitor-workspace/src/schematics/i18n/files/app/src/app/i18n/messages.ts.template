@@ -1,0 +1,23 @@
+import type { TranslationCatalog } from '<%= importName %>';
+// `import type` even though it is a value: only `typeof` is needed, so this
+// erases completely and a lazily-loaded catalog chunk does not drag the source
+// one in with it.
+import type { <%= defaultConstName %> } from './<%= defaultLocale %>';
+
+/** Every message key the app knows about, derived from the source catalog. */
+export type MessageKey = keyof typeof <%= defaultConstName %>;
+
+/**
+ * A translated catalog.
+ *
+ * `Record<MessageKey, string>` makes covering every source key mandatory — a
+ * new string cannot be added without the compiler pointing at each locale that
+ * is now missing it.
+ *
+ * Intersecting with `TranslationCatalog`, which carries a string index
+ * signature, is what then ALLOWS extra keys, and that part is not optional:
+ * plural categories are per-language. <%= defaultLabel %> selects only `one` and `other`;
+ * Arabic also selects `zero`, `two`, `few` and `many`, so an Arabic catalog
+ * legitimately holds keys the source one will never have.
+ */
+export type LocalizedCatalog = Record<MessageKey, string> & TranslationCatalog;

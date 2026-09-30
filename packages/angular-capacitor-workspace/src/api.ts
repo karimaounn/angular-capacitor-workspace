@@ -53,6 +53,14 @@ export interface GenerateOptions {
    * something nobody has resolved against the Angular line.
    */
   packages?: string[];
+  /**
+   * Locale tags to generate runtime translation for — `['en', 'fr', 'ar']`.
+   * The first is the source locale unless `defaultLocale` says otherwise.
+   * Requires a design system: the mechanism lives there.
+   */
+  i18n?: string[];
+  /** Source locale, the fallback for an untranslated key. Defaults to `i18n[0]`. */
+  defaultLocale?: string;
   auditLevel?: Severity;
   /** Run `npm install` after the gate passes. */
   install?: boolean;
@@ -114,6 +122,7 @@ export function featuresFor(options: GenerateOptions): Set<string> {
     features.add('storybook');
   }
   if (options.codegen) features.add('codegen');
+  if ((options.i18n ?? []).length > 0) features.add('i18n');
   if (options.e2e) features.add(`e2e:${options.e2e}`);
 
   // One token per catalog package the request expands to, so a policy remedy can
@@ -373,6 +382,18 @@ async function runOverlay(
     steps.push({
       schematic: 'codegen',
       options: { apps: apps.map((app) => app.name) },
+    });
+  }
+
+  // After the apps and the library it wires into, and before `packages`, which
+  // re-applies per-app wiring of its own.
+  if ((options.i18n ?? []).length > 0) {
+    steps.push({
+      schematic: 'i18n',
+      options: {
+        locales: options.i18n,
+        ...(options.defaultLocale ? { defaultLocale: options.defaultLocale } : {}),
+      },
     });
   }
 

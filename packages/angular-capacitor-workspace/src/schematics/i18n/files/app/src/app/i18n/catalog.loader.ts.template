@@ -1,0 +1,15 @@
+import type { TranslationLoader } from '<%= importName %>';
+
+/**
+ * Lazily loads one locale's messages.
+ *
+ * A `switch` of literal `import()` calls rather than a template-literal path:
+ * the bundler can only split what it can see statically, so this is what
+ * actually produces one chunk per locale. It also stays exhaustive — adding a
+ * locale to `LOCALES` makes this fail to compile until it is handled here.
+ */
+export const loadCatalog: TranslationLoader = async (locale) => {
+  switch (locale) {
+<%= loaderCases %>
+  }
+};

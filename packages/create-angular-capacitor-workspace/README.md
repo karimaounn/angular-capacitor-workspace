@@ -50,6 +50,11 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
   --ui-lib-prefix <p>     selector prefix for its components (default: its name)
   --codegen orval         OpenAPI client generation
   --e2e playwright        end-to-end test wiring
+  --i18n <locales>        runtime translation for these BCP-47 tags
+                          (repeatable, comma-separated: en,fr,ar). Needs a
+                          design system — the mechanism lives there.
+  --default-locale <l>    source locale, the fallback for an untranslated
+                          key (default: the first --i18n tag)
   --with <pkg>            extra package to wire in (repeatable, comma-separated)
                         • cdk — overlays, a11y, drag & drop, virtual scrolling
                         • aria — WAI-ARIA patterns as headless directives
@@ -73,7 +78,13 @@ npm create angular-capacitor-workspace@latest shop -- \
 ```
 
 gives the mobile targets to `storefront` and leaves `admin` web-only, and gives
-each site its own canonical origin. Both flags are repeatable: sites, like
+each site its own canonical origin.
+
+`--i18n en,fr` wires runtime translation into every app and builds each
+marketing site once per language, into `/en/` and `/fr/` with their own
+canonicals and hreflang alternates. It needs `--ui-lib`, because the mechanism
+lives in the design system. See
+[Translation](../angular-capacitor-workspace/README.md#translation). Both flags are repeatable: sites, like
 apps, get their own dev-server port, their own `start:`/`build:`/`test:` scripts
 and their own entry in `npm run build`, while sharing the design system and the
 postbuild checks.

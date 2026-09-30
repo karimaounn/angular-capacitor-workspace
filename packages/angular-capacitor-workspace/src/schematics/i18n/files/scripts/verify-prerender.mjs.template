@@ -1,0 +1,192 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// Fails the build if a prerendered app would ship pages a crawler cannot use.
+//
+// A failed prerender still produces a build that looks fine — an empty shell
+// per route — and ranks for nothing. And pages that share a title or
+// description get treated as duplicates and ignored. Neither shows up anywhere
+// but a search console, weeks later, so this checks every page now:
+//
+//   • exactly one <h1>         zero means the render fell back to a shell
+//   • no data-theme on <html>  something pinned a colour scheme at build time,
+//                              overriding every visitor's OS setting
+//   • one <title> and one description, neither shared with any other page
+//     IN THE SAME LANGUAGE — two languages saying the same thing is a
+//     translation, not a duplicate
+//   • a canonical pointing at the page's own path — or, for a noindex page,
+//     no canonical at all
+//   • sitemap.xml lists exactly the indexable pages, and robots.txt points at it
+//
+// LOCALES. A localized site is checked once per language, and then across them:
+//   • <html lang> and <html dir> match the language the directory is for. A
+//     prerender that fell back to the source locale is otherwise invisible —
+//     the page renders, in the wrong language, forever.
+//   • every indexable page names every language in its hreflang alternates,
+//     itself included, plus x-default. A page that lists only the others is
+//     treated as having no alternates at all.
+//   • every language prerendered the same set of routes.
+//
+// It also warns — never fails — when a localized build has nothing at `/`. What
+// serves the bare domain is a host redirect, which this cannot see.
+//
+// Runs as the last postbuild:<app> step.
+//
+//   node scripts/verify-prerender.mjs <app> [--locales en,fr]
+// ─────────────────────────────────────────────────────────────────────────────
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { inspect, isNoindex, outputs, pages } from './prerendered.mjs';
+
+/** What the generator writes when it is given no origin. RFC 2606 reserves it. */
+const PLACEHOLDER_HOST = 'example.com';
+
+const { root, outputs: built } = outputs('verify-prerender.mjs');
+const localized = built[0].locale !== null;
+const locales = built.map((output) => output.locale);
+
+const failures = [];
+const fail = (where, message) => failures.push(`${where}: ${message}`);
+
+const indexable = [];
+const origins = new Set();
+const routesByLocale = new Map();
+let xDefault;
+let total = 0;
+
+for (const output of built) {
+  // Per language: two pages in different languages legitimately say the same
+  // thing, and are not duplicates of each other.
+  const seen = { title: new Map(), description: new Map() };
+  const all = pages(output);
+  total += all.length;
+  routesByLocale.set(output.locale, new Set(all.map((page) => page.route)));
+
+  if (all.length === 0) {
+    fail(output.locale ?? 'output', 'no prerendered pages — did every route fall back to the client?');
+  }
+
+  for (const page of all) {
+    const head = inspect(fs.readFileSync(page.file, 'utf8'));
+    const where = page.path;
+
+    if (head.h1Count !== 1) fail(where, `${head.h1Count} <h1> elements, expected 1`);
+    if ('data-theme' in head.html)
+      fail(where, `<html data-theme="${head.html['data-theme']}"> is pinned`);
+
+    if (output.locale && head.html.lang !== output.locale) {
+      // The tell for a prerender that silently fell back to the source locale.
+      fail(where, `<html lang="${head.html.lang ?? ''}">, expected "${output.locale}"`);
+    }
+
+    for (const [key, values] of [
+      ['title', head.titles],
+      ['description', head.descriptions],
+    ]) {
+      if (values.length !== 1 || !values[0].trim()) {
+        fail(where, `${values.length} ${key} tags, expected 1 non-empty`);
+        continue;
+      }
+      const other = seen[key].get(values[0]);
+      if (other) fail(where, `same ${key} as ${other}: "${values[0]}"`);
+      else seen[key].set(values[0], where);
+    }
+
+    if (isNoindex(head)) {
+      if (head.canonicals.length) fail(where, 'noindex page has a canonical');
+      if (head.alternates.length) fail(where, 'noindex page has hreflang alternates');
+      continue;
+    }
+
+    indexable.push(page.path);
+    if (head.canonicals.length !== 1) {
+      fail(where, `${head.canonicals.length} canonicals, expected 1`);
+      continue;
+    }
+    const canonical = new URL(head.canonicals[0]);
+    origins.add(canonical.origin);
+    if (canonical.pathname !== page.path) fail(where, `canonical points at ${canonical.pathname}`);
+
+    if (localized) {
+      const declared = new Set(head.alternates.map((link) => link.hreflang));
+      // Kept for the root-redirect warning below: it is exactly the URL the
+      // bare domain should fall back to.
+      xDefault ??= head.alternates.find((link) => link.hreflang === 'x-default')?.href;
+      for (const locale of locales) {
+        if (!declared.has(locale)) fail(where, `no hreflang alternate for "${locale}"`);
+      }
+      if (!declared.has('x-default')) fail(where, 'no x-default hreflang alternate');
+    }
+  }
+}
+
+if (localized) {
+  // Every language has to have prerendered the same routes, or one of them is
+  // quietly missing a page that the others link to from their alternates.
+  const [reference, ...rest] = [...routesByLocale.entries()];
+  for (const [locale, routes] of rest) {
+    for (const route of reference[1]) {
+      if (!routes.has(route)) fail(locale, `did not prerender ${route}, which ${reference[0]} did`);
+    }
+    for (const route of routes) {
+      if (!reference[1].has(route)) fail(reference[0], `did not prerender ${route}, which ${locale} did`);
+    }
+  }
+}
+
+if (origins.size > 1) fail('canonicals', `span several origins: ${[...origins].join(', ')}`);
+const [origin] = origins;
+
+const outputRoot = localized ? root : built[0].dir;
+const sitemapFile = path.join(outputRoot, 'sitemap.xml');
+if (!fs.existsSync(sitemapFile)) {
+  fail('sitemap.xml', 'missing — generate-sitemap.mjs must run first');
+} else {
+  const listed = [...fs.readFileSync(sitemapFile, 'utf8').matchAll(/<loc>([^<]*)<\/loc>/g)].map(
+    (m) => new URL(m[1]).pathname,
+  );
+  const want = new Set(indexable);
+  const got = new Set(listed);
+  for (const p of want) if (!got.has(p)) fail('sitemap.xml', `missing ${p}`);
+  for (const p of got)
+    if (!want.has(p)) fail('sitemap.xml', `lists ${p}, which is not an indexable page`);
+}
+
+const robotsFile = path.join(outputRoot, 'robots.txt');
+const robots = fs.existsSync(robotsFile) ? fs.readFileSync(robotsFile, 'utf8') : '';
+if (origin && !robots.includes(`Sitemap: ${origin}/sitemap.xml`)) {
+  fail('robots.txt', `no "Sitemap: ${origin}/sitemap.xml" line`);
+}
+
+if (failures.length) {
+  console.error(`verify-prerender: ${failures.length} problem(s) in ${total} pages\n`);
+  for (const f of failures) console.error(`  ✗ ${f}`);
+  process.exit(1);
+}
+
+// A warning, not a failure: what serves `/` is the host's business, and this
+// script cannot see its configuration. But a localized site has no file there —
+// every page lives under a language — so unless something redirects, the bare
+// domain is a 404. That is the URL people type, link to and print.
+if (localized && !fs.existsSync(path.join(root, 'index.html'))) {
+  console.warn(
+    `verify-prerender: nothing in this build serves /. Every page is under ` +
+      `${locales.map((locale) => `/${locale}/`).join(', ')}. Configure a redirect at your ` +
+      `host that sends / to the visitor's language, falling back to ` +
+      `${xDefault ?? 'the source locale'} — see the Translation section of the README.`,
+  );
+}
+
+// A warning, not a failure: a fresh workspace should build. But a site deployed
+// like this tells every crawler that its pages live on someone else's domain.
+if (origin && new URL(origin).hostname === PLACEHOLDER_HOST) {
+  console.warn(
+    `verify-prerender: canonical URLs point at ${origin}, the generator's placeholder. ` +
+      'Set SITE_ORIGIN in src/app/site.ts and the Sitemap line in public/robots.txt ' +
+      'to the production origin before deploying.',
+  );
+}
+console.log(
+  `verify-prerender: ${total} pages OK (${indexable.length} indexable` +
+    `${localized ? `, ${locales.length} locales` : ''})`,
+);

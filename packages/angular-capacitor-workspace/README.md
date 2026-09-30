@@ -89,6 +89,136 @@ cached at the edge.
 Without `--ui-lib`, an app gets the same shell in system colours and nothing to
 switch.
 
+### Translation
+
+`--i18n en,fr,ar` wires runtime translation into the design system and every
+app that is not a prerendered site.
+
+**Runtime, not `@angular/localize`, and that is the whole decision.** Compile-time
+i18n emits one bundle per locale; a Capacitor `webDir` is a single directory with
+a single `index.html`, so there is nowhere for a second locale to live. One
+binary per language is the alternative, and it is not one. Here every locale is
+in one build and switches without a reload.
+
+**The mechanism goes in the library, the messages go in each app.**
+`TranslationService`, the `| t` pipe and `<ui-language-picker>` ship from the
+design system, which carries no strings of its own — components take their copy
+as inputs. That split is why this is worth generating rather than installing: a
+design system that carries its own copy can only serve apps that want that copy,
+and one that takes strings as inputs serves every locale its consumers ship
+without an extraction step.
+
+```html
+{{ 'home.heading' | t }} {{ 'home.greeting' | t: { name: person() } }} {{ 'home.items' | t: { count:
+items().length } }}
+```
+
+Every catalog but the source one starts as a copy of it with each value tagged
+`[fr]`, so the app runs before a translator has seen it and so that what is
+still untranslated is impossible to miss on screen. Drop the tag as you
+translate.
+
+Each app gets `src/app/i18n/<locale>.ts` — one catalog per locale, plus a
+`catalog.loader.ts` whose literal `import()` per locale is what actually gives
+each one its own chunk. The source locale's catalog is the type the others are
+checked against: a translated catalog is `Record<keyof typeof en, string>`, so a
+key added to the source breaks every locale that has not covered it, at build
+time rather than in front of a user.
+
+`LOCALES`, `LOCALE_DIRECTION` and `LOCALE_LABELS` are exhaustive
+`Record<Locale, …>` maps, so adding a locale is one entry and one line in each
+map, and the compiler then points at the loader, the picker and every catalog
+that is now missing. Labels are endonyms — العربية, not "Arabic" — because a
+visitor looking for their language cannot necessarily read the active one.
+
+Plurals come from `Intl.PluralRules`, not from a `count === 1` test: Arabic has
+six categories and a hand-rolled ternary is simply wrong there. Numbers and dates
+go through `TranslationService.formatNumber` / `formatDate`, because Angular's
+`DecimalPipe` and `DatePipe` read the build-time `LOCALE_ID`, which cannot follow
+a runtime switch.
+
+An RTL locale mirrors the layout from `<html dir>` alone, which every app's
+`index.html` sets before the first paint — a theme can afford a flash, a mirrored
+layout cannot. That works because the generated stylesheets use CSS logical
+properties throughout; the rule for new code is `margin-inline-start`, never
+`margin-left`. The two things logical properties cannot do — mirroring a
+direction-encoding icon, and pinning a URL or a phone number against the bidi
+algorithm — have a class each in `styles/_direction.scss`.
+
+**A prerendered site is translated differently, because it has to be.** The
+prerender runs in Node, where there is no `navigator` and no `localStorage`, and
+what it writes is what every visitor and every crawler is served. Negotiating a
+language there would mean shipping one language's HTML to everyone and swapping
+the text after hydration — a flash for the visitor, and only ever one language
+indexed.
+
+So a site is built once per language instead, into its own directory and its own
+URL:
+
+```bash
+npm run build:site   # ng build site --configuration locale-en && … locale-fr
+```
+
+Each `locale-*` configuration sets a `baseHref` of `/<locale>/`, an `outputPath`
+of `dist/<site>/<locale>`, and a `define` that replaces `BUILD_LOCALE` in the
+bundle — which is what makes the prerender itself render in that language.
+`provideTranslations(loadCatalog, { locale: SITE_LOCALE })` pins it, so nothing
+renegotiates in the browser.
+
+`/en/about` and `/fr/about` are then separate documents with their own
+`<html lang>`, their own canonical, and hreflang alternates naming each other
+plus `x-default`. Each route's `data.seo` holds message keys rather than
+literals, so the `<title>` and description a crawler reads are in that page's
+language too — the most visible thing a search result can get wrong. The header's language links are real `<a href>`s for the same
+reason: a crawler follows them, and a visitor can share the page in the language
+they read it in. One `sitemap.xml` at the output root covers every language,
+each URL carrying `xhtml:link` alternates.
+
+`verify-prerender.mjs` grew with it. It now fails the build when a language
+rendered in the wrong one — the tell is `<html lang>` disagreeing with the
+directory — when a page is missing an hreflang alternate, or when one language
+skipped a route another rendered. Titles and descriptions are checked for
+duplicates within a language, not across: two languages saying the same thing is
+a translation, not a duplicate.
+
+`npm start:site` serves the source locale. `ng serve` applies no `define`, and
+`build-locale.ts` falls back to `DEFAULT_LOCALE`.
+
+Deploy `dist/<site>` as the web root. Every page lives under a language, so the
+build puts nothing at `/` — the bare domain is a 404 until the host redirects
+it, and that cannot be a file, because the destination depends on the visitor.
+It is a 302 on `Accept-Language` falling back to the source locale, which is
+what each page's `x-default` already advertises. `verify-prerender.mjs` warns on
+every build until one exists.
+
+`--i18n` needs a design system, since that is where the mechanism goes. The
+source locale is the first tag unless `--default-locale` names another, and it
+has to be one of the tags being generated: it is what every untranslated key
+falls back to.
+
+### The translation showcase
+
+Every app generated with `--i18n` opens on a starter screen that demonstrates
+the whole layer beside the theming: a plain key, a `{placeholder}`, a plural you
+can step through zero, one and many, numbers, currency, dates and relative time,
+and a live readout of the writing direction. The language picker sits in the
+header next to the theme toggle. The prerendered site carries the same section,
+with its language links in place of the picker.
+
+Both are in `src/app/i18n/i18n-showcase.*`, and both are there to be deleted —
+together with everything under `showcase.` in the catalogs.
+
+With `--e2e playwright`, each also gets a `translation.spec.ts`. They cover the
+parts unit tests cannot reach: the inline script that sets `lang` and `dir`
+before Angular boots — checked by blocking the application bundle, so whatever
+is on `<html>` came from that script alone — the lazily split catalog chunks,
+and that a switch actually repaints under zoneless change detection.
+
+`--i18n` needs a design system, since that is where the mechanism goes. The
+source locale is the first tag unless `--default-locale` names another, and it
+has to be one of the tags being generated: it is what every untranslated key
+falls back to.
+
 ### Mobile
 
 An app generated with `--mobile`, or given one later with the `mobile`
@@ -296,6 +426,7 @@ await generateWorkspace({
   uiLib: "ui",
   uiLibPrefix: "acme",
   e2e: "playwright",
+  i18n: ["en", "fr", "ar"],
   auditLevel: "moderate",
 });
 ```

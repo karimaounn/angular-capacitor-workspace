@@ -1,0 +1,48 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Writing direction (LTR / RTL).
+//
+// `<html dir>` is set by TranslationService, and by the no-FOUC script in each
+// app's index.html before first paint, so an RTL locale never flashes LTR.
+//
+// LAYOUT NEEDS NO RULES HERE. Every stylesheet in this system is written with
+// CSS logical properties — margin-inline-start, padding-block, inset-inline-end,
+// border-start-start-radius, text-align: start — which the browser resolves
+// against `dir` on its own. The only physical values that belong in the system
+// are `env(safe-area-inset-*)`, and those are physical by definition: a notch is
+// on the device's left whichever way the text runs.
+//
+// So the rule for new code is simply: never write left/right, only start/end.
+// What follows covers the two things logical properties genuinely cannot do.
+// ─────────────────────────────────────────────────────────────────────────────
+@layer base {
+  // ── 1. Mirroring direction-encoding glyphs ─────────────────────────────────
+  // A logical property moves a box; it cannot redraw an icon. A "next" chevron,
+  // a reply arrow or an undo curve all point the wrong way in RTL and must be
+  // mirrored. Opt-in, deliberately: search, close, calendar, play and every
+  // brand mark must NOT flip, so a blanket `[dir='rtl'] svg { … }` would be a
+  // bug factory. Tag only the icons that carry direction.
+  [dir='rtl'] .flip-inline {
+    transform: scaleX(-1);
+  }
+
+  // ── 2. Pinning direction for content that is not prose ─────────────────────
+  // The bidi algorithm reorders neutral characters (`/ . : - + ( )`) to match
+  // the surrounding paragraph, which mangles anything whose order is
+  // structural: URLs, file paths, code, version numbers, phone numbers, IBANs.
+  // `isolate` also stops the fragment from reordering the text around it.
+  //
+  // PUT THESE ON AN INLINE ELEMENT — a <span> around the value, not the <td> or
+  // <dd> containing it. `direction` also decides how `text-align: start`
+  // resolves, so on a block it would drag the whole value to the far edge of its
+  // box; on an inline span the block keeps the page's alignment and only the
+  // characters inside are reordered, which is what is actually wanted.
+  .ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .rtl {
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
+}

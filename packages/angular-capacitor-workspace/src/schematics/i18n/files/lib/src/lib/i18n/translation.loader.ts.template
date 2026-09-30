@@ -1,0 +1,26 @@
+import { InjectionToken } from '@angular/core';
+import type { Locale, TranslationCatalog } from './i18n.tokens';
+
+/**
+ * Supplies the messages for one locale. Returning a promise is the normal case:
+ * a `() => import('./fr')` loader gives every locale its own lazily fetched
+ * chunk, so a user who only ever reads <%= defaultLabel %> never downloads the rest.
+ *
+ * Sync returns are allowed for tests and for tiny embedded catalogs.
+ */
+export type TranslationLoader = (
+  locale: Locale,
+) => Promise<TranslationCatalog> | TranslationCatalog;
+
+/**
+ * The app's message source. Provided via `provideTranslations()`; the library
+ * itself never ships messages.
+ */
+export const TRANSLATION_LOADER = new InjectionToken<TranslationLoader>('<%= prefix %>.i18n.loader');
+
+/**
+ * A locale the build has already chosen, which suppresses negotiation and
+ * persistence. Set through `provideTranslations(loader, { locale })`; absent in
+ * an app that switches language at runtime.
+ */
+export const FIXED_LOCALE = new InjectionToken<Locale>('<%= prefix %>.i18n.fixed-locale');

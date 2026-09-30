@@ -1,0 +1,48 @@
+import {
+  inject,
+  makeEnvironmentProviders,
+  provideAppInitializer,
+  type EnvironmentProviders,
+} from '@angular/core';
+import type { Locale } from './i18n.tokens';
+import { FIXED_LOCALE, TRANSLATION_LOADER, type TranslationLoader } from './translation.loader';
+import { TranslationService } from './translation';
+
+export interface TranslationOptions {
+  /**
+   * Pin the locale instead of negotiating one.
+   *
+   * For a build that IS one locale — a prerendered site built once per language
+   * into `/en/` and `/fr/`, where the URL has already chosen. Negotiating there
+   * would be wrong twice: the prerendered HTML is in the build's locale, so a
+   * visitor whose browser prefers another would watch the text change under
+   * them, and the stored preference from one language's pages would then
+   * override the next.
+   *
+   * A pinned locale is never persisted, for the same reason.
+   */
+  readonly locale?: Locale;
+}
+
+/**
+ * Wires the app's messages into the design system.
+ *
+ *     provideTranslations(loadCatalog)
+ *     provideTranslations(loadCatalog, { locale: BUILD_LOCALE })
+ *
+ * Also registers an app initializer that awaits the first catalog, so bootstrap
+ * blocks just long enough to avoid a flash of raw message keys — and, because
+ * that instantiates `TranslationService`, `<html lang>` and `<html dir>` are set
+ * before the first component renders. During a prerender that initializer is
+ * what puts translated text in the static HTML rather than message keys.
+ */
+export function provideTranslations(
+  loader: TranslationLoader,
+  options: TranslationOptions = {},
+): EnvironmentProviders {
+  return makeEnvironmentProviders([
+    { provide: TRANSLATION_LOADER, useValue: loader },
+    ...(options.locale ? [{ provide: FIXED_LOCALE, useValue: options.locale }] : []),
+    provideAppInitializer(() => inject(TranslationService).ready()),
+  ]);
+}

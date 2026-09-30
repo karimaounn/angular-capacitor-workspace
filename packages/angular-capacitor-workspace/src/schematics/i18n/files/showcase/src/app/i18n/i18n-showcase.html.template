@@ -1,0 +1,60 @@
+<section aria-labelledby="i18n-heading" class="card">
+  <h2 id="i18n-heading">{{ 'showcase.heading' | t }}</h2>
+
+  <p>
+    {{ 'showcase.intro' | t }}
+    <span class="muted" data-testid="active-locale">
+      {{ 'showcase.active' | t: { locale: localeLabel(), direction: i18n.direction() } }}
+    </span>
+  </p>
+
+  <dl class="examples">
+    <!-- 1. A plain key. -->
+    <dt>{{ 'showcase.plain.label' | t }}</dt>
+    <dd data-testid="plain">{{ 'showcase.plain.value' | t }}</dd>
+
+    <!-- 2. A key with a {placeholder}. The slot is filled by name, and a
+         missing param leaves the slot visible rather than blanking it. -->
+    <dt>{{ 'showcase.interpolated.label' | t }}</dt>
+    <dd data-testid="interpolated">{{ 'showcase.greeting' | t: { name: name() } }}</dd>
+
+    <!-- 3. A plural. The category comes from Intl.PluralRules for the ACTIVE
+         locale, which is why `count === 1 ? … : …` is wrong: Arabic has six. -->
+    <dt>{{ 'showcase.plural.label' | t }}</dt>
+    <dd>
+      <span data-testid="plural">{{ 'showcase.items' | t: { count: count() } }}</span>
+      <span class="stepper">
+        <button type="button" (click)="step(-1)" [attr.aria-label]="'showcase.fewer' | t">
+          −
+        </button>
+        <button type="button" (click)="step(1)" [attr.aria-label]="'showcase.more' | t">
+          +
+        </button>
+      </span>
+    </dd>
+
+    <!-- 4. Numbers, dates and relative time. Through TranslationService, never
+         through DatePipe or DecimalPipe: those read the build-time LOCALE_ID,
+         which cannot follow a runtime switch. -->
+    <dt>{{ 'showcase.number.label' | t }}</dt>
+    <dd data-testid="number">{{ formattedNumber() }}</dd>
+
+    <dt>{{ 'showcase.currency.label' | t }}</dt>
+    <dd data-testid="currency">{{ formattedCurrency() }}</dd>
+
+    <dt>{{ 'showcase.date.label' | t }}</dt>
+    <dd data-testid="date">{{ formattedDate() }}</dd>
+
+    <dt>{{ 'showcase.relative.label' | t }}</dt>
+    <dd data-testid="relative">{{ formattedRelative() }}</dd>
+
+    <!-- 5. The writing direction, which mirrors the whole page from <html dir>
+         because every stylesheet here uses logical properties. -->
+    <dt>{{ 'showcase.direction.label' | t }}</dt>
+    <dd data-testid="direction">
+      {{ (i18n.isRtl() ? 'showcase.direction.rtl' : 'showcase.direction.ltr') | t }}
+    </dd>
+  </dl>
+
+  <p class="muted">{{ 'showcase.footnote' | t }}</p>
+</section>

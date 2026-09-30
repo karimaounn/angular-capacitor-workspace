@@ -1,0 +1,68 @@
+// The showcase is its own component, so it carries its own `.card` and
+// `.muted` rather than inheriting the starter page's — style encapsulation
+// stops at the component boundary, and these are the two the page's other
+// sections use. Both are built from the same tokens, so they stay in step with
+// the theme.
+.card {
+  margin-block-start: var(--space-6);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.card h2 {
+  margin-block-end: var(--space-4);
+  font-size: var(--font-size-xl);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+// Logical properties only — this section is on screen when the direction flips,
+// so `margin-left` here would be a bug you could see. See _direction.scss.
+.examples {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-4) 0 0;
+}
+
+dt {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  // `start`, not `left`: in an RTL locale the label belongs on the right.
+  text-align: start;
+}
+
+dd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  // A formatted number, a date and an endonym are all direction-sensitive, and
+  // `font-variant-numeric` keeps the digits from jittering as the count steps.
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.stepper button {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.stepper button:hover {
+  border-color: var(--border-strong);
+}

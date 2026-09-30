@@ -1,0 +1,46 @@
+import { Routes } from '@angular/router';
+
+import { PageSeo } from './seo/page-meta';
+
+/**
+ * Every page is lazy, and every page states its own title and description in
+ * `data.seo` — as MESSAGE KEYS, because this site is built once per language
+ * and a French page with an English `<title>` is the most visible thing a
+ * search result can get wrong. `PageMetaStrategy` looks them up in the active
+ * catalog and turns them into head tags, and prerendering bakes them into each
+ * page's HTML.
+ *
+ * A new page also needs a link from a page that already exists: that is how
+ * crawlers find it, and how the e2e accessibility check does.
+ */
+const NOT_FOUND_SEO: PageSeo = {
+  title: 'seo.notFound.title',
+  description: 'seo.notFound.description',
+  noindex: true,
+};
+
+export const routes: Routes = [
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./pages/home.page').then((m) => m.HomePage),
+    data: {
+      seo: {
+        title: 'seo.home.title',
+        description: 'seo.home.description',
+      } satisfies PageSeo,
+    },
+  },
+  {
+    // The one prerendered copy of the 404 page. The host serves this file, with
+    // a 404 status, for any URL that has no file of its own.
+    path: '404',
+    loadComponent: () => import('./pages/not-found.page').then((m) => m.NotFoundPage),
+    data: { seo: NOT_FOUND_SEO },
+  },
+  {
+    path: '**',
+    loadComponent: () => import('./pages/not-found.page').then((m) => m.NotFoundPage),
+    data: { seo: NOT_FOUND_SEO },
+  },
+];

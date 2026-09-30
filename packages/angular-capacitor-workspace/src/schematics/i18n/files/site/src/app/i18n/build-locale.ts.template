@@ -1,0 +1,26 @@
+import { DEFAULT_LOCALE, isLocale, type Locale } from '<%= importName %>';
+
+/**
+ * The locale this build IS.
+ *
+ * Replaced at build time by the `define` on each `locale-*` configuration in
+ * angular.json, so `ng build <%= name %> --configuration locale-fr` compiles a bundle
+ * whose every occurrence of `BUILD_LOCALE` is the string `'fr'`.
+ *
+ * A prerendered site cannot negotiate its language the way an app does. The
+ * prerender runs in Node, where there is no `navigator` and no `localStorage`,
+ * and whatever it renders is the HTML every visitor and every crawler is
+ * served. So the language is chosen by the build, one build per language, and
+ * it lives in the URL — `/en/`, `/fr/` — where a crawler can index each one
+ * separately and a visitor can link to the one they read.
+ */
+declare const BUILD_LOCALE: string;
+
+/**
+ * `typeof` rather than a direct read: under `ng serve` and in unit tests no
+ * `define` has been applied, the identifier is genuinely undeclared, and a bare
+ * reference would be a ReferenceError. `typeof` on an undeclared name is the
+ * one thing JavaScript allows there.
+ */
+export const SITE_LOCALE: Locale =
+  typeof BUILD_LOCALE === 'string' && isLocale(BUILD_LOCALE) ? BUILD_LOCALE : DEFAULT_LOCALE;

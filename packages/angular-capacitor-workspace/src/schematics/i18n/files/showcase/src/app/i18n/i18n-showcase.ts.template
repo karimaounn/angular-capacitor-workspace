@@ -1,0 +1,62 @@
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { LOCALE_LABELS, TranslatePipe, TranslationService } from '<%= importName %>';
+
+/**
+ * The translation showcase, and the second half of the starter screen.
+ *
+ * Here to be deleted, like the page it sits on. What is worth reading first is
+ * what it demonstrates, because each block is a thing the layer does that is
+ * easy to get wrong by hand:
+ *
+ *   • a plain key, and a key with a `{placeholder}`
+ *   • a plural, chosen by `Intl.PluralRules` from `count` — not by a ternary
+ *   • numbers, dates and relative time, formatted for the ACTIVE locale rather
+ *     than the build-time `LOCALE_ID` that Angular's own pipes read
+ *   • the writing direction, which flips the whole page from `<html dir>`
+ *
+ * Switch language with the picker in the header and every block follows,
+ * without a reload and without a component here knowing a locale changed.
+ */
+@Component({
+  selector: '<%= prefix %>-i18n-showcase',
+  imports: [TranslatePipe],
+  templateUrl: './i18n-showcase.html',
+  styleUrl: './i18n-showcase.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class I18nShowcase {
+  protected readonly i18n = inject(TranslationService);
+
+  /** Drives the plural example. Deliberately reaches 0, which is `other` in English. */
+  protected readonly count = signal(1);
+
+  protected readonly name = signal('Ada');
+
+  protected readonly localeLabel = computed(() => LOCALE_LABELS[this.i18n.locale()]);
+
+  /**
+   * A fixed instant, not `Date.now()`: a starter page that renders a different
+   * string every second is a starter page whose screenshot tests flake.
+   */
+  protected readonly sampleDate = new Date('2026-03-14T15:09:26Z');
+
+  protected readonly sampleNumber = 1234567.891;
+
+  protected readonly formattedNumber = computed(() => this.i18n.formatNumber(this.sampleNumber));
+
+  protected readonly formattedCurrency = computed(() =>
+    this.i18n.formatNumber(1299.5, { style: 'currency', currency: 'EUR' }),
+  );
+
+  protected readonly formattedDate = computed(() =>
+    this.i18n.formatDate(this.sampleDate, { dateStyle: 'full' }),
+  );
+
+  protected readonly formattedRelative = computed(() =>
+    this.i18n.formatRelativeTime(-3, 'day', { numeric: 'auto' }),
+  );
+
+  protected step(by: number): void {
+    this.count.update((value) => Math.max(0, value + by));
+  }
+}

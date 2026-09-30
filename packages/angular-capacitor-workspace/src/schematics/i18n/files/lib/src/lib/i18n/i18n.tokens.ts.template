@@ -1,0 +1,89 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Canonical enumerations for the i18n axis — the counterpart to theme.ts.
+//
+// This is the ONLY place a locale name lives on the TS side. The MESSAGES do
+// not live here: they belong to the consuming app and are supplied at runtime
+// through `provideTranslations()`, so the design system stays content-free and
+// an app can ship its own vocabulary.
+//
+// Adding a locale = one entry in LOCALES + one line in each of the two maps
+// below. The compiler then forces every other site (loader, picker, catalogs)
+// to be updated, because both maps are exhaustive `Record<Locale, …>`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const LOCALES = [<%= localeList %>] as const;
+export type Locale = (typeof LOCALES)[number];
+
+export type Direction = 'ltr' | 'rtl';
+
+export const DEFAULT_LOCALE: Locale = '<%= defaultLocale %>';
+
+/**
+ * Writing direction per locale. Drives `<html dir>`, which is all the layout
+ * needs — every stylesheet here uses CSS logical properties, so the browser
+ * mirrors the UI from this one attribute (see `styles/_direction.scss`).
+ */
+export const LOCALE_DIRECTION: Readonly<Record<Locale, Direction>> = {
+<%= directionEntries %>
+};
+
+/**
+ * Endonyms — a language is always offered in its own language, never translated
+ * into the current one. Someone who cannot read the active locale still has to
+ * be able to find their own; "Arabic" is useless to a reader who needs العربية.
+ */
+export const LOCALE_LABELS: Readonly<Record<Locale, string>> = {
+<%= labelEntries %>
+};
+
+/** A flat, dot-keyed message table. Values may contain `{placeholder}` slots. */
+export type TranslationCatalog = Readonly<Record<string, string>>;
+
+/** Values substituted into a message's `{placeholder}` slots. */
+export type TranslationParams = Readonly<Record<string, string | number>>;
+
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);
+}
+
+export function directionOf(locale: Locale): Direction {
+  return LOCALE_DIRECTION[locale];
+}
+
+/**
+ * Best-effort BCP-47 → supported locale: `ar-EG` → `ar`, `fr-CA` → `fr`,
+ * `pt-br` → `pt-BR`. Returns `null` when nothing matches, so callers decide
+ * their own fallback.
+ *
+ * Case-insensitively, and returning the CANONICAL tag rather than what was
+ * passed in. BCP-47 case is conventional, not significant — a browser may send
+ * `pt-BR`, a stored value may be `pt-br`, and `Intl` accepts either — but every
+ * map here is keyed by the tag as `LOCALES` spells it, so the canonical form is
+ * the only safe thing to return.
+ */
+export function matchLocale(tag: string | null | undefined): Locale | null {
+  if (!tag) {
+    return null;
+  }
+  const lower = tag.toLowerCase();
+  const exact = LOCALES.find((locale) => locale.toLowerCase() === lower);
+  if (exact) {
+    return exact;
+  }
+  const base = lower.split('-')[0]!;
+  return LOCALES.find((locale) => locale.toLowerCase() === base) ?? null;
+}
+
+/**
+ * First supported locale in an ordered preference list, e.g. `navigator.languages`.
+ * Order matters: the user's first choice we can actually serve wins.
+ */
+export function negotiateLocale(preferred: readonly string[] | undefined): Locale | null {
+  for (const tag of preferred ?? []) {
+    const match = matchLocale(tag);
+    if (match) {
+      return match;
+    }
+  }
+  return null;
+}

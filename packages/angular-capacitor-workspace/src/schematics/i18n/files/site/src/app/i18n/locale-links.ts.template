@@ -1,0 +1,63 @@
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { LOCALES, LOCALE_LABELS, TranslatePipe, isLocale, type Locale } from '<%= importName %>';
+
+import { localePath } from '../site';
+import { SITE_LOCALE } from './build-locale';
+
+/**
+ * The language switcher, as links rather than a picker.
+ *
+ * Deliberately not `<%= libPrefix %>-language-picker`. On this site a language is not a
+ * preference that a signal can flip — it is a separate, separately prerendered
+ * document at its own URL. Real `<a href>`s are what that needs, three times
+ * over: a crawler follows them and indexes each language, a visitor can copy
+ * the link to the page they are reading in the language they read it in, and
+ * the destination arrives already rendered instead of swapping its text after
+ * hydration.
+ *
+ * They are also what the `hreflang` alternates in the head point at, and the
+ * two are generated from the same `localePath`, so they cannot disagree.
+ */
+@Component({
+  selector: '<%= prefix %>-locale-links',
+  imports: [TranslatePipe],
+  templateUrl: './locale-links.html',
+  styleUrl: './locale-links.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class LocaleLinks {
+  private readonly router = inject(Router);
+
+  protected readonly locales = LOCALES;
+  protected readonly labels = LOCALE_LABELS;
+  protected readonly current = SITE_LOCALE;
+
+  /**
+   * The same page in another language.
+   *
+   * Read off the router rather than from `location`, because the router's URL
+   * is the route WITHOUT the `<base href>` the build put in front of it — on a
+   * real `/fr/about` it is `/about`, which is what needs the other language's
+   * prefix put on it.
+   *
+   * The leading segment is stripped anyway if it happens to be a locale. Under
+   * `ng serve` no `define` and no `baseHref` are applied, so `/en/` is not a
+   * route and the router reports it verbatim; without this, the link to French
+   * on that page would be `/fr/en/`, and the next one `/en/fr/en/`, which is
+   * how an accessibility crawl that follows links ends up walking forever.
+   */
+  protected href(locale: Locale): string {
+    return localePath(locale, routePath(this.router.url));
+  }
+}
+
+/** The route's own path, with a locale prefix removed if one is there. */
+function routePath(url: string): string {
+  const path = url.split(/[?#]/)[0] || '/';
+  const [, first, ...rest] = path.split('/');
+  if (first !== undefined && isLocale(first)) {
+    return rest.length ? `/${rest.join('/')}` : '/';
+  }
+  return path;
+}

@@ -1,0 +1,19 @@
+// Logical properties only. This nav is in the header of every page, in every
+// language, including the right-to-left ones. See _direction.scss.
+ul {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-sm);
+}
+
+a {
+  color: var(--text-muted);
+}
+
+[aria-current] {
+  color: var(--text);
+  font-weight: 600;
+}

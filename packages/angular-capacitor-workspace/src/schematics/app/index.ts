@@ -34,6 +34,7 @@ import {
   type DesignSystem,
 } from '../../utils/workspace';
 import type { MobilePlatform } from '../../api';
+import { installedI18n } from '../i18n';
 import { installedPackages } from '../packages';
 
 export interface AppOptions {
@@ -102,8 +103,10 @@ export function app(options: AppOptions): Rule {
       // after them.
       (host: Tree) => hookLibraryBuild(host, name),
 
-      // Last: whatever the workspace already carries from the catalog has a
-      // per-project half this app has not had applied to it yet.
+      // Last: whatever the workspace already carries has a per-project half
+      // this app has not had applied to it yet. i18n before packages, so the
+      // providers land in the same order a full generation produces.
+      installedI18n(name),
       installedPackages(),
     ]);
   };

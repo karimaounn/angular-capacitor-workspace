@@ -1,0 +1,28 @@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { TranslatePipe } from '<%= importName %>';
+
+import { I18nShowcase } from '../i18n/i18n-showcase';
+import { SITE_NAME } from '../site';
+
+/**
+ * The home page. Its title and description sit beside its route, in app.routes.ts.
+ *
+ * Every string here comes from `src/app/i18n/`, and the page is prerendered
+ * once per language — so the HTML a crawler is served is already in that
+ * language, with its own URL and its own canonical. The links in the header go
+ * to the other languages' copies of this page.
+ */
+@Component({
+  selector: '<%= prefix %>-home-page',
+  imports: [TranslatePipe, I18nShowcase],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <h1>{{ siteName }}</h1>
+    <p>{{ 'site.prerendered' | t }}</p>
+
+    <<%= prefix %>-i18n-showcase />
+  `,
+})
+export class HomePage {
+  protected readonly siteName = SITE_NAME;
+}

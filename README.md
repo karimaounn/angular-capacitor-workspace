@@ -36,7 +36,7 @@ npm create angular-capacitor-workspace@latest acme -- \
   --app storefront --mobile android,ios \
   --app admin \
   --marketing site --marketing-origin https://acme.example \
-  --ui-lib ui --e2e playwright --with cdk
+  --ui-lib ui --e2e playwright --with cdk --i18n en,fr
 ```
 
 That gives:
@@ -48,6 +48,7 @@ acme/
     storefront/mobile/     its Capacitor shell, an npm workspace member
     admin/web/             a second app, web only
     site/web/              marketing site, prerendered to static HTML
+                           (once per language, with --i18n)
     ui/                    design-system library, with Storybook
   playwright.base.ts       shared Playwright config the apps extend
   AGENTS.md                house rules
@@ -85,6 +86,7 @@ added later:
 ng generate angular-capacitor-workspace:app back-office
 ng generate angular-capacitor-workspace:mobile admin --platforms android
 ng generate angular-capacitor-workspace:codegen
+ng generate angular-capacitor-workspace:i18n --locales en,fr
 ng generate angular-capacitor-workspace:packages cdk
 ```
 

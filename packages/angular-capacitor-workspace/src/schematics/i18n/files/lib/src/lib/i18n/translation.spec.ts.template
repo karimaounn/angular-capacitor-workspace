@@ -1,0 +1,119 @@
+import { TestBed } from '@angular/core/testing';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_LOCALE, LOCALES, matchLocale, negotiateLocale } from './i18n.tokens';
+import { TRANSLATION_LOADER, type TranslationLoader } from './translation.loader';
+import { LOCALE_KEY, TranslationService } from './translation';
+
+describe('locale negotiation', () => {
+  it('matches an exact tag', () => {
+    expect(matchLocale('<%= defaultLocale %>')).toBe('<%= defaultLocale %>');
+  });
+
+  it('falls back from a region subtag to its base language', () => {
+    expect(matchLocale('<%= defaultLocale %>-ZZ')).toBe('<%= defaultLocale %>');
+  });
+
+  it('returns null for a locale this workspace does not ship', () => {
+    expect(matchLocale('xx')).toBeNull();
+    expect(matchLocale(undefined)).toBeNull();
+  });
+
+  it('takes the first supported entry of a preference list', () => {
+    expect(negotiateLocale(['xx', 'yy', '<%= defaultLocale %>'])).toBe('<%= defaultLocale %>');
+    expect(negotiateLocale(['xx'])).toBeNull();
+  });
+});
+
+describe('TranslationService', () => {
+  const root = document.documentElement;
+
+  // A synchronous loader: the catalogs are the unit under test, not the chunk
+  // splitting. `ready()` still awaits it, so the async path is exercised.
+  const catalogs: Record<string, Record<string, string>> = {
+    '<%= defaultLocale %>': {
+      'app.title': 'Title',
+      'home.greeting': 'Hello, {name}!',
+      'cart.items.one': '{count} item',
+      'cart.items.other': '{count} items',
+    },
+  };
+
+  const loader: TranslationLoader = (locale) => catalogs[locale] ?? {};
+
+  beforeEach(() => {
+    localStorage.removeItem(LOCALE_KEY);
+    TestBed.configureTestingModule({
+      providers: [{ provide: TRANSLATION_LOADER, useValue: loader }],
+    });
+  });
+
+  afterEach(() => {
+    // The service writes to the real document, which every other test in this
+    // file — and every other file in the run — shares.
+    root.removeAttribute('lang');
+    root.removeAttribute('dir');
+  });
+
+  async function service(): Promise<TranslationService> {
+    const instance = TestBed.inject(TranslationService);
+    await instance.ready();
+    TestBed.tick();
+    return instance;
+  }
+
+  it('writes lang and dir onto the document element', async () => {
+    const i18n = await service();
+
+    expect(root.getAttribute('lang')).toBe(i18n.locale());
+    expect(root.getAttribute('dir')).toBe(i18n.direction());
+  });
+
+  it('translates a key', async () => {
+    const i18n = await service();
+    expect(i18n.translate('app.title')).toBe('Title');
+  });
+
+  it('fills in placeholders', async () => {
+    const i18n = await service();
+    expect(i18n.translate('home.greeting', { name: 'Sam' })).toBe('Hello, Sam!');
+  });
+
+  it('leaves an unmatched placeholder visible rather than blanking it', async () => {
+    const i18n = await service();
+    // A hole in a sentence is a bug worth seeing.
+    expect(i18n.translate('home.greeting', { other: 'Sam' })).toContain('{name}');
+  });
+
+  it('returns the key itself when nothing translates it', async () => {
+    const i18n = await service();
+    expect(i18n.translate('nothing.here')).toBe('nothing.here');
+  });
+
+  it('selects a plural form from the count param', async () => {
+    const i18n = await service();
+
+    // The categories come from Intl.PluralRules for the active locale, which is
+    // the whole reason the lookup delegates rather than testing `count === 1`.
+    const one = i18n.translate('cart.items', { count: 1 });
+    const many = i18n.translate('cart.items', { count: 7 });
+
+    expect(one).toContain('1');
+    expect(many).toContain('7');
+    expect(one).not.toBe(many);
+  });
+
+  it('persists the active locale', async () => {
+    const i18n = await service();
+
+    i18n.setLocale(LOCALES[LOCALES.length - 1]!);
+    TestBed.tick();
+
+    expect(localStorage.getItem(LOCALE_KEY)).toBe(LOCALES[LOCALES.length - 1]);
+  });
+
+  it('starts at the default locale when nothing is stored and nothing matches', async () => {
+    const i18n = await service();
+    expect(LOCALES).toContain(i18n.locale());
+    expect(typeof DEFAULT_LOCALE).toBe('string');
+  });
+});

@@ -34,6 +34,7 @@ import {
   setDevServerPort,
 } from '../../utils/workspace';
 import { e2eScripts } from '../app';
+import { installedI18n } from '../i18n';
 import { installedPackages } from '../packages';
 
 export interface MarketingOptions {
@@ -115,8 +116,11 @@ export function marketing(options: MarketingOptions): Rule {
       // after them.
       (host: Tree) => hookLibraryBuild(host, name),
 
-      // See the app schematic: a site generated after a catalog package was
-      // added still needs that package's per-project half.
+      // See the app schematic: a site generated after `--i18n`, or after a
+      // catalog package was added, still needs their per-project halves. i18n
+      // first, so the providers land in the order a full generation produces —
+      // and because for a site it is also the per-locale build configurations.
+      installedI18n(name),
       installedPackages(),
     ]);
   };

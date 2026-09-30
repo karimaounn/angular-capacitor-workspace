@@ -1,0 +1,118 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * A prerendered site's translation and theming, in a browser.
+ *
+ * The division of labour matters here, because most of this site's i18n is
+ * checked somewhere better. `npm run build:<%= name %>` builds it once per language and
+ * then runs `scripts/verify-prerender.mjs` over all of it, which is where the
+ * per-locale output is verified: that `/fr/` rendered in French and says so in
+ * `<html lang>`, that every page carries an hreflang alternate for every
+ * language plus `x-default`, that the canonical is that language's own URL,
+ * that no language skipped a route another rendered, and that one sitemap
+ * covers them all. Those are assertions about static files, and a browser adds
+ * nothing to them.
+ *
+ * What a browser does add is everything below: that the page a visitor loads
+ * has the translated text in it, that the language links are real URLs pointing
+ * at the other languages, and that the design tokens reach a site that has no
+ * toggle to set them.
+ *
+ * `ng serve` applies no `define`, so under the dev server every path renders the
+ * source locale. That is why these tests do not follow a language link — the
+ * destination only exists in a build.
+ */
+const LOCALES = [<%= localeList %>];
+const DEFAULT_LOCALE = '<%= defaultLocale %>';
+
+test('the page renders translated text, not message keys', async ({ page }) => {
+  await page.goto('/');
+
+  // A missing catalog renders keys as themselves, which is visible but easy to
+  // miss in a screenshot. A dotted key in the body is the tell.
+  await expect(page.getByTestId('plain')).toBeVisible();
+  await expect(page.getByTestId('plain')).not.toHaveText(/^showcase\./);
+  await expect(page.getByTestId('interpolated')).not.toContainText('{name}');
+
+  // The prerendered document is in the build's language, and says so before
+  // any script has run.
+  await expect(page.locator('html')).toHaveAttribute('lang', DEFAULT_LOCALE);
+  await expect(page.locator('html')).toHaveAttribute('dir', /^(ltr|rtl)$/);
+});
+
+test('the language links are real URLs, one per language', async ({ page }) => {
+  await page.goto('/');
+
+  for (const locale of LOCALES) {
+    if (locale === DEFAULT_LOCALE) {
+      // The current language is not a link, and says so to a screen reader.
+      await expect(page.locator(`[aria-current="true"][lang="${locale}"]`)).toHaveCount(1);
+      continue;
+    }
+    // A real href, not a routerLink: the other languages are separately
+    // prerendered documents, so a crawler has to be able to follow these and a
+    // visitor has to be able to copy one.
+    const link = page.locator(`a[hreflang="${locale}"]`);
+    await expect(link).toHaveCount(1);
+    await expect(link).toHaveAttribute('href', `/${locale}/`);
+  }
+});
+
+test('a plural picks its form from the count, not from a ternary', async ({ page }) => {
+  await page.goto('/');
+
+  const plural = page.getByTestId('plural');
+  await expect(plural).toContainText('1');
+  const one = (await plural.textContent())!;
+
+  // Auto-retrying assertions throughout, and a `textContent()` read only once
+  // one has passed: a read taken straight after a click can land before the
+  // signal has re-rendered, which fails as a baffling equality rather than as
+  // the timeout it is.
+  await page.getByRole('button', { name: 'One more' }).click();
+  await expect(plural).toContainText('2');
+  const two = (await plural.textContent())!;
+
+  // 1 and 2 are different CLDR categories in the source locale, so the strings
+  // differ by more than the number in them.
+  expect(two).not.toBe(one);
+
+  // 0 is `other`, not `one` — the case a `count === 1 ? … : …` gets right by
+  // accident and a `count <= 1` gets wrong.
+  await page.getByRole('button', { name: 'One fewer' }).click();
+  await expect(plural).toContainText('1');
+  await page.getByRole('button', { name: 'One fewer' }).click();
+  await expect(plural).toContainText('0');
+
+  expect((await plural.textContent())!.replace(/\d+/, '')).toBe(two.replace(/\d+/, ''));
+});
+
+test('the design tokens reach the site, with no toggle to set them', async ({ page }) => {
+  await page.goto('/');
+
+  // A prerendered page carries no theme toggle and no theme script on purpose:
+  // it is written once and served to everyone, so light and dark are left to
+  // prefers-color-scheme — the only mechanism that survives being cached at the
+  // edge. verify-prerender.mjs fails the build if anything pins `data-theme`.
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
+
+  const surface = await page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(),
+  );
+  expect(surface, 'the design system tokens are not reaching the site').not.toBe('');
+});
+
+test('the tokens follow the OS colour scheme', async ({ page }) => {
+  const surface = () =>
+    page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/');
+  const light = await surface();
+
+  // No reload and no attribute write: the stylesheet's prefers-color-scheme
+  // block is what governs here, which is what makes a cached page correct for
+  // a visitor the build never knew about.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await surface()).not.toBe(light);
+});

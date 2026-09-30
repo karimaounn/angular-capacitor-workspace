@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// Writes sitemap.xml for a prerendered app, from its build output.
+//
+// The prerender output is already the authoritative list of pages, so the
+// sitemap is derived from it rather than maintained by hand — the two cannot
+// drift. Each page contributes its own canonical URL; a page marked noindex
+// (the 404) is left out. Runs as postbuild:<app>, before verify-prerender.mjs,
+// which checks that the result matches.
+//
+// LOCALES. One sitemap for the whole site, not one per language: a crawler is
+// given a single file and every page in it carries `xhtml:link` alternates
+// naming the same page in the other languages. It is written at the root of the
+// output, beside the per-language directories, and robots.txt is copied up
+// beside it — a robots.txt inside /en/ is a robots.txt nothing will read.
+//
+//   node scripts/generate-sitemap.mjs <app> [--locales en,fr]
+// ─────────────────────────────────────────────────────────────────────────────
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { inspect, isNoindex, outputs, pages } from './prerendered.mjs';
+
+const { root, outputs: built } = outputs('generate-sitemap.mjs');
+const localized = built[0].locale !== null;
+
+const escapeXml = (s) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// route → locale → canonical URL. Keyed by route rather than by served path so
+// the translations of one page find each other.
+const byRoute = new Map();
+
+for (const output of built) {
+  for (const page of pages(output)) {
+    const head = inspect(fs.readFileSync(page.file, 'utf8'));
+    if (isNoindex(head)) continue;
+    // A page with no canonical is left out rather than failing here, so the
+    // build reaches verify-prerender.mjs, which reports it together with every
+    // other problem instead of one at a time.
+    const [canonical] = head.canonicals;
+    if (!canonical) continue;
+
+    const forRoute = byRoute.get(page.route) ?? new Map();
+    forRoute.set(page.locale ?? '', canonical);
+    byRoute.set(page.route, forRoute);
+  }
+}
+
+const entries = [...byRoute.entries()].sort(([a], [b]) => a.localeCompare(b));
+let count = 0;
+
+const urls = [];
+for (const [, byLocale] of entries) {
+  for (const [, canonical] of byLocale) {
+    count++;
+    const alternates = localized
+      ? [...byLocale].map(
+          ([locale, href]) =>
+            `\n    <xhtml:link rel="alternate" hreflang="${escapeXml(locale)}" href="${escapeXml(href)}"/>`,
+        )
+      : [];
+    urls.push(`  <url><loc>${escapeXml(canonical)}</loc>${alternates.join('')}</url>`);
+  }
+}
+
+const xml = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  localized
+    ? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">'
+    : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  ...urls,
+  '</urlset>',
+  '',
+].join('\n');
+
+// At the root of the output for a localized site, inside the single output
+// otherwise. Either way it is beside the robots.txt that points at it.
+const target = localized ? root : built[0].dir;
+fs.writeFileSync(path.join(target, 'sitemap.xml'), xml);
+
+if (localized) {
+  // public/robots.txt is copied into every language's directory by the build.
+  // One of them belongs at the root, where a crawler looks for it.
+  const source = path.join(built[0].dir, 'robots.txt');
+  if (fs.existsSync(source)) {
+    fs.copyFileSync(source, path.join(root, 'robots.txt'));
+  }
+}
+
+console.log(
+  `generate-sitemap: ${count} URLs${localized ? ` across ${built.length} locales` : ''} → sitemap.xml`,
+);

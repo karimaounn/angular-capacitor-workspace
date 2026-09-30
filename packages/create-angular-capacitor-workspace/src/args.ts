@@ -51,6 +51,11 @@ ${option('--ui-lib [name]', 'design-system library skeleton (default: ui)')}
 ${option('--ui-lib-prefix <p>', 'selector prefix for its components (default: its name)')}
 ${option('--codegen orval', 'OpenAPI client generation')}
 ${option('--e2e playwright', 'end-to-end test wiring')}
+${option('--i18n <locales>', 'runtime translation for these BCP-47 tags')}
+${CONTINUED}${dim('(repeatable, comma-separated: en,fr,ar). Needs a')}
+${CONTINUED}${dim('design system — the mechanism lives there.')}
+${option('--default-locale <l>', 'source locale, the fallback for an untranslated')}
+${CONTINUED}${dim('key (default: the first --i18n tag)')}
 ${option('--with <pkg>', 'extra package to wire in (repeatable, comma-separated)')}
 ${CATALOG.map((entry) => item(`${entry.id} — ${entry.summary}`)).join('\n')}
 ${option('--audit-level <lvl>', 'low|moderate|high|critical  (default: moderate)')}
@@ -149,6 +154,8 @@ export function parseArguments(argv: string[]): ParsedArgs {
       'ui-lib-prefix': { type: 'string' },
       codegen: { type: 'string' },
       e2e: { type: 'string' },
+      i18n: { type: 'string', multiple: true },
+      'default-locale': { type: 'string' },
       with: { type: 'string', multiple: true },
       'audit-level': { type: 'string' },
       install: { type: 'boolean', default: true },
@@ -203,6 +210,26 @@ export function parseArguments(argv: string[]): ParsedArgs {
       throw new ArgError(`--e2e only supports "playwright" (got "${values.e2e}").`);
     }
     options.e2e = 'playwright';
+  }
+
+  const locales = parseLocales(values.i18n ?? []);
+  if (locales.length > 0) {
+    options.i18n = locales;
+  }
+
+  const defaultLocale = values['default-locale'];
+  if (defaultLocale !== undefined) {
+    if (locales.length === 0) {
+      throw new ArgError('--default-locale needs --i18n. It names one of its locales.');
+    }
+    if (!locales.includes(defaultLocale)) {
+      throw new ArgError(
+        `--default-locale must be one of the --i18n locales (${locales.join(', ')}), ` +
+          `got "${defaultLocale}". The source locale has to ship: it is what ` +
+          `every untranslated key falls back to.`,
+      );
+    }
+    options.defaultLocale = defaultLocale;
   }
 
   const wanted = parsePackages(values.with ?? []);
@@ -289,6 +316,42 @@ function parsePackages(raw: string[]): string[] {
   }
 
   return ids;
+}
+
+/**
+ * Reads `--i18n` into locale tags: repeatable, and comma-separated within each.
+ *
+ * Both forms, for the reason `parsePackages` takes both. Order is preserved and
+ * duplicates are dropped rather than sorted: the order is what the language
+ * picker renders, and "the languages we care most about first" is an editorial
+ * choice alphabetical order would silently discard.
+ *
+ * The shape is checked here so a typo costs a line rather than the minutes
+ * generation takes to reach the schematic that would reject it. Whether the
+ * generator knows the language's endonym is not checked: an unknown tag is
+ * generated with a TODO beside it, which is a better answer than refusing a
+ * locale that exists.
+ */
+function parseLocales(raw: string[]): string[] {
+  const tags: string[] = [];
+
+  for (const value of raw.flatMap((entry) => entry.split(','))) {
+    const tag = value.trim();
+    if (tag === '') {
+      throw new ArgError('--i18n needs at least one locale tag, e.g. `--i18n en,fr`.');
+    }
+    if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(tag)) {
+      throw new ArgError(
+        `--i18n: "${tag}" is not a BCP-47 locale tag. Expected something like ` +
+          `"en", "fr", "pt-BR" or "zh-Hant".`,
+      );
+    }
+    if (!tags.includes(tag)) {
+      tags.push(tag);
+    }
+  }
+
+  return tags;
 }
 
 function pairAppsWithPlatforms(argv: string[]): AppSpec[] {

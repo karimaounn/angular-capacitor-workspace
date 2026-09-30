@@ -1,0 +1,20 @@
+<nav [attr.aria-label]="'site.languages' | t">
+  <ul>
+    @for (locale of locales; track locale) {
+      <li>
+        @if (locale === current) {
+          <!-- The current language is not a link, and says so to a screen
+               reader. `aria-current` is what marks it; the styling follows. -->
+          <span aria-current="true" [attr.lang]="locale">{{ labels[locale] }}</span>
+        } @else {
+          <!-- `hreflang` because the destination is in another language, and
+               `lang` because the LABEL is: an endonym read with the current
+               page's voice is unintelligible. -->
+          <a [href]="href(locale)" [attr.hreflang]="locale" [attr.lang]="locale">
+            {{ labels[locale] }}
+          </a>
+        }
+      </li>
+    }
+  </ul>
+</nav>

@@ -189,6 +189,60 @@ describe('--with', () => {
   });
 });
 
+describe('--i18n', () => {
+  it('takes the flag repeated, or one comma-separated list, or both', () => {
+    for (const argv of [
+      ['ws', '--i18n', 'en', '--i18n', 'fr'],
+      ['ws', '--i18n=en,fr'],
+      ['ws', '--i18n', 'en,fr'],
+      ['ws', '--i18n', 'en,fr,en'],
+    ]) {
+      expect(parseArguments(argv).options.i18n, argv.join(' ')).toEqual(['en', 'fr']);
+    }
+  });
+
+  it('preserves the order given, which is the order the picker renders', () => {
+    // "The languages we care most about first" is an editorial choice that
+    // sorting would silently discard.
+    expect(parseArguments(['ws', '--i18n', 'fr,ar,en']).options.i18n).toEqual(['fr', 'ar', 'en']);
+  });
+
+  it('is absent unless asked for', () => {
+    expect(parseArguments(['ws', '--app', 'shop']).options.i18n).toBeUndefined();
+  });
+
+  it('accepts a region subtag', () => {
+    expect(parseArguments(['ws', '--i18n', 'en,pt-BR']).options.i18n).toEqual(['en', 'pt-BR']);
+  });
+
+  it('rejects something that is not a locale tag, before the minutes are spent', () => {
+    expect(() => parseArguments(['ws', '--i18n', 'english'])).toThrow(ArgError);
+    expect(() => parseArguments(['ws', '--i18n', 'english'])).toThrow(/BCP-47/);
+  });
+
+  it('rejects an empty entry rather than silently dropping it', () => {
+    expect(() => parseArguments(['ws', '--i18n', 'en,'])).toThrow(/at least one locale tag/);
+  });
+});
+
+describe('--default-locale', () => {
+  it('takes one of the --i18n locales', () => {
+    const options = parseArguments(['ws', '--i18n', 'en,fr', '--default-locale', 'fr']).options;
+    expect(options.defaultLocale).toBe('fr');
+  });
+
+  it('refuses a locale that is not shipping', () => {
+    // It is what every untranslated key falls back to, so it has to ship.
+    expect(() => parseArguments(['ws', '--i18n', 'en', '--default-locale', 'de'])).toThrow(
+      /must be one of the --i18n locales/,
+    );
+  });
+
+  it('refuses to stand alone', () => {
+    expect(() => parseArguments(['ws', '--default-locale', 'fr'])).toThrow(/needs --i18n/);
+  });
+});
+
 describe('the usage text', () => {
   it('lists every catalog package, so --help cannot fall behind the catalog', () => {
     for (const id of CATALOG_IDS) {

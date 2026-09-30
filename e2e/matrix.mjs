@@ -25,7 +25,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { classify, summarise } from './deprecations.mjs';
@@ -46,7 +46,15 @@ const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/di
  * have at the Angular line fails the install here rather than in someone's
  * project. Asked for as `aria` alone rather than `cdk,aria` on purpose — that is
  * the path where `requires` has to produce the CDK, and Aria peers it at an
- * exact version, so npm is the judge of whether the two ranges agree;
+ * exact version, so npm is the judge of whether the two ranges agree. It also
+ * carries `--i18n en,fr,ar`, which is the only place the generated translation
+ * code is compiled rather than string-matched: ng-packagr builds the service,
+ * the pipe and the picker, the app builds against them, the generated spec runs
+ * in browser mode, and the marketing site is built three times over — once per
+ * language, each prerendered into its own directory — with `verify-prerender`
+ * checking `<html lang>`, the hreflang alternates and route parity across all
+ * of them. Arabic specifically, because it is the row's only RTL locale and the
+ * only one whose plural categories go past `one`/`other`;
  * `multi-app` proves per-project ports and script naming survive more than one
  * app *and* more than one marketing site — two sites are two sets of canonical
  * URLs, a shared postbuild script and two entries in `npm run build` — and that
@@ -77,6 +85,8 @@ const ROWS = {
       'playwright',
       '--with',
       'aria',
+      '--i18n',
+      'en,fr,ar',
     ],
     checks: [
       'build:libs',
@@ -378,13 +388,26 @@ function runCheck(check, cwd) {
  * `outputMode: "server"` — or one whose postbuild step never ran.
  */
 function assertPrerendered(cwd) {
-  const browser = join(cwd, 'dist/site/browser');
-  if (!existsSync(join(browser, 'index.html'))) return 'no prerendered index.html';
-  if (!existsSync(join(browser, '404/index.html'))) return 'no prerendered 404 page';
-  if (!existsSync(join(browser, 'sitemap.xml')))
-    return 'no sitemap.xml — postbuild:site did not run';
-  if (existsSync(join(cwd, 'dist/site/server')))
-    return 'a server bundle was emitted for a static site';
+  const root = join(cwd, 'dist/site');
+  // Two layouts. Without `--i18n` the site builds once into `browser/`, with
+  // its sitemap inside. With it, the site builds once per language into a
+  // directory named after that language, and the one sitemap covering them all
+  // sits at the root beside them.
+  const locales = ROWS.full.args.includes('--i18n')
+    ? ROWS.full.args[ROWS.full.args.indexOf('--i18n') + 1].split(',')
+    : [];
+  const outputs = locales.length
+    ? locales.map((locale) => join(root, locale))
+    : [join(root, 'browser')];
+  const sitemap = locales.length ? join(root, 'sitemap.xml') : join(outputs[0], 'sitemap.xml');
+
+  for (const output of outputs) {
+    const where = relative(root, output) || 'browser';
+    if (!existsSync(join(output, 'index.html'))) return `no prerendered index.html in ${where}`;
+    if (!existsSync(join(output, '404/index.html'))) return `no prerendered 404 page in ${where}`;
+  }
+  if (!existsSync(sitemap)) return 'no sitemap.xml — postbuild:site did not run';
+  if (existsSync(join(root, 'server'))) return 'a server bundle was emitted for a static site';
   return undefined;
 }
 

@@ -144,6 +144,23 @@ async function ask(
       }
     }
 
+    // Only when there is a design system to put the mechanism in, because that
+    // is where the schematic puts it. Asking otherwise would be offering
+    // something the generation then refuses.
+    //
+    // The source locale is not a second question: the schematic takes the first
+    // tag, and asking which of the tags just typed comes first is a question
+    // about the order they were typed in. `--default-locale` is there for the
+    // one person who wants to separate the two.
+    let i18n: string[] | undefined;
+    if (uiLib && (await prompter.confirm('Translate the apps at runtime?', false))) {
+      const answer = await prompter.text('Locales, comma-separated (BCP-47)', 'en');
+      i18n = answer
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag !== '');
+    }
+
     const e2e = (await prompter.confirm('Wire up Playwright end-to-end tests?', true))
       ? ('playwright' as const)
       : false;
@@ -186,6 +203,7 @@ async function ask(
       codegen,
       packages,
       auditLevel,
+      ...(i18n && i18n.length > 0 ? { i18n } : {}),
     };
   } finally {
     prompter.close();

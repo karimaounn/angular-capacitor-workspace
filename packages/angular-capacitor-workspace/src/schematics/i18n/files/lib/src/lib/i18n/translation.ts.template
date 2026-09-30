@@ -1,0 +1,346 @@
+import { DOCUMENT, Injectable, PLATFORM_ID, computed, effect, inject, isDevMode, signal, untracked } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import {
+  DEFAULT_LOCALE,
+  LOCALE_DIRECTION,
+  matchLocale,
+  negotiateLocale,
+  type Direction,
+  type Locale,
+  type TranslationCatalog,
+  type TranslationParams,
+} from './i18n.tokens';
+import { FIXED_LOCALE, TRANSLATION_LOADER } from './translation.loader';
+
+export const LOCALE_KEY = '<%= prefix %>.locale';
+
+// `{name}` — deliberately not `{{name}}`, which would collide with Angular
+// interpolation the moment a message is ever pasted into a template.
+const PLACEHOLDER = /\{(\w+)\}/g;
+
+// `Intl.*` constructors are expensive enough that rebuilding one per call shows
+// up in lists; there are only a handful of locales, so cache them forever.
+const pluralRules = new Map<Locale, Intl.PluralRules>();
+
+function pluralCategory(locale: Locale, count: number): Intl.LDMLPluralRule {
+  let rules = pluralRules.get(locale);
+  if (!rules) {
+    rules = new Intl.PluralRules(locale);
+    pluralRules.set(locale, rules);
+  }
+  return rules.select(count);
+}
+
+/**
+ * Runtime translation and writing direction.
+ *
+ * Runtime rather than `@angular/localize` is deliberate, and it is the whole
+ * reason this file exists. Compile-time i18n emits one bundle per locale, which
+ * for an app that ships inside a Capacitor shell means one binary per language:
+ * `webDir` points at a single directory with a single `index.html`, so there is
+ * nowhere for a second locale to live. Here every locale is in one build and
+ * switches without a reload.
+ *
+ * The shape mirrors `ThemeService` on purpose — signals in, one effect that
+ * syncs the DOM and persists — so the two "global preference" services read the
+ * same way.
+ */
+@Injectable({ providedIn: 'root' })
+export class TranslationService {
+  private readonly document = inject(DOCUMENT);
+  private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  private readonly loader = inject(TRANSLATION_LOADER);
+
+  /**
+   * Set when the build itself is one locale — a prerendered site served from
+   * `/fr/`. It suppresses negotiation and persistence: the URL has already
+   * chosen, and a preference stored from one language's pages must not override
+   * the next.
+   */
+  private readonly fixed = inject(FIXED_LOCALE, { optional: true });
+
+  /** Catalogs resolved so far. Loading is lazy, deduplicated and cached. */
+  private readonly catalogs = signal<Readonly<Partial<Record<Locale, TranslationCatalog>>>>({});
+  private readonly inFlight = new Map<Locale, Promise<void>>();
+  private readonly warned = new Set<string>();
+
+  /** Bumped once per resolved catalog. See `revision`. */
+  private readonly version = signal(0);
+
+  readonly locale = signal<Locale>(DEFAULT_LOCALE);
+
+  readonly direction = computed<Direction>(() => LOCALE_DIRECTION[this.locale()]);
+  readonly isRtl = computed(() => this.direction() === 'rtl');
+
+  /** Messages for the active locale — empty until its catalog resolves. */
+  readonly catalog = computed<TranslationCatalog>(() => this.catalogs()[this.locale()] ?? {});
+
+  /** True once the active locale has messages to render. */
+  readonly loaded = computed(() => this.catalogs()[this.locale()] !== undefined);
+
+  private readonly fallback = computed<TranslationCatalog>(
+    () => this.catalogs()[DEFAULT_LOCALE] ?? {},
+  );
+
+  /**
+   * Changes identity whenever anything `translate()` depends on changes — the
+   * active locale, or a catalog finishing loading. `TranslatePipe` reads it for
+   * two jobs at once: to register its host view as a consumer, which is what
+   * makes a locale switch repaint under zoneless change detection, and as its
+   * own memoisation key.
+   */
+  readonly revision = computed(() => `${this.locale()}#${this.version()}`);
+
+  /** False when the build pinned the locale: there is nothing to switch to. */
+  readonly switchable = this.fixed === null;
+
+  constructor() {
+    if (this.fixed) {
+      this.locale.set(this.fixed);
+    } else if (this.isBrowser) {
+      this.locale.set(this.initialLocale());
+    }
+
+    effect(() => {
+      const locale = this.locale();
+      const root = this.document.documentElement;
+
+      // `lang` drives hyphenation, spell-check, voice selection and font
+      // fallback; `dir` drives every logical property in the stylesheet. Both
+      // belong on <html>, not on a wrapper, or the UA stylesheet and the form
+      // controls keep using the old direction.
+      root.setAttribute('lang', locale);
+      root.setAttribute('dir', LOCALE_DIRECTION[locale]);
+
+      if (this.isBrowser && this.switchable) {
+        this.write(LOCALE_KEY, locale);
+      }
+
+      // untracked: ensureLoaded reads `catalogs`, and without this the effect
+      // would re-run every time a catalog resolves.
+      untracked(() => void this.ensureLoaded(locale));
+    });
+  }
+
+  /**
+   * Switches language in place.
+   *
+   * A no-op when the build pinned the locale: on a per-locale prerendered site
+   * the language lives in the URL, so moving between them is a navigation, not
+   * a signal write. See the locale links in the site's shell.
+   */
+  setLocale(locale: Locale): void {
+    if (!this.switchable) {
+      return;
+    }
+    this.locale.set(locale);
+  }
+
+  /**
+   * Resolves once the active locale can render text, and the fallback locale is
+   * available to cover any key it is missing. `provideTranslations()` wires this
+   * into an app initializer, so the first paint never shows raw message keys.
+   */
+  async ready(): Promise<void> {
+    const locale = untracked(() => this.locale());
+    await Promise.all(
+      locale === DEFAULT_LOCALE
+        ? [this.ensureLoaded(locale)]
+        : [this.ensureLoaded(locale), this.ensureLoaded(DEFAULT_LOCALE)],
+    );
+  }
+
+  /** Fetch a catalog ahead of time, e.g. on hover over a language option. */
+  preload(locale: Locale): Promise<void> {
+    return this.ensureLoaded(locale);
+  }
+
+  /**
+   * Look up `key` and fill in its `{placeholder}`s.
+   *
+   * Pass a numeric `count` param to select a plural form: the lookup then
+   * prefers `key.<category>`, where the category comes from `Intl.PluralRules`
+   * for the ACTIVE locale. That is the whole reason to delegate to `Intl` —
+   * Arabic has six categories (zero/one/two/few/many/other) and a hand-rolled
+   * `count === 1 ? … : …` is simply wrong there.
+   *
+   * A key with no translation returns the key itself, so a missing string shows
+   * up as `cart.checkout` rather than as blank space.
+   */
+  translate(key: string, params?: TranslationParams): string {
+    const message = this.lookup(key, params);
+    if (message === undefined) {
+      this.warnMissing(key);
+      return key;
+    }
+    return params ? this.interpolate(message, params) : message;
+  }
+
+  /**
+   * Locale-aware number formatting. Angular's `DecimalPipe` reads the build-time
+   * `LOCALE_ID`, which cannot follow a runtime switch — so numbers go through
+   * here instead.
+   *
+   * Digits follow CLDR's default numbering system for the tag, which is not
+   * always what people assume: region-less `ar` resolves to Latin digits
+   * (`4.5`), while `ar-EG` resolves to Eastern Arabic ones (`٤٫٥`). Pass
+   * `{ numberingSystem: 'arab' }` to force the latter regardless of region.
+   */
+  formatNumber(value: number, options?: Intl.NumberFormatOptions): string {
+    return new Intl.NumberFormat(this.locale(), options).format(value);
+  }
+
+  /** Locale-aware date formatting. Same reasoning as `formatNumber`. */
+  formatDate(value: Date | number, options?: Intl.DateTimeFormatOptions): string {
+    return new Intl.DateTimeFormat(this.locale(), options).format(value);
+  }
+
+  /** Locale-aware relative time, e.g. `formatRelativeTime(-3, 'day')`. */
+  formatRelativeTime(
+    value: number,
+    unit: Intl.RelativeTimeFormatUnit,
+    options?: Intl.RelativeTimeFormatOptions,
+  ): string {
+    return new Intl.RelativeTimeFormat(this.locale(), options).format(value, unit);
+  }
+
+  /**
+   * Where the initial locale comes from, in order:
+   *   1. an explicit past choice (localStorage)
+   *   2. the browser's language preferences
+   *   3. DEFAULT_LOCALE
+   *
+   * Mirrored by the no-FOUC script in the app's `index.html`, which has to make
+   * the same decision before Angular boots so `dir` is right on the first paint.
+   * Change one, change the other.
+   */
+  private initialLocale(): Locale {
+    // Through `matchLocale` rather than a bare equality check, so a stored
+    // value that is stale, hand-edited or differently cased — `pt-br`, `en-US`
+    // — resolves to the locale it means instead of falling through to
+    // negotiation.
+    const stored = matchLocale(this.read(LOCALE_KEY));
+    if (stored) {
+      return stored;
+    }
+    const view = this.document.defaultView;
+    const preferred = view?.navigator.languages ?? (view ? [view.navigator.language] : undefined);
+    return negotiateLocale(preferred) ?? DEFAULT_LOCALE;
+  }
+
+  private lookup(key: string, params?: TranslationParams): string | undefined {
+    const active = this.catalog();
+    const count = params?.['count'];
+    const plural = typeof count === 'number';
+
+    if (plural) {
+      const match = this.selectPlural(active, key, this.locale(), count);
+      if (match !== undefined) {
+        return match;
+      }
+    }
+    if (active[key] !== undefined) {
+      return active[key];
+    }
+
+    // Fall back to the source locale: a key the translator has not covered yet
+    // renders in <%= defaultLabel %> rather than leaking a dotted key into the UI.
+    const fallback = this.fallback();
+    if (plural) {
+      const match = this.selectPlural(fallback, key, DEFAULT_LOCALE, count);
+      if (match !== undefined) {
+        return match;
+      }
+    }
+    return fallback[key];
+  }
+
+  private selectPlural(
+    catalog: TranslationCatalog,
+    key: string,
+    locale: Locale,
+    count: number,
+  ): string | undefined {
+    const category = pluralCategory(locale, count);
+    // `.other` is the required form in every locale, so it is the safety net
+    // when a translator has only filled in some of the categories.
+    return catalog[`${key}.${category}`] ?? catalog[`${key}.other`];
+  }
+
+  private interpolate(message: string, params: TranslationParams): string {
+    return message.replace(PLACEHOLDER, (slot, name: string) => {
+      const value = params[name];
+      // Leave the slot visible when a param is missing: a hole in a sentence is
+      // a bug worth seeing, and silently blanking it hides it.
+      if (value === undefined) {
+        return slot;
+      }
+      return typeof value === 'number' ? this.formatNumber(value) : value;
+    });
+  }
+
+  private ensureLoaded(locale: Locale): Promise<void> {
+    if (untracked(() => this.catalogs())[locale] !== undefined) {
+      return Promise.resolve();
+    }
+
+    const existing = this.inFlight.get(locale);
+    if (existing) {
+      return existing;
+    }
+
+    const request = Promise.resolve()
+      .then(() => this.loader(locale))
+      .then((catalog) => {
+        this.catalogs.update((all) => ({ ...all, [locale]: catalog }));
+        this.version.update((value) => value + 1);
+      })
+      .catch((error: unknown) => {
+        // A catalog that fails to load must not take the app down. Keys render
+        // as themselves, or in the fallback locale, and because the entry is
+        // dropped from `inFlight` the next switch to this locale retries.
+        console.error(`[i18n] failed to load the "${locale}" catalog`, error);
+      })
+      .finally(() => {
+        this.inFlight.delete(locale);
+      });
+
+    this.inFlight.set(locale, request);
+    return request;
+  }
+
+  private warnMissing(key: string): void {
+    if (!isDevMode()) {
+      return;
+    }
+    // Deduplicated per locale+key: an untranslated label inside an `@for` would
+    // otherwise log once per row and drown the console.
+    const id = `${this.locale()}:${key}`;
+    if (this.warned.has(id)) {
+      return;
+    }
+    this.warned.add(id);
+    console.warn(`[i18n] missing translation "${key}" for locale "${this.locale()}"`);
+  }
+
+  /**
+   * Storage access, which throws rather than returning null in a Safari private
+   * window and wherever site data is blocked. A language preference is a
+   * convenience; failing to save one must never take the page down with it.
+   */
+  private read(key: string): string | null {
+    try {
+      return this.document.defaultView?.localStorage.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private write(key: string, value: string): void {
+    try {
+      this.document.defaultView?.localStorage.setItem(key, value);
+    } catch {
+      // Ignored on purpose. See read().
+    }
+  }
+}
