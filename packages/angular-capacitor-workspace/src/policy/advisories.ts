@@ -31,19 +31,23 @@ export const POLICY: Policy = {
         '@angular-devkit/architect',
         '@angular-devkit/core',
       ],
-      advisories: ['GHSA-w5hq-g745-h8pq'],
       reason:
-        'Drags webpack-dev-server -> sockjs -> uuid@8, which npm reports as ' +
-        'unfixable (fixAvailable: false at every node). Angular 22 does not ' +
-        'install it: `ng new` plus `ng generate application` yields only ' +
-        '@angular/build, and every builder emitted by this generator is an ' +
-        '@angular/build:* builder. Verified 2026-09-19: a generated workspace ' +
-        'without Storybook audits clean with these absent.',
+        'Angular 22 does not install it: `ng new` plus `ng generate ' +
+        'application` yields only @angular/build, and every builder emitted by ' +
+        'this generator is an @angular/build:* builder. Verified 2026-09-19: a ' +
+        'generated workspace without Storybook audits clean with these absent. ' +
+        'This rule once also carried GHSA-w5hq-g745-h8pq, via ' +
+        'webpack-dev-server -> sockjs -> uuid@8; devkit 22.2 moved to ' +
+        'webpack-dev-server 6, which dropped sockjs, so that chain is gone and ' +
+        'the advisory no longer reaches a generated workspace this way. The ' +
+        'rule stands on the paragraph above, which was never about an advisory.',
       // Storybook 10.6 declares @angular-devkit/build-angular, /core and
       // /architect as REQUIRED peers (peerDependenciesMeta marks only zone.js,
       // @angular/cli and @angular/animations optional). npm reinstalls them as
       // peers no matter what we delete, so with Storybook on, pruning is not
-      // available and the ladder escalates to the Tier 2 override below.
+      // available. That used to escalate to a Tier 2 override on sockjs; since
+      // webpack-dev-server 6 dropped sockjs there is nothing left to escalate
+      // to, and the devkit subtree is clean on its own.
       unlessUsing: ['storybook', '@angular-devkit/build-angular:*'],
     },
     {
@@ -85,18 +89,6 @@ export const POLICY: Policy = {
    */
   overrides: [
     {
-      spec: { sockjs: { uuid: '^11.1.1' } },
-      advisories: ['GHSA-w5hq-g745-h8pq'],
-      reason:
-        'Storybook -> @angular-devkit/build-angular -> @angular-devkit/build-webpack ' +
-        '-> webpack-dev-server -> sockjs -> uuid@8.3.2. uuid has no patched 8.x, ' +
-        'so npm reports the whole chain unfixable; sockjs only uses uuid for ' +
-        'session ids, which is API-compatible across the major. Verified ' +
-        '2026-09-19: this single override takes the Storybook row from 7 ' +
-        'moderate advisories to 0.',
-      onlyWhen: ['storybook'],
-    },
-    {
       spec: { '@storybook/builder-webpack5': { 'webpack-dev-middleware': '^7.4.6' } },
       advisories: ['GHSA-g84c-rxfj-3j2c'],
       reason:
@@ -127,22 +119,31 @@ export const POLICY: Policy = {
       onlyWhen: ['mobile'],
     },
     {
-      spec: { '@scalar/json-magic': { undici: '^7.29.0' } },
+      spec: { '@scalar/json-magic': { undici: '^7.29.1' } },
       advisories: [
-        'GHSA-vmh5-mc38-953g',
-        'GHSA-vxpw-j846-p89q',
-        'GHSA-hm92-r4w5-c3mj',
-        'GHSA-jr45-8vmc-qm54',
-        'GHSA-v3r7-h72x-cjcm',
+        'GHSA-rfgv-xxqx-mfg5',
+        'GHSA-w293-vg96-wgc3',
+        'GHSA-3wwx-pv8p-q78v',
+        'GHSA-pmjh-fq2x-6v4x',
+        'GHSA-3xpg-4rpp-hhhm',
+        'GHSA-2jfj-6hjv-fm6j',
+        'GHSA-rx4f-c7p8-82vq',
       ],
       reason:
-        'orval -> @scalar/openapi-parser -> @scalar/json-magic -> undici@7.x, ' +
-        'which carries five advisories including a TLS certificate validation ' +
-        'bypass. Fixed across the set by 7.29.0; @scalar/json-magic has not ' +
-        'moved its range. undici is only reached when generating a client from ' +
-        'a remote spec, but the codegen step runs in CI on every build, so a ' +
-        'certificate bypass there is not hypothetical. Verified 2026-09-19: ' +
-        'takes the codegen row from 10 advisories to 0.',
+        'orval -> @scalar/openapi-parser -> @scalar/json-magic -> undici@7.x. ' +
+        'undici is only reached when generating a client from a remote spec, ' +
+        'but the codegen step runs in CI on every build, so a certificate ' +
+        'bypass there is not hypothetical. The original five advisories this ' +
+        'entry named were fixed by 7.29.0 and @scalar/json-magic has since ' +
+        'pinned exactly that — but seven further advisories have landed against ' +
+        'undici, two of them high (a TLS validation bypass via dropped ' +
+        'BalancedPool connect options, and a WebSocket subprotocol DoS), all ' +
+        'fixed in 7.29.1. So upstream now pins precisely the version that is ' +
+        'vulnerable, and this override is what floats the tree past it. Pinned ' +
+        '^7.29.1 rather than ^7.29.0: a caret is not a floor, and the older ' +
+        'range still permitted the exact version upstream had settled on. ' +
+        'Verified 2026-09-30: removing this entry reproduces all seven; with it ' +
+        'the codegen row is clean.',
       onlyWhen: ['codegen'],
     },
   ],
