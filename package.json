@@ -33,10 +33,5 @@
   },
   "allowScripts": {
     "esbuild": true
-  },
-  "overrides": {
-    "sockjs": {
-      "uuid": "^11.1.1"
-    }
   }
 }

@@ -143,7 +143,12 @@ export const POLICY: Policy = {
         '^7.29.1 rather than ^7.29.0: a caret is not a floor, and the older ' +
         'range still permitted the exact version upstream had settled on. ' +
         'Verified 2026-09-30: removing this entry reproduces all seven; with it ' +
-        'the codegen row is clean.',
+        'the codegen row is clean. Since 2026-10-02 @scalar/json-magic 0.15.4 ' +
+        'pins 7.29.1 itself, so a fresh resolve is clean without this entry ' +
+        '(verified 2026-10-03: orval 8.39.0 alone audits clean). It stays for ' +
+        'workspaces whose lockfile still holds json-magic 0.15.3 and its ' +
+        '7.29.0, which `doctor --fix` reaches and a fresh install does not; ' +
+        'drop it once 0.15.3 is old enough not to matter.',
       onlyWhen: ['codegen'],
     },
   ],
