@@ -11,6 +11,9 @@ e2e-report.json
 # the workflow can test for it with hashFiles.
 issue.md
 
+# Tarballs packed by `npm run create`; generated workspaces point at them.
+.local/
+
 .DS_Store
 *.log
 npm-debug.log*

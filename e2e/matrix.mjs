@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { classify, summarise } from './deprecations.mjs';
 import { ROWS } from './rows.mjs';
+import { packSelf } from '../scripts/pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
@@ -53,7 +54,9 @@ const selected = values.row?.length ? values.row : Object.keys(ROWS);
 // packs the local build and points the generated workspace at the tarball. This
 // is the difference between testing what ships and testing something adjacent
 // to it.
-const selfSpec = packSelf();
+const packed = packSelf(mkdtempSync(join(tmpdir(), 'acw-pack-')));
+console.log(`packed ${packed.filename}`);
+const selfSpec = `file:${packed.path}`;
 const results = [];
 
 for (const rowName of selected) {
@@ -162,27 +165,6 @@ function directDependencies(directory) {
       ...Object.keys(pkg.optionalDependencies ?? {}),
     ]),
   ].sort();
-}
-
-/** `npm pack` the schematics package and return a `file:` spec for the tarball. */
-function packSelf() {
-  const packDir = mkdtempSync(join(tmpdir(), 'acw-pack-'));
-  const pkgDir = join(repoRoot, 'packages/angular-capacitor-workspace');
-
-  const result = spawnSync('npm', ['pack', '--pack-destination', packDir, '--json'], {
-    cwd: pkgDir,
-    encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
-  });
-
-  if (result.status !== 0) {
-    console.error(`npm pack failed:\n${result.stderr}`);
-    process.exit(2);
-  }
-
-  const { filename } = packResult(result.stdout);
-  console.log(`packed ${filename}`);
-  return `file:${join(packDir, filename)}`;
 }
 
 function runRow(name, row) {
@@ -396,23 +378,4 @@ function indent(text, spaces) {
 function firstError(output) {
   const line = output.split('\n').find((candidate) => /error|failed|cannot find/i.test(candidate));
   return line?.trim().slice(0, 160) ?? 'see output above';
-}
-
-/**
- * `npm pack --json` reports one entry per packed tarball, but the envelope
- * changed shape: npm <= 11 emits an array, npm >= 12 an object keyed by package
- * name. CI pins Node 24 (npm 11) while a contributor on current Node runs npm
- * 12, so the script has to read both or it breaks on whichever it was not
- * written against.
- */
-function packResult(stdout) {
-  const parsed = JSON.parse(stdout);
-  const [entry] = Array.isArray(parsed) ? parsed : Object.values(parsed);
-
-  if (!entry?.filename) {
-    console.error(`npm pack --json returned no tarball:\n${stdout}`);
-    process.exit(2);
-  }
-
-  return entry;
 }

@@ -20,6 +20,16 @@ npm test                # unit + schematic tests (builds first)
 not in the root `allowScripts`. If a dependency you add needs one, add it there
 in the same change and say why.
 
+To try a change in a real workspace, generate one from the checkout:
+
+```bash
+npm run create -- ../my-workspace    # same flags as npm create; asks when given none
+```
+
+It builds, packs the schematics package into `.local/`, and points the
+workspace at that tarball, so nothing needs publishing. The workspace keeps
+working only while its tarball does: deleting `.local/` means regenerating.
+
 ## Before opening a pull request
 
 ```bash

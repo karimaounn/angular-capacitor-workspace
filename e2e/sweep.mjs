@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { ROWS } from './rows.mjs';
+import { packSelf } from '../scripts/pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
@@ -36,7 +37,7 @@ const { values } = parseArgs({
 
 // See matrix.mjs: a generated workspace depends on this package, which does not
 // exist on the registry until it is published.
-const selfSpec = packSelf();
+const selfSpec = `file:${packSelf(mkdtempSync(join(tmpdir(), 'acw-sweep-pack-'))).path}`;
 const findings = [];
 
 for (const [name, { args }] of Object.entries(ROWS)) {
@@ -172,41 +173,4 @@ function renderIssue(findings) {
 
 function tail(text, lines) {
   return text.trimEnd().split('\n').slice(-lines).join('\n');
-}
-
-/** `npm pack` the schematics package and return a `file:` spec for the tarball. */
-function packSelf() {
-  const packDir = mkdtempSync(join(tmpdir(), 'acw-sweep-pack-'));
-  const result = spawnSync('npm', ['pack', '--pack-destination', packDir, '--json'], {
-    cwd: join(repoRoot, 'packages/angular-capacitor-workspace'),
-    encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
-  });
-
-  if (result.status !== 0) {
-    console.error(`npm pack failed:\n${result.stderr}`);
-    process.exit(2);
-  }
-
-  const { filename } = packResult(result.stdout);
-  return `file:${join(packDir, filename)}`;
-}
-
-/**
- * `npm pack --json` reports one entry per packed tarball, but the envelope
- * changed shape: npm <= 11 emits an array, npm >= 12 an object keyed by package
- * name. CI pins Node 24 (npm 11) while a contributor on current Node runs npm
- * 12, so the script has to read both or it breaks on whichever it was not
- * written against.
- */
-function packResult(stdout) {
-  const parsed = JSON.parse(stdout);
-  const [entry] = Array.isArray(parsed) ? parsed : Object.values(parsed);
-
-  if (!entry?.filename) {
-    console.error(`npm pack --json returned no tarball:\n${stdout}`);
-    process.exit(2);
-  }
-
-  return entry;
 }

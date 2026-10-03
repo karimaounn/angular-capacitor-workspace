@@ -17,6 +17,7 @@
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b packages/angular-capacitor-workspace packages/create-angular-capacitor-workspace --pretty",
+    "create": "node scripts/create-local.mjs",
     "e2e": "node e2e/matrix.mjs",
     "e2e:minimal": "node e2e/matrix.mjs --row minimal",
     "sweep": "node e2e/sweep.mjs",
