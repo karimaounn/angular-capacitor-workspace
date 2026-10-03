@@ -21,29 +21,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { ROWS } from './rows.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
 const cliBin = join(repoRoot, 'packages/angular-capacitor-workspace/dist/cli/index.js');
-
-const ROWS = {
-  minimal: ['--app', 'app'],
-  full: [
-    '--app',
-    'shop',
-    '--mobile',
-    'android',
-    '--marketing',
-    'site',
-    '--ui-lib',
-    'ui',
-    '--codegen',
-    'orval',
-    '--e2e',
-    'playwright',
-  ],
-  'lib-only': ['--ui-lib', 'ui'],
-};
 
 const { values } = parseArgs({
   options: {
@@ -57,7 +39,7 @@ const { values } = parseArgs({
 const selfSpec = packSelf();
 const findings = [];
 
-for (const [name, args] of Object.entries(ROWS)) {
+for (const [name, { args }] of Object.entries(ROWS)) {
   process.stdout.write(`sweeping ${name} … `);
   const workdir = mkdtempSync(join(tmpdir(), `acw-sweep-${name}-`));
   const target = join(workdir, name);

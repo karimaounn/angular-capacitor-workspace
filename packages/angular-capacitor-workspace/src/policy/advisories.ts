@@ -16,7 +16,7 @@ import { VERSIONS } from './versions';
  * unverified remedy is indistinguishable from a superstition six months later.
  */
 export const POLICY: Policy = {
-  reviewed: '2026-09-30',
+  reviewed: '2026-10-03',
 
   /**
    * Tier 1 — never installed.
@@ -193,7 +193,27 @@ export const POLICY: Policy = {
    * `until` is enforced, not advisory: an expired entry fails generation and
    * fails `audit`. Empty is the correct state, and it should stay empty.
    */
-  accepted: [],
+  accepted: [
+    {
+      id: 'GHSA-vfj7-8cjw-p6xm',
+      packages: ['braces'],
+      reason:
+        '@angular-devkit/build-angular -> [webpack-dev-server ->] ' +
+        'http-proxy-middleware -> micromatch -> braces. A deeply nested brace ' +
+        'pattern overflows the stack in braces <= 3.0.3, and 3.0.3 is the latest ' +
+        'release: there is no fixed version to pin, and no override reaches ' +
+        'one — micromatch 4.0.8 (latest) needs braces ^3.0.3 and ' +
+        'http-proxy-middleware 4.2.0 (latest) still uses micromatch. The chain ' +
+        'exists only where Storybook forces the devkit peer (see the prune rule ' +
+        'above), and it lives in the dev server proxy, which matches patterns ' +
+        "from the developer's own proxy config, never from a request. Nothing " +
+        'here reaches production output. Verified 2026-10-03: the `full`, ' +
+        '`multi-app` and `lib-only` rows each report exactly this one advisory. ' +
+        'Revisit when braces publishes a fix.',
+      until: '2027-04-03',
+      devOnly: true,
+    },
+  ],
 
   /**
    * The npm >= 11.6 lifecycle-script allowlist, emitted as `allowScripts`.
