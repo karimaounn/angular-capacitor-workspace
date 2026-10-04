@@ -38,8 +38,17 @@ const POLICY: Policy = {
   overrides: [{ spec: { sockjs: { uuid: '^11.1.1' } }, reason: 'test', onlyWhen: ['storybook'] }],
   floors: [{ package: 'vitest', min: '4.1.11', range: '^4.1.11', reason: 'test' }],
   accepted: [],
+  retired: [{ spec: { 'old-parent': { child: '^2.0.0' } }, lastShipped: '22.0.0', reason: 'test' }],
   allowScripts: { esbuild: true },
 };
+
+/** A lockfile listing these packages, at whatever depth the path gives. */
+function writeLockfile(...paths: string[]): void {
+  write('package-lock.json', {
+    lockfileVersion: 3,
+    packages: Object.fromEntries([['', { name: 'ws' }], ...paths.map((path) => [path, {}])]),
+  });
+}
 
 describe('inferFeatures', () => {
   it('does not claim animations are used when nothing imports them', () => {
@@ -92,6 +101,17 @@ describe('inferFeatures', () => {
     expect(features).toContain('mobile:android');
   });
 
+  it('detects a Capacitor shell beside the web app, where the generator puts it', () => {
+    // The root manifest declares no Capacitor package: they belong to the
+    // shell, which is a workspace member of its own.
+    write('angular.json', {
+      projects: { shop: { projectType: 'application', root: 'projects/shop/web' } },
+    });
+    writeText('projects/shop/mobile/capacitor.config.ts', 'export default {};\n');
+
+    expect(inferFeatures(cwd, {})).toContain('mobile');
+  });
+
   it('detects a catalog package from the manifest, which is the only witness', () => {
     // Unlike the animations guard above, nothing prunes a package the user
     // asked for by name, so reading the dependency entry is not circular here.
@@ -125,6 +145,22 @@ describe('diagnose', () => {
     const { drifts } = diagnose(cwd, POLICY);
 
     expect(drifts).toContainEqual(expect.objectContaining({ tier: 'override', kind: 'missing' }));
+  });
+
+  it('reports and fixes an override the policy has since raised', () => {
+    write('package.json', {
+      name: 'ws',
+      devDependencies: { storybook: '^10.6.0' },
+      overrides: { sockjs: { uuid: '^8.3.2' } },
+    });
+
+    const diagnosis = diagnose(cwd, POLICY);
+    expect(diagnosis.drifts).toContainEqual(
+      expect.objectContaining({ tier: 'override', kind: 'stale' }),
+    );
+
+    applyFix(diagnosis);
+    expect(readManifest()['overrides']).toEqual({ sockjs: { uuid: '^11.1.1' } });
   });
 
   it('reports a dependency the policy prunes for this feature set', () => {
@@ -176,6 +212,66 @@ describe('diagnose', () => {
     });
 
     expect(diagnose(cwd, POLICY).drifts).toHaveLength(0);
+  });
+});
+
+describe('diagnose — overrides that pin nothing', () => {
+  const retired = { 'old-parent': { child: '^2.0.0' } };
+  const overrideDrifts = () => diagnose(cwd, POLICY).drifts.filter((d) => d.tier === 'override');
+
+  it('removes a retired override whose parent has left the lockfile', () => {
+    write('package.json', { name: 'ws', overrides: { ...retired, mine: { x: '^1.0.0' } } });
+    writeLockfile('node_modules/mine');
+
+    const diagnosis = diagnose(cwd, POLICY);
+    expect(diagnosis.drifts).toContainEqual(
+      expect.objectContaining({ tier: 'override', kind: 'unnecessary', expected: '(removed)' }),
+    );
+
+    applyFix(diagnosis);
+    // The user's own override is not the generator's to judge.
+    expect(readManifest()['overrides']).toEqual({ mine: { x: '^1.0.0' } });
+  });
+
+  it('keeps it while any copy of the parent is in the lockfile', () => {
+    // Nested, not hoisted: node_modules alone would miss it.
+    write('package.json', { name: 'ws', overrides: retired });
+    writeLockfile('node_modules/a/node_modules/old-parent');
+
+    expect(overrideDrifts()).toHaveLength(0);
+  });
+
+  it('keeps one that differs from what was released', () => {
+    write('package.json', { name: 'ws', overrides: { 'old-parent': { child: '^3.0.0' } } });
+    writeLockfile();
+
+    expect(overrideDrifts()).toHaveLength(0);
+  });
+
+  it('decides nothing without a lockfile', () => {
+    write('package.json', { name: 'ws', overrides: retired });
+
+    expect(overrideDrifts()).toHaveLength(0);
+  });
+
+  it('removes a live override whose scope the workspace has left', () => {
+    // The sockjs rule is onlyWhen storybook, and this workspace has none.
+    write('package.json', { name: 'ws', overrides: { sockjs: { uuid: '^11.1.1' } } });
+    writeLockfile();
+
+    applyFix(diagnose(cwd, POLICY));
+    expect(readManifest()['overrides']).toBeUndefined();
+  });
+
+  it('keeps a live override while its scope holds, parent or not', () => {
+    write('package.json', {
+      name: 'ws',
+      devDependencies: { storybook: '^10.6.0' },
+      overrides: { sockjs: { uuid: '^11.1.1' } },
+    });
+    writeLockfile();
+
+    expect(overrideDrifts()).toHaveLength(0);
   });
 });
 

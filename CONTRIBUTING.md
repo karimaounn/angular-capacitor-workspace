@@ -65,6 +65,8 @@ ready-to-paste entry at the tier it recommends. Start from that.
   without redoing the investigation.
 - Tier 4 (accept) entries need a review date. The build fails once that date
   has passed.
+- Dropping an override that has shipped in a release? Move it to `retired`,
+  exactly as released, so `doctor --fix` can clear it from existing workspaces.
 
 `npm run sweep` audits every matrix row against today's advisories, which is
 the quickest way to check that a patch works everywhere it should.

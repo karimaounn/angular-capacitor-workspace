@@ -88,6 +88,21 @@ export interface AcceptedAdvisory {
   devOnly?: boolean;
 }
 
+/**
+ * An override a release wrote that the policy no longer does.
+ *
+ * Generation never reads these. They exist for `doctor`, which otherwise sees
+ * only what the policy wants now and would leave the old pin in every workspace
+ * that has one.
+ */
+export interface RetiredOverride {
+  /** The override exactly as released. `doctor` removes only an exact match. */
+  spec: Record<string, OverrideSpec>;
+  /** The last release that wrote it. Documentation only. */
+  lastShipped: string;
+  reason: string;
+}
+
 export interface Policy {
   /** Date the whole file was last reviewed against the registry, `YYYY-MM-DD`. */
   reviewed: string;
@@ -95,6 +110,7 @@ export interface Policy {
   overrides: OverrideRule[];
   floors: FloorRule[];
   accepted: AcceptedAdvisory[];
+  retired: RetiredOverride[];
   /**
    * npm >= 11.6 lifecycle-script allowlist, emitted as the `allowScripts` field
    * of the generated `package.json`. Everything absent is blocked at install.

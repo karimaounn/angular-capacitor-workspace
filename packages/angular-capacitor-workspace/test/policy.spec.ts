@@ -23,6 +23,7 @@ const EMPTY: Policy = {
   overrides: [],
   floors: [],
   accepted: [],
+  retired: [],
   allowScripts: {},
 };
 
@@ -120,6 +121,28 @@ describe('override', () => {
 
     expect(() => applyPolicy({}, ctx(), policy)).toThrow(PolicyError);
     expect(() => applyPolicy({}, ctx(), policy)).toThrow(/Conflicting overrides/);
+  });
+
+  it('raises a pin the manifest already has, rather than calling it a conflict', () => {
+    // A workspace written by a release with the older pin. Only two rules can
+    // conflict; what is on disk is what the policy is there to correct.
+    const policy: Policy = {
+      ...EMPTY,
+      overrides: [{ spec: { '@scalar/json-magic': { undici: '^7.29.1' } }, reason: 'a' }],
+    };
+
+    const { manifest } = applyPolicy(
+      {
+        overrides: { '@scalar/json-magic': { undici: '^7.29.0', other: '^1.0.0' }, mine: '^2.0.0' },
+      },
+      ctx(),
+      policy,
+    );
+
+    expect(manifest.overrides).toEqual({
+      '@scalar/json-magic': { undici: '^7.29.1', other: '^1.0.0' },
+      mine: '^2.0.0',
+    });
   });
 });
 
@@ -362,6 +385,14 @@ describe('the shipped policy', () => {
     // one is skipped — expiry included — by a run its guards do not match.
     const features = new Set(POLICY.accepted.flatMap((entry) => entry.onlyWhen ?? []));
     expect(() => applyPolicy({}, ctx({ features }), POLICY)).not.toThrow();
+  });
+
+  it('retires no override it still writes', () => {
+    // doctor skips a retired entry wherever a live rule owns the same parent,
+    // so an overlap would make the retirement silently do nothing.
+    const live = new Set(POLICY.overrides.flatMap((rule) => Object.keys(rule.spec)));
+    const retired = POLICY.retired.flatMap((entry) => Object.keys(entry.spec));
+    expect(retired.filter((name) => live.has(name))).toEqual([]);
   });
 
   it('scopes the braces acceptance to the webpack Storybook framework', () => {

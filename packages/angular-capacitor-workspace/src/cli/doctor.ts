@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { installedCatalogIds, packageFeature } from '../catalog';
 import { POLICY } from '../policy/advisories';
 import { applyPolicy, type Manifest } from '../policy/apply';
+import { anySatisfied } from '../policy/guards';
 import type { Policy, PolicyContext, Tier } from '../policy/types';
 import { bold, cyan, dim, green, MARK, red, yellow } from '../style';
 
@@ -94,9 +95,11 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
     }
 
     // A Capacitor sibling is the other reliable mobile tell, for a workspace
-    // where the deps were hoisted into the member package rather than the root.
+    // where the deps were hoisted into the member package rather than the root
+    // — which is every generated one. A sibling, not a child: the app's root
+    // is projects/<app>/web, and the shell is projects/<app>/mobile.
     const root = project.root ?? '';
-    if (root && existsSync(join(cwd, root, 'mobile', 'capacitor.config.ts'))) {
+    if (root && existsSync(join(cwd, dirname(root), 'mobile', 'capacitor.config.ts'))) {
       features.add('mobile');
     }
     void projectName;
@@ -253,6 +256,41 @@ export function diagnose(cwd: string, policy: Policy = POLICY): Diagnosis {
     }
   }
 
+  // Overrides this generator wrote that pin nothing any more: retired ones, and
+  // live ones whose `onlyWhen` this workspace has left. Removed only on proof —
+  // an exact match to what was written, and no copy of the parent anywhere in
+  // the lockfile. A parent still in the tree keeps its pin.
+  const locked = lockedPackages(cwd);
+  if (locked !== undefined) {
+    const inScope = policy.overrides.filter((rule) => anySatisfied(rule.onlyWhen, ctx));
+    const live = new Set(inScope.flatMap((rule) => Object.keys(rule.spec)));
+    const written = [
+      ...policy.retired.map((entry) => entry.spec),
+      ...policy.overrides.filter((rule) => !inScope.includes(rule)).map((rule) => rule.spec),
+    ];
+    for (const spec of written) {
+      for (const [name, value] of Object.entries(spec)) {
+        const current = manifest.overrides?.[name];
+        if (current === undefined || live.has(name) || locked.has(name)) continue;
+        if (JSON.stringify(current) !== JSON.stringify(value)) continue;
+
+        drifts.push({
+          tier: 'override',
+          kind: 'unnecessary',
+          actual: `overrides.${name} = ${JSON.stringify(current)}`,
+          expected: '(removed)',
+          description:
+            `${name} is not in the lockfile, so the override this generator ` +
+            `wrote under it pins nothing.`,
+        });
+        delete desired.overrides?.[name];
+        if (desired.overrides && Object.keys(desired.overrides).length === 0) {
+          delete desired.overrides;
+        }
+      }
+    }
+  }
+
   // allowScripts entries the policy has added since this workspace was made.
   for (const [name, allowed] of Object.entries(desired.allowScripts ?? {})) {
     if (manifest.allowScripts?.[name] !== allowed) {
@@ -306,6 +344,25 @@ function installedPackages(cwd: string): Set<string> | undefined {
     } else if (!entry.name.startsWith('.')) {
       names.add(entry.name);
     }
+  }
+  return names;
+}
+
+/**
+ * Package names anywhere in the lockfile, or `undefined` without one.
+ *
+ * The lockfile rather than node_modules: a nested copy is as much in the tree
+ * as a hoisted one, and only the lockfile lists both.
+ */
+function lockedPackages(cwd: string): Set<string> | undefined {
+  const lock = readJsonIfPresent(join(cwd, 'package-lock.json')) as
+    { packages?: Record<string, unknown> } | undefined;
+  if (lock?.packages === undefined) return undefined;
+
+  const names = new Set<string>();
+  for (const key of Object.keys(lock.packages)) {
+    const at = key.lastIndexOf('node_modules/');
+    if (at !== -1) names.add(key.slice(at + 'node_modules/'.length));
   }
   return names;
 }

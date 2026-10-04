@@ -92,8 +92,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   accepted `braces` advisory on the webpack framework's builders in
   `angular.json` rather than on Storybook being present, so `doctor` changes
   nothing there. Once a workspace moves to the Vite builders, `doctor --fix`
-  removes `build-angular`; the override it no longer needs is left in place,
-  inert, since `doctor` never removes an override.
+  removes `build-angular`, and the `webpack-dev-middleware` override too once
+  `builder-webpack5` has left the lockfile.
 
   Tier 4 entries take `onlyWhen`, as overrides and floors do, and the `braces`
   acceptance uses it. An expired acceptance fails every run, so unscoped it would
@@ -113,6 +113,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   option's description read as the description continuing; two of them would
   have read as prose. The summaries still line up with every other description
   in the help, with the bullet hanging into the gutter to their left.
+
+### Fixed
+
+- **`doctor` crashed on any workspace whose override the policy had raised.**
+  The policy's pins were merged into the workspace's own overrides as if they
+  were one more rule, so `undici ^7.29.0` on disk against `^7.29.1` in the
+  policy threw "Two policy rules disagree" — every 22.x workspace with
+  `--codegen`, today. Rules are now merged among themselves, where a conflict
+  is still an error, and then written over what is on disk, which is what
+  `doctor --fix` reports and applies as a stale override.
+
+- **`doctor` removes overrides a release wrote and the policy has dropped.** It
+  used to see only what the policy wants now, so `sockjs > uuid`, written into
+  every Storybook workspace up to 22.4.0, stayed for good. A new `retired` list
+  in the policy names it, and `doctor --fix` takes it out — and any live
+  override whose `onlyWhen` the workspace has left — only on an exact match and
+  only when the parent package is absent from the lockfile. Overrides you wrote
+  are never touched.
+
+- **`doctor` did not recognise a generated mobile app.** It looked for the
+  Capacitor shell inside the web project's root rather than beside it, so a
+  workspace whose Capacitor packages live in the shell's own manifest — every
+  generated one — was not `mobile`, and the `xcode > uuid` override could not
+  be restored if lost.
 
 ## [22.4.0] — 2026-09-24
 

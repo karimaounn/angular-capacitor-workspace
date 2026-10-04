@@ -244,6 +244,30 @@ export const POLICY: Policy = {
   ],
 
   /**
+   * Overrides a release wrote and the policy no longer does.
+   *
+   * When an override leaves the list above and has shipped, it moves here, so
+   * `doctor --fix` can take it out of the workspaces that have it. It does so
+   * only where it can show the pin does nothing: an exact match to what was
+   * released, and its parent package absent from the lockfile. A parent still
+   * in the tree keeps its pin, because there the pin may still be holding.
+   * Live overrides whose `onlyWhen` no longer holds are removed on the same
+   * terms, and need no entry here.
+   */
+  retired: [
+    {
+      spec: { sockjs: { uuid: '^11.1.1' } },
+      lastShipped: '22.4.0',
+      reason:
+        'GHSA-w5hq-g745-h8pq via @angular-devkit/build-angular -> ' +
+        'webpack-dev-server 5 -> sockjs -> uuid@8, written into every Storybook ' +
+        'workspace from 22.0.0. build-angular 22.2 moved to webpack-dev-server ' +
+        '6, which dropped sockjs, so a lockfile past 22.1 has nothing for it to ' +
+        'pin. One still on 22.1 has sockjs, and keeps the override.',
+    },
+  ],
+
+  /**
    * The npm >= 11.6 lifecycle-script allowlist, emitted as `allowScripts`.
    *
    * An allowlist, not a denylist. The default posture for a generated project

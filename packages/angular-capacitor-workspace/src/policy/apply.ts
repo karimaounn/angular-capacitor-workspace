@@ -65,6 +65,24 @@ function mergeOverride(
 }
 
 /**
+ * Writes the policy's pins over a manifest's overrides. Where the two disagree
+ * the policy wins; anything the policy does not pin is left as it was.
+ */
+function overlayOverride(
+  into: Record<string, OverrideSpec>,
+  from: Record<string, OverrideSpec>,
+): void {
+  for (const [key, incoming] of Object.entries(from)) {
+    const existing = into[key];
+    if (typeof existing === 'object' && typeof incoming === 'object') {
+      overlayOverride(existing, incoming);
+    } else {
+      into[key] = structuredClone(incoming);
+    }
+  }
+}
+
+/**
  * Raises a dependency range to a floor when the current one permits something
  * below it.
  *
@@ -183,6 +201,11 @@ export function applyPolicy(
   }
 
   // ── Tier 2: override ────────────────────────────────────────────────────
+  // The rules are merged among themselves first, so two that disagree still
+  // throw. The result then replaces what the manifest has at the same paths:
+  // a workspace written with an older pin is not a second rule, and treating
+  // it as one made raising a pin crash `doctor` instead of reaching it.
+  const pinned: Record<string, OverrideSpec> = {};
   for (const rule of policy.overrides) {
     if (!anySatisfied(rule.onlyWhen, ctx)) {
       decisions.push({
@@ -194,14 +217,17 @@ export function applyPolicy(
       continue;
     }
 
-    next.overrides ??= {};
-    mergeOverride(next.overrides, rule.spec);
+    mergeOverride(pinned, rule.spec);
     decisions.push({
       tier: 'override',
       outcome: 'applied',
       packages: Object.keys(rule.spec),
       detail: `Pinned ${describeOverride(rule.spec)} — ${rule.reason}`,
     });
+  }
+  if (Object.keys(pinned).length > 0) {
+    next.overrides ??= {};
+    overlayOverride(next.overrides, pinned);
   }
 
   // ── Tier 3: floor ───────────────────────────────────────────────────────
