@@ -7,13 +7,19 @@
  * questions need it:
  *
  *   - whether a waiver in EXPECTED has gone stale. A waiver missing from
- *     `minimal` means nothing — that row carries no Storybook and so forces
- *     none of them. Only the union across every row is evidence of absence.
+ *     `minimal` means nothing — that row carries no library and so forces no
+ *     library's peers. Only the union across every row is evidence of absence.
  *   - whether to open one issue or four. Four jobs racing to file the same
  *     issue produce duplicates, and a tracker that duplicates is a tracker
  *     people mute.
  *
  *   node e2e/deprecation-issue.mjs reports/ --out issue.md
+ *   node e2e/deprecation-issue.mjs reports/ --waivers waivers.json
+ *
+ * `--waivers` judges against a JSON array of entries in place of `EXPECTED`.
+ * The list is empty today, and staleness is a property of the list, so this is
+ * how the tests exercise it — and how to see what a proposed entry would do to
+ * last night's reports before adding it.
  *
  * Exit codes are the interface: 0 clean, 1 there is an issue body to file, 2 the
  * run was too broken to judge. The workflow branches on the body existing rather
@@ -22,18 +28,22 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { dormantWaivers, renderIssue, staleWaivers } from './deprecations.mjs';
+import { dormantWaivers, EXPECTED, renderIssue, staleWaivers } from './deprecations.mjs';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { out: { type: 'string' } },
+  options: { out: { type: 'string' }, waivers: { type: 'string' } },
 });
 
 const directory = positionals[0];
 if (!directory) {
-  console.error('Usage: node e2e/deprecation-issue.mjs <reports-dir> [--out issue.md]');
+  console.error(
+    'Usage: node e2e/deprecation-issue.mjs <reports-dir> [--out issue.md] [--waivers waivers.json]',
+  );
   process.exit(2);
 }
+
+const waivers = values.waivers ? JSON.parse(readFileSync(values.waivers, 'utf8')) : EXPECTED;
 
 const reports = existsSync(directory)
   ? readdirSync(directory, { recursive: true, withFileTypes: true })
@@ -68,8 +78,8 @@ const present = new Set(rows.flatMap((row) => row.direct ?? []));
 const warned = new Set(
   rows.flatMap((row) => row.deprecations.waived.map((entry) => entry.package)),
 );
-const stale = judgeable ? staleWaivers(present) : [];
-const dormant = judgeable ? dormantWaivers(present, warned) : [];
+const stale = judgeable ? staleWaivers(present, waivers) : [];
+const dormant = judgeable ? dormantWaivers(present, warned, waivers) : [];
 
 const findings = rows.flatMap((row) => row.deprecations.findings);
 

@@ -176,6 +176,29 @@ describe('accepted advisories', () => {
     expect(decisions[0]).toMatchObject({ tier: 'accept', outcome: 'applied' });
   });
 
+  it('does not fail a run the acceptance does not apply to', () => {
+    const policy: Policy = {
+      ...EMPTY,
+      accepted: [
+        {
+          id: 'GHSA-test',
+          packages: ['left-pad'],
+          reason: 'test',
+          until: '2026-01-01',
+          onlyWhen: ['legacy:*'],
+        },
+      ],
+    };
+    const today = new Date('2026-06-01T00:00:00Z');
+
+    const { decisions } = applyPolicy({}, ctx({ today }), policy);
+    expect(decisions[0]).toMatchObject({ tier: 'accept', outcome: 'skipped' });
+
+    expect(() =>
+      applyPolicy({}, ctx({ today, builders: new Set(['legacy:build']) }), policy),
+    ).toThrow(/expired on 2026-01-01/);
+  });
+
   it('rejects a malformed date rather than treating it as far future', () => {
     const policy: Policy = {
       ...EMPTY,
@@ -186,20 +209,82 @@ describe('accepted advisories', () => {
 });
 
 describe('the shipped policy', () => {
-  it('keeps the devkit packages when Storybook is on', () => {
-    // The correction that matters: Storybook declares build-angular as a
-    // required peer, so pruning it is not available — npm puts it back.
-    const { decisions } = applyPolicy(
-      { devDependencies: { '@angular-devkit/build-angular': '^22.1.8' } },
-      ctx({ features: new Set(['storybook']) }),
+  it('keeps build-angular where the webpack Storybook framework still runs', () => {
+    // A workspace generated before the switch to @storybook/angular-vite: the
+    // webpack framework declares build-angular a required peer, so pruning it
+    // is not available — npm puts it back. Its builders are the witness.
+    const { manifest, decisions } = applyPolicy(
+      { devDependencies: { '@angular-devkit/build-angular': '^22.1.8', storybook: '^10.6.0' } },
+      ctx({
+        features: new Set(['storybook']),
+        builders: new Set(['@storybook/angular:build-storybook']),
+      }),
       POLICY,
     );
 
+    expect(manifest.devDependencies?.['@angular-devkit/build-angular']).toBe('^22.1.8');
     const prune = decisions.find(
       (decision) =>
         decision.tier === 'prune' && decision.packages.includes('@angular-devkit/build-angular'),
     );
-    expect(prune).toMatchObject({ outcome: 'skipped', guard: 'storybook' });
+    expect(prune).toMatchObject({ outcome: 'skipped', guard: '@storybook/angular:*' });
+  });
+
+  it('prunes build-angular under the Vite Storybook framework', () => {
+    // The `storybook` token is on for both frameworks, so it cannot be the
+    // guard — and the glob for the webpack builders must not match angular-vite.
+    const { manifest } = applyPolicy(
+      { devDependencies: { '@angular-devkit/build-angular': '^22.1.8', storybook: '^10.6.1' } },
+      ctx({
+        features: new Set(['storybook']),
+        builders: new Set(['@storybook/angular-vite:build-storybook']),
+      }),
+      POLICY,
+    );
+    expect(manifest.devDependencies?.['@angular-devkit/build-angular']).toBeUndefined();
+  });
+
+  it('keeps core and architect under either Storybook framework', () => {
+    // Required peers of both.
+    const { manifest } = applyPolicy(
+      {
+        devDependencies: {
+          '@angular-devkit/core': '^22.1.8',
+          '@angular-devkit/architect': '^0.2201.8',
+        },
+      },
+      ctx({
+        features: new Set(['storybook']),
+        builders: new Set(['@storybook/angular-vite:build-storybook']),
+      }),
+      POLICY,
+    );
+    expect(manifest.devDependencies?.['@angular-devkit/core']).toBe('^22.1.8');
+    expect(manifest.devDependencies?.['@angular-devkit/architect']).toBe('^0.2201.8');
+  });
+
+  it('pins webpack-dev-middleware only under the webpack Storybook framework', () => {
+    const vite = applyPolicy(
+      {},
+      ctx({
+        features: new Set(['storybook']),
+        builders: new Set(['@storybook/angular-vite:build-storybook']),
+      }),
+      POLICY,
+    );
+    expect(vite.manifest.overrides?.['@storybook/builder-webpack5']).toBeUndefined();
+
+    const webpack = applyPolicy(
+      {},
+      ctx({
+        features: new Set(['storybook']),
+        builders: new Set(['@storybook/angular:build-storybook']),
+      }),
+      POLICY,
+    );
+    expect(webpack.manifest.overrides?.['@storybook/builder-webpack5']).toEqual({
+      'webpack-dev-middleware': '^7.4.6',
+    });
   });
 
   it('prunes the devkit packages when Storybook is off', () => {
@@ -273,8 +358,32 @@ describe('the shipped policy', () => {
 
   it('has no expired acceptances today', () => {
     // Guards the repo itself: a Tier 4 entry that nobody revisited fails here
-    // before it reaches a user.
-    expect(() => applyPolicy({}, ctx(), POLICY)).not.toThrow();
+    // before it reaches a user. Every entry is put in scope, because a scoped
+    // one is skipped — expiry included — by a run its guards do not match.
+    const features = new Set(POLICY.accepted.flatMap((entry) => entry.onlyWhen ?? []));
+    expect(() => applyPolicy({}, ctx({ features }), POLICY)).not.toThrow();
+  });
+
+  it('scopes the braces acceptance to the webpack Storybook framework', () => {
+    // Past `until`: a workspace on the Vite framework, which has no braces,
+    // still generates; one on the webpack framework is told to move.
+    const today = new Date('2027-05-01T00:00:00Z');
+    const vite = { today, features: new Set(['storybook']) };
+
+    expect(() =>
+      applyPolicy(
+        {},
+        ctx({ ...vite, builders: new Set(['@storybook/angular-vite:start-storybook']) }),
+        POLICY,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      applyPolicy(
+        {},
+        ctx({ ...vite, builders: new Set(['@storybook/angular:start-storybook']) }),
+        POLICY,
+      ),
+    ).toThrow(/GHSA-vfj7-8cjw-p6xm expired/);
   });
 
   it('sorts dependency blocks so generated manifests do not churn', () => {

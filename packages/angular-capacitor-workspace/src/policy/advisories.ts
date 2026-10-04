@@ -26,28 +26,31 @@ export const POLICY: Policy = {
    */
   prune: [
     {
-      packages: [
-        '@angular-devkit/build-angular',
-        '@angular-devkit/architect',
-        '@angular-devkit/core',
-      ],
+      packages: ['@angular-devkit/build-angular'],
       reason:
         'Angular 22 does not install it: `ng new` plus `ng generate ' +
         'application` yields only @angular/build, and every builder emitted by ' +
-        'this generator is an @angular/build:* builder. Verified 2026-09-19: a ' +
-        'generated workspace without Storybook audits clean with these absent. ' +
-        'This rule once also carried GHSA-w5hq-g745-h8pq, via ' +
-        'webpack-dev-server -> sockjs -> uuid@8; devkit 22.2 moved to ' +
-        'webpack-dev-server 6, which dropped sockjs, so that chain is gone and ' +
-        'the advisory no longer reaches a generated workspace this way. The ' +
-        'rule stands on the paragraph above, which was never about an advisory.',
-      // Storybook 10.6 declares @angular-devkit/build-angular, /core and
-      // /architect as REQUIRED peers (peerDependenciesMeta marks only zone.js,
-      // @angular/cli and @angular/animations optional). npm reinstalls them as
-      // peers no matter what we delete, so with Storybook on, pruning is not
-      // available. That used to escalate to a Tier 2 override on sockjs; since
-      // webpack-dev-server 6 dropped sockjs there is nothing left to escalate
-      // to, and the devkit subtree is clean on its own.
+        'this generator is an @angular/build:* builder — Storybook included, ' +
+        'since the design system moved to @storybook/angular-vite. It is ' +
+        "Angular's deprecated webpack toolchain, and the root of the braces " +
+        'chain accepted below. Verified 2026-10-03: the `lib-only` row with ' +
+        'the Vite framework installs none of it and audits clean.',
+      // The webpack framework, @storybook/angular, declares it a REQUIRED peer,
+      // so npm reinstalls it there no matter what we delete. Workspaces
+      // generated before the switch still run the webpack framework, and its
+      // builders in angular.json are the witness — the `storybook` feature token
+      // is not, because it is on for both frameworks.
+      unlessUsing: ['@storybook/angular:*', '@angular-devkit/build-angular:*'],
+    },
+    {
+      packages: ['@angular-devkit/architect', '@angular-devkit/core'],
+      reason:
+        'Angular 22 does not declare them: they arrive through @angular/cli ' +
+        'and @angular/build, which depend on them at exact versions. ' +
+        'Verified 2026-09-19: a ' +
+        'generated workspace without Storybook audits clean with these absent.',
+      // Required peers of both Storybook frameworks — npm puts them back
+      // whatever we delete, so with Storybook on, pruning is not available.
       unlessUsing: ['storybook', '@angular-devkit/build-angular:*'],
     },
     {
@@ -64,11 +67,15 @@ export const POLICY: Policy = {
         'Angular 22 deprecates the package in favour of `animate.enter` and ' +
         '`animate.leave`, and nothing a generated workspace emits imports it. ' +
         'It was once declared as a Storybook peer pin alongside the devkit ' +
-        'packages, but Storybook marks it OPTIONAL (as does ' +
-        '@angular/platform-browser), so npm installed it only because we asked. ' +
-        'Verified 2026-09-23: with the declaration gone the install still ' +
-        'resolves with no ERESOLVE, `npm ls @angular/animations` is empty, and ' +
-        'one deprecation warning disappears from every install.',
+        'packages, but the webpack Storybook framework marks it OPTIONAL (as ' +
+        'does @angular/platform-browser), so npm installed it only because we ' +
+        'asked. Verified 2026-09-23: with the declaration gone the install ' +
+        'still resolves with no ERESOLVE, `npm ls @angular/animations` is ' +
+        'empty, and one deprecation warning disappears from every install. ' +
+        'The Vite framework that replaced it peers the package as REQUIRED, so ' +
+        'workspaces with Storybook install it again as of 2026-10-03 — but as ' +
+        "Storybook's choice, not as a line in this manifest, which is the " +
+        'part this rule controls.',
       // Not a security remedy — the ladder is the right shape for "a package we
       // should not be installing" whatever the reason, and this is the only rung
       // that reaches workspaces that already exist.
@@ -102,8 +109,14 @@ export const POLICY: Policy = {
         '(latest), so there is no upstream release to wait for. 7.4.6 needs ' +
         'node >= 18.12 and a generated workspace already requires >= 24.8. ' +
         'Verified 2026-09-30: the override takes the `full` and `lib-only` ' +
-        'rows from 1 high advisory to 0, with no ERESOLVE.',
-      onlyWhen: ['storybook'],
+        'rows from 1 high advisory to 0, with no ERESOLVE. Generated ' +
+        'workspaces have used the Vite framework since 2026-10-03, which has ' +
+        'no builder-webpack5; this stays for the ones generated before, which ' +
+        '`doctor --fix` reaches.',
+      // The webpack framework's builders, not the `storybook` token, which is
+      // on for the Vite framework too and would write an override for a
+      // package the tree does not have.
+      onlyWhen: ['@storybook/angular:*'],
     },
     {
       spec: { xcode: { uuid: '^11.1.1' } },
@@ -196,7 +209,8 @@ export const POLICY: Policy = {
    * Tier 4 — knowingly shipped, with an expiry.
    *
    * `until` is enforced, not advisory: an expired entry fails generation and
-   * fails `audit`. Empty is the correct state, and it should stay empty.
+   * `doctor` wherever its `onlyWhen` holds, and fails this repo's own tests
+   * everywhere. Empty is the correct state; an entry here is a debt with a date.
    */
   accepted: [
     {
@@ -209,13 +223,22 @@ export const POLICY: Policy = {
         'release: there is no fixed version to pin, and no override reaches ' +
         'one — micromatch 4.0.8 (latest) needs braces ^3.0.3 and ' +
         'http-proxy-middleware 4.2.0 (latest) still uses micromatch. The chain ' +
-        'exists only where Storybook forces the devkit peer (see the prune rule ' +
-        'above), and it lives in the dev server proxy, which matches patterns ' +
-        "from the developer's own proxy config, never from a request. Nothing " +
-        'here reaches production output. Verified 2026-10-03: the `full`, ' +
-        '`multi-app` and `lib-only` rows each report exactly this one advisory. ' +
-        'Revisit when braces publishes a fix.',
+        'exists only where the webpack Storybook framework forces the devkit ' +
+        'peer (see the prune rule above), and it lives in the dev server proxy, ' +
+        "which matches patterns from the developer's own proxy config, never " +
+        'from a request. Nothing here reaches production output. Since ' +
+        '2026-10-03 no generated workspace has the chain — the design system ' +
+        'uses @storybook/angular-vite — so this entry covers only workspaces ' +
+        'generated before, whose `audit:policy` would otherwise fail on it. ' +
+        'Revisit when braces publishes a fix. At `until`, remove it along with ' +
+        'the webpack-dev-middleware override and the `@storybook/angular:*` ' +
+        'guard on the build-angular prune: by then a workspace still on the ' +
+        'webpack framework has had six months to move.',
       until: '2027-04-03',
+      // The webpack framework's builders, as on the override and the prune.
+      // Unscoped, its expiry would fail generation of Vite workspaces too,
+      // which have no braces to accept.
+      onlyWhen: ['@storybook/angular:*'],
       devOnly: true,
     },
   ],

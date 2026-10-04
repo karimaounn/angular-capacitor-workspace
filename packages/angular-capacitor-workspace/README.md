@@ -49,7 +49,7 @@ ng generate angular-capacitor-workspace:packages cdk
 | `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                                        |
 | `app`       | a client-rendered app at `projects/<name>/web`, a starter shell, room for a `mobile/` sibling            |
 | `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks                        |
-| `ui-lib`    | ng-packagr, Storybook + Compodoc, browser-mode Vitest, SCSS layering, themes, contrast checker           |
+| `ui-lib`    | ng-packagr, Storybook (Vite), browser-mode Vitest, SCSS layering, themes, contrast checker               |
 | `mobile`    | a Capacitor sibling registered as its own npm workspace member                                           |
 | `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point                         |
 | `packages`  | curated packages — the CDK, Angular Aria, a service worker — at ranges resolved against the Angular line |

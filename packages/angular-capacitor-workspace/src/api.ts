@@ -117,8 +117,8 @@ export function featuresFor(options: GenerateOptions): Set<string> {
   if ((options.marketing ?? []).length > 0) features.add('marketing');
   if (options.uiLib) {
     features.add('ui-lib');
-    // The ui library carries Storybook, and Storybook is what forces
-    // @angular-devkit/build-angular back into the tree as a required peer.
+    // The ui library carries Storybook, whose required peers include the
+    // devkit's core and architect packages.
     features.add('storybook');
   }
   if (options.codegen) features.add('codegen');

@@ -39,8 +39,8 @@ export interface UiLibOptions {
 /**
  * The design-system library: wiring and theme architecture, not components.
  *
- * What ships is the machinery — the SCSS layering, the Storybook and Compodoc
- * setup, browser-mode component tests, the contrast checker, and the
+ * What ships is the machinery — the SCSS layering, the Storybook setup,
+ * browser-mode component tests, the contrast checker, and the
  * `ng-package.json` asset mapping that lets an app consume the styles the same
  * way it consumes the code.
  *
@@ -95,7 +95,7 @@ export function uiLib(options: UiLibOptions = {}): Rule {
           adoptExistingApps(name),
           libraryScripts(name, root, storybook),
           libraryDependencies(storybook),
-          libraryGitignore(root),
+          libraryGitignore(),
 
           // A catalog package already in the workspace declares itself a peer
           // of every library, and this one did not exist when it was added.
@@ -201,43 +201,39 @@ function browserModeTests(name: string): Rule {
 /**
  * Registers Storybook's Angular builder targets.
  *
- * `@storybook/angular` 10 refuses to run from the `storybook` CLI — it throws
- * `AngularLegacyBuildOptionsError` and points at the builder. That is the right
- * call: through the builder it reads `styles`, `stylePreprocessorOptions`,
- * `assets` and the tsconfig out of `angular.json`, so a story renders with the
- * same style pipeline the application uses instead of a parallel one that
- * drifts.
- *
- * `compodoc: false` because the workspace runs Compodoc itself, via
- * `docs:compodoc`. The builder's built-in pass writes `documentation.json` to
- * the workspace root, while `preview.ts` reads it from the library directory;
- * owning the step keeps those two facts in one place.
+ * `@storybook/angular-vite` also runs from the `storybook` CLI, but through the
+ * builder it reads `styles`, `stylePreprocessorOptions` and the tsconfig out of
+ * `angular.json`, so a story renders with the same style pipeline the
+ * application uses instead of a parallel one in `viteFinal` that drifts.
  */
 function storybookTargets(name: string, root: string): Rule {
   return (tree: Tree) => {
-    // No `styles` option. @storybook/angular routes .scss through
-    // resolve-url-loader and sass-loader and stops there — correct for Angular
-    // component styles, which want a raw string, and fatal for a global sheet,
-    // which then reaches webpack's JavaScript parser and dies on the first
-    // `@layer`. Importing it from preview.ts hits the same rule and fails the
-    // same way. The tokens are compiled by `styles:tokens` and linked from
-    // preview-head.html instead.
+    // The design tokens go in as a global sheet, the way an application takes
+    // them. The webpack framework could not do this — its sass-loader rule
+    // handed a global sheet to the JavaScript parser, which died on the first
+    // `@layer` — and the workaround was a separately compiled tokens.css linked
+    // from preview-head.html. Vite compiles it like any other stylesheet.
+    //
+    // `includePaths` is spelled out rather than inherited: the Vite framework
+    // reads nothing from the library's build target, and does not install
+    // Angular's root-relative Sass importer either (storybookjs/storybook#36012).
     const shared = {
       configDir: `${root}/.storybook`,
       tsConfig: `${root}/.storybook/tsconfig.json`,
-      compodoc: false,
+      styles: [`${root}/src/styles/index.scss`],
+      stylePreprocessorOptions: { includePaths: [`${root}/src/styles`] },
     };
 
     updateJson(tree, ANGULAR_JSON, (file) => {
       file.mustGet(['projects', name, 'architect'], `the architect block for library "${name}"`);
 
       file.modify(['projects', name, 'architect', 'storybook'], {
-        builder: '@storybook/angular:start-storybook',
+        builder: '@storybook/angular-vite:start-storybook',
         options: { ...shared, port: 6006 },
       });
 
       file.modify(['projects', name, 'architect', 'build-storybook'], {
-        builder: '@storybook/angular:build-storybook',
+        builder: '@storybook/angular-vite:build-storybook',
         options: { ...shared, outputDir: 'dist/storybook' },
       });
     });
@@ -322,22 +318,17 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
     }
 
     if (storybook) {
-      const prepare = `npm run docs:compodoc && npm run styles:tokens`;
       addScripts(tree, {
-        'docs:compodoc': `compodoc -p ${root}/tsconfig.lib.json -e json -d ${root}`,
-        'styles:tokens': `sass ${root}/src/styles/index.scss ${root}/.storybook/static/tokens.css --load-path=${root}/src/styles --no-source-map`,
-        // Through `ng run`, not the `storybook` CLI. @storybook/angular 10
-        // rejects a direct CLI invocation with AngularLegacyBuildOptionsError:
-        // it needs the builder so it can read styles, assets and tsconfig from
-        // angular.json rather than guessing them.
-        storybook: `${prepare} && ng run ${name}:storybook`,
-        'build-storybook': `${prepare} && ng run ${name}:build-storybook`,
+        // Through `ng run`, not the `storybook` CLI, so the builder reads styles
+        // and tsconfig from angular.json. See storybookTargets.
+        storybook: `ng run ${name}:storybook`,
+        'build-storybook': `ng run ${name}:build-storybook`,
         // Building the static Storybook is the cheapest check that every story
         // still compiles. It catches a renamed input that no unit test touches.
         'test:storybook': 'npm run build-storybook',
       });
       documentScripts(tree, {
-        storybook: `Storybook for \`${name}\`, with controls derived by Compodoc`,
+        storybook: `Storybook for \`${name}\`, with controls derived from the component sources`,
         'build-storybook': 'a static Storybook build',
         'test:storybook': 'builds Storybook, which fails if any story no longer compiles',
       });
@@ -358,19 +349,16 @@ function libraryDependencies(storybook: boolean): Rule {
     if (storybook) {
       wanted.push(
         'storybook',
-        '@storybook/angular',
+        '@storybook/angular-vite',
         '@storybook/addon-docs',
-        '@compodoc/compodoc',
-        // Storybook 10.6 declares these as required peers. Left implicit, npm
-        // backtracks them onto Angular 20/21 releases and the install fails
-        // ERESOLVE against Angular 22. See policy/versions.ts.
-        '@angular-devkit/build-angular',
+        '@analogjs/vite-plugin-angular',
+        // Required peers of the framework. Left implicit, npm backtracks them
+        // off the Angular line. See policy/versions.ts.
         '@angular-devkit/core',
         '@angular-devkit/architect',
-        '@angular/platform-browser-dynamic',
-        // @angular/animations is NOT listed: Storybook marks it optional, so
-        // npm never installs it on its own, and asking for it only bought a
-        // deprecation warning. See policy/versions.ts.
+        // @angular/animations is NOT listed, though it is a required peer too:
+        // npm installs it either way, and listing it would make a deprecated
+        // package one this generator chose. See policy/versions.ts.
       );
     }
 
@@ -393,14 +381,9 @@ function libraryDependencies(storybook: boolean): Rule {
   };
 }
 
-function libraryGitignore(root: string): Rule {
+function libraryGitignore(): Rule {
   return (tree: Tree) => {
-    addGitignoreSection(tree, 'Storybook and Compodoc build output', [
-      `/${root}/documentation.json`,
-      `/${root}/.storybook/static/`,
-      '/dist/storybook/',
-      '/storybook-static/',
-    ]);
+    addGitignoreSection(tree, 'Storybook build output', ['/dist/storybook/', '/storybook-static/']);
   };
 }
 

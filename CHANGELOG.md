@@ -68,6 +68,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **The design system's Storybook runs on Vite, via `@storybook/angular-vite`.**
+  The webpack `@storybook/angular` required `@angular-devkit/build-angular` as a
+  peer, and with it webpack-dev-server, a `braces` advisory with no fixed release
+  — accepted in the policy, but reported by plain `npm audit` as 7 high, once per
+  package on the path — and three deprecation warnings. The Vite framework builds
+  on `@angular/build`, which the workspace already has.
+
+  It also reads component docs from source, so Compodoc and its
+  `docs:compodoc` step are gone, and the tokens load into Storybook through the
+  builder's `styles` option like an application's, so `styles:tokens` and
+  `preview-head.html` are gone too. Measured on the `lib-only` row: 986 installed
+  packages down to 433, `npm audit` from 7 high to 0, `test:storybook` from 22s
+  to 8s. Every story and docs page renders, light and dark, in every palette.
+
+  The framework is marked preview in Storybook 10.6, with stable planned for 11.
+  Two known gaps: code snippets do not follow the controls, and an input typed
+  `T | undefined` gets no control. `@analogjs/vite-plugin-angular` is pinned at
+  `^2.8.0`, past the 2.7.2 that breaks `build-storybook` on Angular 22.2.
+
+  Existing workspaces are left on the webpack framework. The policy now keys
+  the `build-angular` prune rule, the `webpack-dev-middleware` override and the
+  accepted `braces` advisory on the webpack framework's builders in
+  `angular.json` rather than on Storybook being present, so `doctor` changes
+  nothing there. Once a workspace moves to the Vite builders, `doctor --fix`
+  removes `build-angular`; the override it no longer needs is left in place,
+  inert, since `doctor` never removes an override.
+
+  Tier 4 entries take `onlyWhen`, as overrides and floors do, and the `braces`
+  acceptance uses it. An expired acceptance fails every run, so unscoped it would
+  have stopped the generator producing Vite workspaces on its expiry date, though
+  none of them has braces to accept.
+
+  `EXPECTED` in `e2e/deprecations.mjs` is empty: both entries were required peers
+  of the webpack framework. `deprecation-issue.mjs` takes `--waivers <file>` to
+  judge against a list other than `EXPECTED`.
+
+  The colour-scheme toolbar now themes Storybook itself, not just the story: a
+  new `manager.ts` switches the sidebar and panels, and a docs container switches
+  docs pages, which were light whatever was chosen. The toolbar gains `System`
+  and defaults to it, as `ThemeService` does.
+
 - **`--help` bullets the `--with` catalog.** One unmarked row indented under the
   option's description read as the description continuing; two of them would
   have read as prose. The summaries still line up with every other description

@@ -111,8 +111,19 @@ export function applyPolicy(
   // ── Tier 4 first: an expired acceptance invalidates the whole run ───────
   // Checked before anything is applied so a stale policy fails loudly rather
   // than producing a workspace that looks clean because the gate never ran.
+  // Only for runs the acceptance applies to: an entry kept for an older kind of
+  // workspace must not stop the generator producing the current kind.
   for (const accepted of policy.accepted) {
     const until = parseReviewDate(accepted.until, `accepted[${accepted.id}].until`);
+    if (!anySatisfied(accepted.onlyWhen, ctx)) {
+      decisions.push({
+        tier: 'accept',
+        outcome: 'skipped',
+        packages: accepted.packages,
+        detail: `Not applicable: none of ${accepted.onlyWhen?.join(', ')} is in use.`,
+      });
+      continue;
+    }
     if (until.getTime() < today.getTime()) {
       throw new PolicyError(
         `Accepted advisory ${accepted.id} expired on ${accepted.until}. ` +

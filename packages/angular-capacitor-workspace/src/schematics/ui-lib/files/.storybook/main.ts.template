@@ -1,16 +1,12 @@
-import type { StorybookConfig } from '@storybook/angular';
+import type { StorybookConfig } from '@storybook/angular-vite';
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(ts|mdx)'],
 
   addons: ['@storybook/addon-docs'],
 
-  // Holds tokens.css, compiled by `npm run styles:tokens` and linked from
-  // preview-head.html. Generated, and gitignored.
-  staticDirs: ['./static'],
-
   framework: {
-    name: '@storybook/angular',
+    name: '@storybook/angular-vite',
     options: {},
   },
 

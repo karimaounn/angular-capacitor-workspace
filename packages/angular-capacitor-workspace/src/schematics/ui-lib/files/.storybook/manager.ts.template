@@ -1,0 +1,29 @@
+import { GLOBALS_UPDATED, SET_GLOBALS } from 'storybook/internal/core-events';
+import { addons } from 'storybook/manager-api';
+import { themes } from 'storybook/theming';
+
+// Storybook's own chrome — sidebar, toolbar, addon panels — follows the same
+// `theme` toolbar global the stories do. Left alone, the manager picks light or
+// dark from the OS once at load, so choosing "Dark" in the toolbar gave a dark
+// story inside a light Storybook, and a dark OS gave the opposite.
+addons.register('theme-sync', (api) => {
+  const system = window.matchMedia('(prefers-color-scheme: dark)');
+  let chosen: unknown = 'system';
+
+  const apply = () => {
+    const dark = chosen === 'dark' || (chosen !== 'light' && system.matches);
+    api.setOptions({ theme: dark ? themes.dark : themes.light });
+  };
+
+  const sync = ({ globals }: { globals: Record<string, unknown> }) => {
+    chosen = globals['theme'];
+    apply();
+  };
+
+  // SET_GLOBALS arrives once the preview has loaded, carrying any value from
+  // the URL; GLOBALS_UPDATED on every toolbar change after that.
+  api.on(SET_GLOBALS, sync);
+  api.on(GLOBALS_UPDATED, sync);
+  system.addEventListener('change', apply);
+  apply();
+});

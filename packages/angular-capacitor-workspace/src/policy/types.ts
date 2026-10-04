@@ -78,6 +78,12 @@ export interface AcceptedAdvisory {
    * revisits is how a workspace quietly rots.
    */
   until: string;
+  /**
+   * Only in force when one of these guards is satisfied. Omit to always apply.
+   * Outside it the entry is skipped, expiry included, so an acceptance kept for
+   * workspaces generated before a change cannot fail generation after it.
+   */
+  onlyWhen?: GuardToken[];
   /** Asserts the path never reaches production output. Documentation only. */
   devOnly?: boolean;
 }

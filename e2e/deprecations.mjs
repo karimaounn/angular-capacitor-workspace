@@ -15,7 +15,7 @@
  * permanently red, and the waiver list below can never grow to cover things
  * nobody can act on.
  *
- * Everything else — a deprecation three levels down inside Compodoc, say — is
+ * Everything else — a deprecation three levels down inside ng-packagr, say — is
  * reported as context and gates nothing. Upstream will move or it will not.
  */
 
@@ -36,27 +36,12 @@
  * different thing and is only noted; see `dormantWaivers`.
  */
 export const EXPECTED = [
-  {
-    package: '@angular-devkit/build-angular',
-    peerOf: '@storybook/angular',
-    reason:
-      "Angular's webpack support is deprecated in favour of @angular/build, which " +
-      'this generator already uses for every builder it emits. The package is in ' +
-      'the tree only because Storybook 10.6 declares it a REQUIRED peer, so npm ' +
-      'reinstalls it whatever the manifest says. POLICY.prune already removes it ' +
-      'from every row that does not carry Storybook.',
-    revisitWhen: 'Storybook ships an @angular/build-based builder, or drops the devkit peers.',
-  },
-  {
-    package: '@angular/platform-browser-dynamic',
-    peerOf: '@storybook/angular',
-    reason:
-      'Deprecated in favour of @angular/platform-browser. Nothing this generator ' +
-      'emits imports it; it is declared only because leaving this required peer of ' +
-      '@storybook/angular implicit makes npm backtrack it onto Angular 20 and fail ' +
-      'the install with ERESOLVE. See policy/versions.ts.',
-    revisitWhen: 'Storybook 10 drops the peer, or Angular removes the package.',
-  },
+  // Empty since 2026-10-03. The two entries this list carried —
+  // @angular-devkit/build-angular and @angular/platform-browser-dynamic — were
+  // required peers of the webpack @storybook/angular, and left the generated
+  // manifest when the design system moved to @storybook/angular-vite. Empty is
+  // the state to keep: an entry is a deprecated package this generator writes
+  // and cannot remove.
 ];
 
 /**
@@ -66,8 +51,8 @@ export const EXPECTED = [
  * says what it looked at, which is the difference between "no findings" and
  * "nothing was checked".
  */
-export function classify(deprecations) {
-  const waivers = new Map(EXPECTED.map((entry) => [entry.package, entry]));
+export function classify(deprecations, waivers = EXPECTED) {
+  const byPackage = new Map(waivers.map((entry) => [entry.package, entry]));
   const findings = [];
   const waived = [];
   const transitive = [];
@@ -77,7 +62,7 @@ export function classify(deprecations) {
       transitive.push(deprecation);
       continue;
     }
-    const waiver = waivers.get(deprecation.package);
+    const waiver = byPackage.get(deprecation.package);
     if (waiver) {
       waived.push({ ...deprecation, waiver });
     } else {
@@ -102,16 +87,18 @@ export function classify(deprecations) {
  *
  * Angular 22.2.0 is the case in point. It shipped on 2026-09-23 without the
  * `deprecated` markers every release from 21.0.0 to 22.1.9 carried, so both
- * entries below stopped warning overnight while remaining required peers of
- * `@storybook/angular` and direct entries in the generated manifest.
+ * entries this list then held stopped warning overnight while remaining
+ * required peers of `@storybook/angular` and direct entries in the generated
+ * manifest.
  *
  * `present` is the union of the direct dependency names across every row. Only
- * meaningful after a complete run: `--row minimal` carries no Storybook, so
- * both entries are legitimately absent and reporting them there would train
- * everyone to ignore this. The caller decides whether the run was complete.
+ * meaningful after a complete run: `--row minimal` carries no library, so an
+ * entry forced by a library's peers is legitimately absent there and reporting
+ * it would train everyone to ignore this. The caller decides whether the run
+ * was complete.
  */
-export function staleWaivers(present) {
-  return EXPECTED.filter((entry) => !present.has(entry.package));
+export function staleWaivers(present, waivers = EXPECTED) {
+  return waivers.filter((entry) => !present.has(entry.package));
 }
 
 /**
@@ -122,8 +109,8 @@ export function staleWaivers(present) {
  * `revisitWhen` has come true — an upstream release that merely forgot to run
  * `npm deprecate` looks exactly like one that undeprecated on purpose.
  */
-export function dormantWaivers(present, warned) {
-  return EXPECTED.filter((entry) => present.has(entry.package) && !warned.has(entry.package));
+export function dormantWaivers(present, warned, waivers = EXPECTED) {
+  return waivers.filter((entry) => present.has(entry.package) && !warned.has(entry.package));
 }
 
 /** One line per deprecation, for the console summary. */

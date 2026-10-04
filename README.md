@@ -136,12 +136,13 @@ not installing it.
 | Tier | Remedy                          | Applies when                             | Live example                              |
 | ---- | ------------------------------- | ---------------------------------------- | ----------------------------------------- |
 | 1    | **Prune** — never install it    | the dependency is unused or optional     | `express` in a static marketing workspace |
-| 2    | **Override** — pin a transitive | a real dependency drags in a bad version | `sockjs → uuid`, `xcode → uuid`, `undici` |
+| 2    | **Override** — pin a transitive | a real dependency drags in a bad version | `xcode → uuid`, `json-magic → undici`     |
 | 3    | **Floor** — raise a minimum     | the direct range permits a bad version   | `vitest ^4.0.8` → `^4.1.11`               |
-| 4    | **Accept** — record and expire  | no fix exists and the path is dev-only   | — (empty, and it should stay empty)       |
+| 4    | **Accept** — record and expire  | no fix exists and the path is dev-only   | `braces`, on the webpack Storybook only   |
 
 Tier 4 entries carry a review date, and an expired one fails the build. An
-accepted advisory that nobody revisits is how a workspace quietly rots.
+accepted advisory that nobody revisits is how a workspace quietly rots. An entry
+can be scoped with `onlyWhen`, so one kept for older workspaces fails only them.
 
 The whole policy is one data-only file:
 [`src/policy/advisories.ts`](packages/angular-capacitor-workspace/src/policy/advisories.ts).
@@ -166,6 +167,15 @@ So a prune rule needs to know when it does not apply. Each one carries
 `unlessUsing` guards naming the conditions under which the package is
 legitimate, and with Storybook on, the ladder escalates to Tier 2. Both paths
 end at `found 0 vulnerabilities`; only one of them is available.
+
+The chain did not stay patchable. By October 2026 it ended in `braces`, with no
+fixed release to pin, and the policy had to accept it — 7 high in every plain
+`npm audit`, one advisory counted once per package on the path. The fix was to
+change frameworks: the design system now uses `@storybook/angular-vite`, which
+builds on `@angular/build` and declares no `build-angular` peer at all, so the
+prune rule now fires with Storybook on as well. The guard that keeps the package
+is the webpack framework's own builders in `angular.json`, which is what
+workspaces generated before the switch still have.
 
 ## Layout
 
@@ -238,10 +248,10 @@ does not put back as a required peer. That rule can never be permanently red,
 because anything it reports can be fixed in this repo on the day it appears.
 
 Everything else is reported as context. A generated workspace carrying Storybook
-installs four deprecated packages today; two are required peers of
-`@storybook/angular`, waived in `e2e/deprecations.mjs` with the peer that forces
-them, and two arrive underneath Compodoc and Angular's webpack builder, where
-nothing here can reach them.
+installs three deprecated packages today, none of them written by this
+generator: `@angular/animations`, a required peer of `@storybook/angular-vite`,
+and two native bindings underneath `ng-packagr`. Nothing here can reach them,
+and `e2e/deprecations.mjs` has nothing to waive.
 
 A generated workspace depends on `angular-capacitor-workspace` — that is what
 keeps `audit:policy`, `doctor` and `ng generate` working after generation. Before

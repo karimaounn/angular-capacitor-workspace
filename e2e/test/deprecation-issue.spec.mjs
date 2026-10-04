@@ -35,15 +35,25 @@ const WAIVED = [
 
 let reports;
 let out;
+let waivers;
 
 beforeEach(() => {
   reports = mkdtempSync(join(tmpdir(), 'acw-reports-'));
   out = join(reports, '..', `issue-${Date.now()}.md`);
+  // Beside the reports, not in them: the script reads every .json under the
+  // reports directory as a row. `EXPECTED` itself is empty, so the staleness
+  // cases are judged against the two entries it used to hold.
+  waivers = join(reports, '..', `waivers-${Date.now()}.json`);
+  writeFileSync(
+    waivers,
+    JSON.stringify(WAIVED.map(({ package: name, waiver }) => ({ package: name, ...waiver }))),
+  );
 });
 
 afterEach(() => {
   rmSync(reports, { recursive: true, force: true });
   rmSync(out, { force: true });
+  rmSync(waivers, { force: true });
 });
 
 /** Every package a row with Storybook declares that this check cares about. */
@@ -66,9 +76,13 @@ function empty() {
 }
 
 function run(directory = reports) {
-  const result = spawnSync(process.execPath, [script, directory, '--out', out], {
-    encoding: 'utf8',
-  });
+  const result = spawnSync(
+    process.execPath,
+    [script, directory, '--out', out, '--waivers', waivers],
+    {
+      encoding: 'utf8',
+    },
+  );
   return {
     code: result.status,
     output: `${result.stdout}${result.stderr}`,

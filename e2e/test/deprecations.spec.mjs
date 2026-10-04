@@ -36,11 +36,30 @@ const OBSERVED = [
   },
 ];
 
+/**
+ * The two entries `EXPECTED` carried until 2026-10-03, as a fixture. The real
+ * list is empty, and a rule tested only against an empty list is not tested.
+ */
+const WAIVERS = [
+  {
+    package: '@angular-devkit/build-angular',
+    peerOf: '@storybook/angular',
+    reason: 'Required peer of the webpack Storybook framework; npm reinstalls it regardless.',
+    revisitWhen: 'Storybook ships an @angular/build-based builder, or drops the devkit peers.',
+  },
+  {
+    package: '@angular/platform-browser-dynamic',
+    peerOf: '@storybook/angular',
+    reason: 'Required peer of the webpack Storybook framework; left implicit it backtracks.',
+    revisitWhen: 'Storybook 10 drops the peer, or Angular removes the package.',
+  },
+];
+
 describe('classify', () => {
   it('passes the deprecations a real workspace ships today', () => {
     // The rule has to be quiet on the current tree, or it is a rule nobody
     // leaves switched on.
-    const { findings, waived, transitive } = classify(OBSERVED);
+    const { findings, waived, transitive } = classify(OBSERVED, WAIVERS);
 
     expect(findings).toEqual([]);
     expect(waived.map((entry) => entry.package)).toEqual([
@@ -56,15 +75,18 @@ describe('classify', () => {
   it('fails a direct deprecation nobody has waived', () => {
     // The @angular/animations case: a package the generator wrote into the
     // manifest itself, deprecated, and not a required peer of anything.
-    const { findings } = classify([
-      ...OBSERVED,
-      {
-        package: '@angular/animations',
-        version: '22.1.7',
-        message: 'Use `animate.enter` and `animate.leave` instead.',
-        direct: true,
-      },
-    ]);
+    const { findings } = classify(
+      [
+        ...OBSERVED,
+        {
+          package: '@angular/animations',
+          version: '22.1.7',
+          message: 'Use `animate.enter` and `animate.leave` instead.',
+          direct: true,
+        },
+      ],
+      WAIVERS,
+    );
 
     expect(findings.map((entry) => entry.package)).toEqual(['@angular/animations']);
   });
@@ -81,16 +103,16 @@ describe('classify', () => {
   });
 });
 
-const ALL_WAIVED = EXPECTED.map((entry) => entry.package);
+const ALL_WAIVED = WAIVERS.map((entry) => entry.package);
 
 describe('staleWaivers', () => {
   it('reports a waiver whose package has left the generated manifest', () => {
-    const stale = staleWaivers(new Set(['@angular-devkit/build-angular']));
+    const stale = staleWaivers(new Set(['@angular-devkit/build-angular']), WAIVERS);
     expect(stale.map((entry) => entry.package)).toEqual(['@angular/platform-browser-dynamic']);
   });
 
   it('is empty when every waived package is still declared', () => {
-    expect(staleWaivers(new Set(ALL_WAIVED))).toEqual([]);
+    expect(staleWaivers(new Set(ALL_WAIVED), WAIVERS)).toEqual([]);
   });
 
   it('does not call a waiver stale just because the package stopped warning', () => {
@@ -100,28 +122,28 @@ describe('staleWaivers', () => {
     // so nothing here had gone stale — but the old check read the silence as
     // absence and told the nightly to delete both. Deleting them would have
     // armed the trap for the day the markers came back.
-    expect(staleWaivers(new Set(ALL_WAIVED))).toEqual([]);
+    expect(staleWaivers(new Set(ALL_WAIVED), WAIVERS)).toEqual([]);
   });
 });
 
 describe('dormantWaivers', () => {
   it('reports a waived package that is still declared but no longer warns', () => {
-    const dormant = dormantWaivers(new Set(ALL_WAIVED), new Set());
+    const dormant = dormantWaivers(new Set(ALL_WAIVED), new Set(), WAIVERS);
     expect(dormant.map((entry) => entry.package)).toEqual(ALL_WAIVED);
   });
 
   it('says nothing about a package that is still warning', () => {
-    expect(dormantWaivers(new Set(ALL_WAIVED), new Set(ALL_WAIVED))).toEqual([]);
+    expect(dormantWaivers(new Set(ALL_WAIVED), new Set(ALL_WAIVED), WAIVERS)).toEqual([]);
   });
 
   it('says nothing about a package that has left the tree — that is stale, not dormant', () => {
     // The two are mutually exclusive by construction, so a package that is gone
     // must be reported once, under the heading that carries the right advice.
     const present = new Set(['@angular-devkit/build-angular']);
-    expect(dormantWaivers(present, new Set()).map((entry) => entry.package)).toEqual([
+    expect(dormantWaivers(present, new Set(), WAIVERS).map((entry) => entry.package)).toEqual([
       '@angular-devkit/build-angular',
     ]);
-    expect(staleWaivers(present).map((entry) => entry.package)).toEqual([
+    expect(staleWaivers(present, WAIVERS).map((entry) => entry.package)).toEqual([
       '@angular/platform-browser-dynamic',
     ]);
   });
@@ -143,15 +165,18 @@ describe('renderIssue', () => {
   const rows = [
     {
       row: 'full',
-      deprecations: classify([
-        ...OBSERVED,
-        {
-          package: '@angular/animations',
-          version: '22.1.7',
-          message: 'Use `animate.enter` and `animate.leave` instead.',
-          direct: true,
-        },
-      ]),
+      deprecations: classify(
+        [
+          ...OBSERVED,
+          {
+            package: '@angular/animations',
+            version: '22.1.7',
+            message: 'Use `animate.enter` and `animate.leave` instead.',
+            direct: true,
+          },
+        ],
+        WAIVERS,
+      ),
     },
   ];
 
@@ -174,19 +199,19 @@ describe('renderIssue', () => {
   });
 
   it('asks for a stale waiver to be deleted', () => {
-    const body = renderIssue(rows, [EXPECTED[0]]);
+    const body = renderIssue(rows, [WAIVERS[0]]);
     expect(body).toContain('Waivers whose package has left the tree');
-    expect(body).toContain(EXPECTED[0].package);
+    expect(body).toContain(WAIVERS[0].package);
   });
 
   it('tells the reader not to delete a dormant waiver', () => {
     // The opposite instruction to the stale one, on a list that looks identical
     // — so the body has to say which it is.
-    const body = renderIssue(rows, [], [EXPECTED[0]]);
+    const body = renderIssue(rows, [], [WAIVERS[0]]);
 
     expect(body).toContain('Waivers that are still needed but stopped warning');
     expect(body).toContain('Do not delete these');
-    expect(body).toContain(EXPECTED[0].revisitWhen);
+    expect(body).toContain(WAIVERS[0].revisitWhen);
     expect(body).not.toContain('Waivers whose package has left the tree');
   });
 
@@ -195,7 +220,7 @@ describe('renderIssue', () => {
     // a heading announcing unexpected deprecated packages, which sent the reader
     // looking for a package that was not there.
     const clean = [{ row: 'full', deprecations: classify([]) }];
-    const body = renderIssue(clean, EXPECTED, []);
+    const body = renderIssue(clean, WAIVERS, []);
 
     expect(body).toContain('## Deprecation waivers that no longer match anything');
     expect(body).not.toContain('Unexpected deprecations');
@@ -208,6 +233,6 @@ describe('summarise', () => {
   });
 
   it('counts each kind separately', () => {
-    expect(summarise(classify(OBSERVED))).toBe('2 expected, 2 transitive');
+    expect(summarise(classify(OBSERVED, WAIVERS))).toBe('2 expected, 2 transitive');
   });
 });

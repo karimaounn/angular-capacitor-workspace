@@ -93,53 +93,62 @@ export const VERSIONS = {
   },
 
   // ── Storybook ───────────────────────────────────────────────────────────
-  storybook: { range: '^10.6.0' },
-  '@storybook/angular': {
-    range: '^10.6.0',
-    constraint: 'Must match the storybook core version exactly (peer: storybook ^10.6.0).',
+  //
+  // The Vite framework, not the webpack one. `@storybook/angular` requires
+  // @angular-devkit/build-angular as a peer, and that one package brought
+  // webpack and webpack-dev-server into every workspace with a design system —
+  // along with an unfixable braces advisory and three deprecation warnings.
+  // `@storybook/angular-vite` builds on @angular/build, which the workspace
+  // already has, and reads component docs from source, which retires Compodoc.
+  // Verified 2026-10-03 on the `lib-only` row, both changes together: 986
+  // installed packages down to 433, `npm audit` from 7 high to 0.
+  storybook: { range: '^10.6.1' },
+  '@storybook/angular-vite': {
+    range: '^10.6.1',
+    constraint:
+      'Must match the storybook core version. Preview in 10.6, planned stable in 11; ' +
+      'the webpack @storybook/angular it replaces is the only alternative.',
   },
   '@storybook/addon-docs': {
-    range: '^10.6.0',
-    constraint: 'Must match the storybook core version. Supplies setCompodocJson and autodocs.',
+    range: '^10.6.1',
+    constraint: 'Must match the storybook core version. Supplies autodocs.',
   },
-  '@compodoc/compodoc': { range: '^2.0.0' },
+  // Required peer of @storybook/angular-vite, declared `>=2.0.0` — which admits
+  // 2.7.2, the release that fails `build-storybook` on Angular 22.2 with
+  // "Hash utility must be initialized" (storybookjs/storybook#36453). The floor
+  // here is the fix, not whatever npm would pick on the day.
+  '@analogjs/vite-plugin-angular': {
+    range: '^2.8.0',
+    constraint: 'At least 2.7.3, the first release that handles Angular 22.2.',
+  },
 
-  // Storybook 10.6 declares these as REQUIRED peers with ranges as wide as
-  // `>=18.0.0 < 23.0.0`. Left to itself npm satisfies them by backtracking —
-  // observed resolving @angular-devkit/build-angular to 21.2.24 and
-  // @angular/platform-browser-dynamic to 20.0.7 against an Angular 22
-  // workspace, which then fails ERESOLVE on @angular/compiler-cli. Declaring
-  // them explicitly at the Angular line is what makes the install deterministic.
+  // Required peers of @storybook/angular-vite, at `>=21.0.0 < 23.0.0`. Left to
+  // itself npm satisfies a range that wide by backtracking — the webpack
+  // framework had the same peers, wider, and was observed resolving them onto
+  // Angular 21 against an Angular 22 workspace — so they are declared at the
+  // line.
   //
   // These are resolution pins, not advisory floors, which is why they live here
-  // and not in POLICY.floors. The advisory they expose is handled at Tier 2.
-  '@angular-devkit/build-angular': {
-    range: `^${ANGULAR_LINE}.1.8`,
-    constraint:
-      'Required peer of @storybook/angular. Pinned to the Angular line to stop backtracking.',
-  },
+  // and not in POLICY.floors.
   '@angular-devkit/core': {
     range: `^${ANGULAR_LINE}.1.8`,
-    constraint: 'Required peer of @storybook/angular.',
+    constraint: 'Required peer of @storybook/angular-vite.',
   },
   '@angular-devkit/architect': {
     range: '^0.2201.8',
     constraint:
-      'Required peer of @storybook/angular. Angular ships architect on the 0.<major><minor> scheme.',
-  },
-  '@angular/platform-browser-dynamic': {
-    range: `^${ANGULAR_LINE}.1.0`,
-    constraint: 'Required peer of @storybook/angular.',
+      'Required peer of @storybook/angular-vite. Angular ships architect on the ' +
+      '0.<major><minor> scheme.',
   },
 
-  // @angular/animations is deliberately absent. It was once pinned here on the
-  // same "stop npm backtracking" reasoning as its neighbours, but it is an
-  // OPTIONAL peer of @storybook/angular and of @angular/platform-browser, so
-  // nothing in the tree requires it and npm never installs it unless we ask.
-  // Asking cost a deprecation warning on every install — Angular 22 deprecated
-  // the package in favour of `animate.enter` / `animate.leave` — in exchange
-  // for a pin with nothing to pin. See POLICY.prune, which removes it from
-  // workspaces generated before this was noticed.
+  // @angular/animations is deliberately absent. @storybook/angular-vite does
+  // peer it as REQUIRED, so npm installs it into every workspace with a design
+  // system and prints its deprecation warning — but npm does that whether or not
+  // the manifest names it, and naming it would make a deprecated package one
+  // this generator chose. See POLICY.prune, which keeps it out of the manifest.
+  //
+  // @angular-devkit/build-angular and @angular/platform-browser-dynamic are
+  // absent too. Both were required peers of the webpack framework only.
 
   // ── Capacitor ───────────────────────────────────────────────────────────
   '@capacitor/core': { range: '^8.5.2' },

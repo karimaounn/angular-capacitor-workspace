@@ -7,7 +7,7 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
  * A button.
  *
  * Exists mostly to prove the pattern end to end: tokens resolve, Storybook
- * picks up the argument types from Compodoc, the contrast checker has real
+ * picks up the argument types from this source, the contrast checker has real
  * pairings to check, and the browser-mode test suite has something to render.
  * Replace it with your own; keep the shape.
  */

@@ -18,7 +18,7 @@
     },
     "storybook": {
       "type": "boolean",
-      "description": "Wire up Storybook with Compodoc argument resolution.",
+      "description": "Wire up Storybook, with controls derived from the component sources.",
       "default": true
     }
   },

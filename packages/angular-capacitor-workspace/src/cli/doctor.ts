@@ -41,7 +41,7 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
     ...manifest.optionalDependencies,
   };
 
-  if ('storybook' in deps || '@storybook/angular' in deps) {
+  if ('storybook' in deps || '@storybook/angular' in deps || '@storybook/angular-vite' in deps) {
     features.add('storybook');
     features.add('ui-lib');
   }

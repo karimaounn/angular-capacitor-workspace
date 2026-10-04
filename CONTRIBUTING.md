@@ -92,7 +92,9 @@ There are exactly two correct answers, and the issue names both:
 A waiver that stops appearing in any row is reported as stale so it can be
 deleted. That check needs a complete run, so it only fires nightly — a waiver
 missing from `--row minimal` means nothing, because that row carries no
-Storybook to force it.
+library whose peers could force it. The list is empty today, which is the state
+to keep; `node e2e/deprecation-issue.mjs <reports> --waivers <file>` shows what a
+proposed entry would do to a night's reports before you add it.
 
 ## Versioning
 

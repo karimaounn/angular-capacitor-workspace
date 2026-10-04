@@ -947,10 +947,39 @@ describe('ui-lib', () => {
 
   it('registers Storybook through its Angular builder, not the CLI', () => {
     const architect = JSON.parse(tree.readContent('/angular.json')).projects['ui'].architect;
-    expect(architect['build-storybook'].builder).toBe('@storybook/angular:build-storybook');
-    expect(JSON.parse(tree.readContent('/package.json')).scripts['build-storybook']).toContain(
+    expect(architect['build-storybook'].builder).toBe('@storybook/angular-vite:build-storybook');
+    expect(architect['storybook'].builder).toBe('@storybook/angular-vite:start-storybook');
+    expect(JSON.parse(tree.readContent('/package.json')).scripts['build-storybook']).toBe(
       'ng run ui:build-storybook',
     );
+  });
+
+  it('loads the tokens into Storybook as a global sheet, as an app does', () => {
+    // The webpack framework could not take a global sheet, and the workaround —
+    // a separately compiled tokens.css linked from preview-head.html — is gone.
+    const options = JSON.parse(tree.readContent('/angular.json')).projects['ui'].architect[
+      'build-storybook'
+    ].options;
+    expect(options.styles).toEqual(['projects/ui/src/styles/index.scss']);
+    expect(options.stylePreprocessorOptions.includePaths).toEqual(['projects/ui/src/styles']);
+    expect(tree.exists('/projects/ui/.storybook/preview-head.html')).toBe(false);
+  });
+
+  it('documents components from source, without a Compodoc step', () => {
+    const manifest = JSON.parse(tree.readContent('/package.json'));
+    expect(manifest.scripts['docs:compodoc']).toBeUndefined();
+    expect(manifest.scripts['styles:tokens']).toBeUndefined();
+    expect(manifest.devDependencies['@compodoc/compodoc']).toBeUndefined();
+    expect(tree.readContent('/projects/ui/.storybook/preview.ts')).not.toContain('setCompodocJson');
+  });
+
+  it('themes Storybook itself from the same colour-scheme toolbar as the stories', () => {
+    // Without these the toolbar restyled only the story: the manager followed
+    // the OS and docs pages stayed light whatever was chosen.
+    const preview = tree.readContent('/projects/ui/.storybook/preview.ts');
+    expect(preview).toContain("defaultValue: 'system'");
+    expect(preview).toContain('container: ThemedDocsContainer');
+    expect(tree.readContent('/projects/ui/.storybook/manager.ts')).toContain('api.setOptions');
   });
 
   it('gives applications a dist include path so @use resolves through dist/', () => {
@@ -1040,18 +1069,32 @@ describe('ui-lib', () => {
     expect(table).toContain('| `npm run storybook` |');
   });
 
-  it('declares the required Storybook peers but not the optional deprecated one', () => {
-    // The three devkit packages and platform-browser-dynamic are REQUIRED peers
-    // of @storybook/angular: left implicit, npm backtracks them onto Angular
-    // 20/21 and the install fails ERESOLVE. @angular/animations is an OPTIONAL
-    // peer, so declaring it bought nothing but a deprecation warning on every
-    // install — Angular 22 deprecated the package.
+  it('uses the Vite Storybook framework, with none of the webpack one', () => {
+    // @storybook/angular required @angular-devkit/build-angular, and with it
+    // webpack-dev-server and an unfixable braces advisory. The Vite framework
+    // requires neither that nor platform-browser-dynamic.
     const devDependencies = JSON.parse(tree.readContent('/package.json')).devDependencies;
 
-    expect(devDependencies['@angular-devkit/build-angular']).toBeDefined();
+    expect(devDependencies['@storybook/angular-vite']).toBe(
+      VERSIONS['@storybook/angular-vite'].range,
+    );
+    expect(devDependencies['@analogjs/vite-plugin-angular']).toBe(
+      VERSIONS['@analogjs/vite-plugin-angular'].range,
+    );
+    expect(devDependencies['@storybook/angular']).toBeUndefined();
+    expect(devDependencies['@angular-devkit/build-angular']).toBeUndefined();
+    expect(devDependencies['@angular/platform-browser-dynamic']).toBeUndefined();
+  });
+
+  it('declares the required devkit peers but not the deprecated one', () => {
+    // core and architect are REQUIRED peers of @storybook/angular-vite: left
+    // implicit, npm backtracks them off the Angular line. @angular/animations
+    // is a required peer too, but npm installs it either way; declaring it
+    // would make a deprecated package one this generator chose.
+    const devDependencies = JSON.parse(tree.readContent('/package.json')).devDependencies;
+
     expect(devDependencies['@angular-devkit/core']).toBeDefined();
     expect(devDependencies['@angular-devkit/architect']).toBeDefined();
-    expect(devDependencies['@angular/platform-browser-dynamic']).toBeDefined();
     expect(devDependencies['@angular/animations']).toBeUndefined();
   });
 

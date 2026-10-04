@@ -160,21 +160,17 @@ than a missing stylesheet. That is why it is not left to you.
 wired up: it is needed only if you use \`cdkVisuallyHidden\`. Add it the same
 way, in front of the app's stylesheet.
 
-**In Storybook**, neither sheet is loaded. The Storybook builder here runs with
-no \`styles\` option on purpose — \`@storybook/angular\` routes a global sheet
-into the component-style pipeline, where it never reaches css-loader — so
-global CSS arrives through \`preview-head.html\` instead. A library component
-built on an overlay will look unpositioned in Storybook while working in the
-app. To fix it, serve the sheet and link it:
+**In Storybook**, neither sheet is loaded: the Storybook targets in
+\`angular.json\` load only the library's tokens. A library component built on an
+overlay will look unpositioned in Storybook while working in the app. To fix
+it, add the sheet to both targets, \`storybook\` and \`build-storybook\`, in
+front of the tokens:
 
-\`\`\`ts
-// <lib>/.storybook/main.ts
-staticDirs: ['./static', { from: '../../../node_modules/@angular/cdk', to: '/cdk' }],
-\`\`\`
-
-\`\`\`html
-<!-- <lib>/.storybook/preview-head.html -->
-<link rel="stylesheet" href="./cdk/overlay-prebuilt.css" />
+\`\`\`json
+"styles": [
+  "node_modules/@angular/cdk/overlay-prebuilt.css",
+  "projects/<lib>/src/styles/index.scss"
+]
 \`\`\`
 
 The CDK's version tracks Angular's: upgrade it in the same step as the

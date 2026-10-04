@@ -115,7 +115,7 @@ function reportDeprecations() {
 
   // Written whatever the verdict. Whether a waiver has gone stale is not
   // answerable from one invocation — each CI row runs in its own process, and
-  // `--row minimal` carries no Storybook, so a waiver missing there means
+  // `--row minimal` carries no library, so a waiver missing there means
   // nothing at all. e2e/deprecation-issue.mjs merges these and decides.
   if (values['deprecation-json']) {
     writeFileSync(
