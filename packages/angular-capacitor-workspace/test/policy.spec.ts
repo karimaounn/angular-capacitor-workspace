@@ -144,6 +144,20 @@ describe('override', () => {
       mine: '^2.0.0',
     });
   });
+
+  it("keeps a workspace's own pin on a package the policy reaches beneath", () => {
+    // npm spells "pin this and something under it" with a `.` key, so the
+    // workspace's pin and the policy's are both kept rather than one replacing
+    // the other.
+    const policy: Policy = {
+      ...EMPTY,
+      overrides: [{ spec: { xcode: { uuid: '^11.1.1' } }, reason: 'a' }],
+    };
+
+    const { manifest } = applyPolicy({ overrides: { xcode: '3.0.1' } }, ctx(), policy);
+
+    expect(manifest.overrides).toEqual({ xcode: { '.': '3.0.1', uuid: '^11.1.1' } });
+  });
 });
 
 describe('floor', () => {

@@ -1,6 +1,8 @@
 import * as semver from 'semver';
+import { workspaceContext } from '../cli/doctor';
 import { POLICY } from '../policy/advisories';
-import type { Policy } from '../policy/types';
+import { acceptanceStatus, expiredMessage } from '../policy/apply';
+import type { Policy, PolicyContext } from '../policy/types';
 import { atOrAbove, findingsFrom, parseAudit, type Finding, type Severity } from './audit';
 import { auditJson, npmVersion, NPM_FLOOR, resolveLockfile } from './npm';
 import { formatAccepted, formatFindings } from './report';
@@ -12,6 +14,11 @@ export interface GateOptions {
   /** Advisories below this severity are reported but do not fail the gate. */
   auditLevel?: Severity;
   policy?: Policy;
+  /**
+   * What the acceptances' `onlyWhen` guards are judged against. Inferred from
+   * the workspace at `cwd` when omitted, the way `doctor` infers it.
+   */
+  context?: PolicyContext;
   /** Skip the lockfile resolve when a fresh one already exists. */
   skipResolve?: boolean;
   log?: (message: string) => void;
@@ -70,6 +77,25 @@ export function runGate(options: GateOptions): GateResult {
     };
   }
 
+  // Tier 4 is enforced here as well as in `applyPolicy`, because `audit` never
+  // applies the policy: without this an acceptance nobody revisited would keep
+  // passing `audit:policy` for ever, and one scoped to an older kind of
+  // workspace would excuse the same advisory in every other kind too.
+  const context = options.context ?? workspaceContext(cwd);
+  const inForce = policy.accepted.filter(
+    (entry) => acceptanceStatus(entry, context) === 'in-force',
+  );
+  const expired = policy.accepted.filter((entry) => acceptanceStatus(entry, context) === 'expired');
+  if (expired.length > 0) {
+    return {
+      ok: false,
+      all: [],
+      unhandled: [],
+      accepted: [],
+      report: expired.map((entry) => `  ${MARK.fail} ${dim(expiredMessage(entry))}`).join('\n'),
+    };
+  }
+
   if (!skipResolve) {
     const resolved = withSpinner(
       log,
@@ -108,7 +134,7 @@ export function runGate(options: GateOptions): GateResult {
   }
 
   const all = findingsFrom(report);
-  const acceptedIds = new Set(policy.accepted.map((entry) => entry.id));
+  const acceptedIds = new Set(inForce.map((entry) => entry.id));
 
   const relevant = all.filter((finding) => atOrAbove(finding.severity, auditLevel));
   const accepted = relevant.filter((finding) => acceptedIds.has(finding.id));

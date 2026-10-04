@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HostTree } from '@angular-devkit/schematics';
@@ -221,6 +222,31 @@ describe('workspace overlay', () => {
     // first" instruction a lie.
     const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
     expect(scripts['build:libs']).toBeUndefined();
+  });
+});
+
+describe('ng-add', () => {
+  it("leaves the project's own README, house rules and CI alone", async () => {
+    // Into a workspace that already exists, these files are somebody's.
+    // Generation overwrites Angular's stock README; adoption must not.
+    const existing = await baseWorkspace();
+    existing.overwrite('/README.md', '# My project\n\nHand-written.\n');
+    existing.create('/AGENTS.md', '# Our rules\n');
+    existing.create('/.github/workflows/ci.yml', 'name: ours\n');
+
+    const tree = await runner().runSchematic('ng-add', {}, existing);
+
+    expect(tree.readContent('/README.md')).toBe('# My project\n\nHand-written.\n');
+    expect(tree.readContent('/AGENTS.md')).toBe('# Our rules\n');
+    expect(tree.readContent('/.github/workflows/ci.yml')).toBe('name: ours\n');
+    // And still adds what it brings that was not there.
+    expect(JSON.parse(tree.readContent('/package.json')).scripts['audit:policy']).toBeDefined();
+  });
+
+  it('writes the files a project does not have yet', async () => {
+    const tree = await runner().runSchematic('ng-add', {}, await baseWorkspace());
+    expect(tree.files).toContain('/AGENTS.md');
+    expect(tree.files).toContain('/.github/workflows/ci.yml');
   });
 });
 
@@ -648,6 +674,44 @@ describe('mobile', () => {
     const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
     expect(withApp.readContent('/README.md')).not.toContain('## Mobile');
   });
+
+  it('gives every mobile app the preflight its README block tells you to run', async () => {
+    // The script is shared; the npm script is per app, and names that app's
+    // platforms, so each checks only what its own build needs.
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const one = await runner().runSchematic('app', { name: 'shop', mobile: ['android'] }, base);
+    const two = await runner().runSchematic('app', { name: 'admin', mobile: ['ios'] }, one);
+
+    const scripts = JSON.parse(two.readContent('/package.json')).scripts;
+    expect(scripts['preflight:shop']).toBe('bash scripts/cap-preflight.sh android');
+    expect(scripts['preflight:admin']).toBe('bash scripts/cap-preflight.sh ios');
+    expect(two.readContent('/README.md')).toContain('npm run preflight:admin');
+  });
+
+  it('checks only the platforms it is asked about', () => {
+    // An Android-only app on a Mac without Xcode is not a failed preflight.
+    const script = tree.readContent('/scripts/cap-preflight.sh');
+    const run = (...platforms: string[]) =>
+      spawnSync('bash', ['-c', script, 'preflight', ...platforms], {
+        encoding: 'utf8',
+        env: { PATH: process.env['PATH'] ?? '' },
+      }).stdout;
+
+    const android = run('android');
+    expect(android).toContain('android sdk');
+    expect(android).not.toContain('xcode');
+
+    const ios = run('ios');
+    expect(ios).toContain('xcode');
+    expect(ios).not.toContain('java');
+    expect(ios).not.toContain('android sdk');
+  });
+
+  it('gitignores the native build output, from whichever run adds the target', () => {
+    // Written by this schematic rather than the workspace overlay, so a target
+    // added with `ng generate` after generation is covered too.
+    expect(tree.readContent('/.gitignore')).toContain('/projects/*/mobile/android/app/build/');
+  });
 });
 
 describe('marketing', () => {
@@ -1049,6 +1113,27 @@ describe('ui-lib', () => {
     expect(tree.files).toContain('/projects/ui/src/lib/button/button.stories.ts');
   });
 
+  it('draws focus rings and errors in the steps check:contrast holds to the page', () => {
+    // `--accent` and `--danger` are fill steps, picked to carry white, and fall
+    // under 3:1 against a dark surface. Their `-strong` partners are checked.
+    const sources = [
+      '/projects/ui/src/styles/_components.scss',
+      '/projects/ui/src/lib/field/field.scss',
+      '/projects/ui/src/lib/theme/theme-toggle.scss',
+    ].map((path) => tree.readContent(path));
+    for (const source of sources) {
+      expect(source).not.toMatch(/outline:[^;]*var\(--accent\)/);
+      expect(source).not.toMatch(/(?:^|[^-])color:\s*var\(--danger\)/m);
+    }
+    expect(tree.readContent('/projects/ui/src/styles/_components.scss')).toContain(
+      'outline: 2px solid var(--accent-strong)',
+    );
+
+    const check = tree.readContent('/projects/ui/scripts/check-contrast.mjs');
+    expect(check).toContain("fg: 'danger-strong', bg: 'surface'");
+    expect(check).toContain("fg: 'accent-strong', bg: 'surface'");
+  });
+
   it('leaves npm test running every project, its own included, without watching', () => {
     expect(JSON.parse(tree.readContent('/package.json')).scripts['test']).toBe(
       'ng test --no-watch',
@@ -1175,6 +1260,12 @@ describe('codegen', () => {
     for (const hook of ['prebuild', 'prestart', 'pretest']) {
       expect(scripts[hook]).toContain('npm run codegen');
     }
+    // The app's own entry points too, which npm hooks under their own names —
+    // and only the ones it has.
+    for (const hook of ['prebuild:shop', 'prestart:shop', 'pretest:shop']) {
+      expect(scripts[hook]).toContain('npm run codegen:optional');
+    }
+    expect(scripts['pree2e:shop']).toBeUndefined();
   });
 
   it('says in the README where the spec comes from', () => {

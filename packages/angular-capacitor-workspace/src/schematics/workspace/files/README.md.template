@@ -100,6 +100,8 @@ ng generate angular-capacitor-workspace:marketing <name>    # a prerendered stat
 ng generate angular-capacitor-workspace:ui-lib <name>       # a design-system library
 ng generate angular-capacitor-workspace:mobile <app>        # a Capacitor shell for an app
 ng generate angular-capacitor-workspace:codegen             # an OpenAPI client
+ng generate angular-capacitor-workspace:i18n --locales en,fr  # runtime translation
+ng generate angular-capacitor-workspace:packages cdk        # a curated package: cdk, aria, …
 ```
 
 Each one wires itself into the workspace it finds: new scripts land in the

@@ -8,12 +8,15 @@
 /// The focus ring, defined once.
 ///
 /// `:focus-visible` rather than `:focus` so a mouse click does not paint a ring,
-/// while keyboard and assistive-technology focus still does. Two offset rings
-/// rather than an outline so the indicator stays visible against both light and
-/// dark surfaces — a single-colour ring always disappears against something.
+/// while keyboard and assistive-technology focus still does.
+///
+/// `--accent-strong`, not `--accent`: the offset ring is drawn on the page, not
+/// on the control, and WCAG wants 3:1 against what it sits on. `--accent` is
+/// picked to carry white text and falls to 2:1 against a dark surface;
+/// `-strong` is the step `check-contrast.mjs` holds to the surface in both modes.
 @mixin focus-ring($offset: 2px) {
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-strong);
     outline-offset: $offset;
     border-radius: inherit;
   }

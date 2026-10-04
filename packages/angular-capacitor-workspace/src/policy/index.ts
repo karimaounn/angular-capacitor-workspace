@@ -1,5 +1,5 @@
 export { POLICY } from './advisories';
-export { applyPolicy, PolicyError } from './apply';
+export { acceptanceStatus, applyPolicy, PolicyError } from './apply';
 export type { Manifest, PolicyResult } from './apply';
 export { anySatisfied, firstSatisfiedGuard, isGuardSatisfied } from './guards';
 export type {

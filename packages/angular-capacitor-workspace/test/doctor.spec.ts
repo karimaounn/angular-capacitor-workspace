@@ -275,6 +275,48 @@ describe('diagnose — overrides that pin nothing', () => {
   });
 });
 
+describe('diagnose — allowlist entries nothing needs', () => {
+  const allowDrifts = () =>
+    diagnose(cwd, POLICY).drifts.filter((drift) => drift.tier === 'allowScripts');
+
+  it('removes an entry the workspace added for a package that has left the lockfile', () => {
+    write('package.json', { name: 'ws', allowScripts: { esbuild: true, 'left-pad': true } });
+    writeLockfile('node_modules/esbuild');
+
+    const diagnosis = diagnose(cwd, POLICY);
+    expect(diagnosis.drifts).toContainEqual(
+      expect.objectContaining({ tier: 'allowScripts', kind: 'unnecessary' }),
+    );
+
+    // Reported and then applied: a drift `--fix` says it fixed and the next
+    // run still reports is a doctor nobody believes.
+    applyFix(diagnosis);
+    expect(readManifest()['allowScripts']).toEqual({ esbuild: true });
+    expect(allowDrifts()).toHaveLength(0);
+  });
+
+  it('never flags an entry the policy owns, which it writes whatever the tree holds', () => {
+    // Flagging it would be a removal the next run puts straight back.
+    write('package.json', { name: 'ws', allowScripts: { esbuild: true } });
+    writeLockfile();
+
+    expect(allowDrifts()).toHaveLength(0);
+  });
+
+  it('counts a nested copy as in the tree', () => {
+    write('package.json', { name: 'ws', allowScripts: { esbuild: true, 'left-pad': true } });
+    writeLockfile('node_modules/a/node_modules/left-pad');
+
+    expect(allowDrifts()).toHaveLength(0);
+  });
+
+  it('decides nothing without a lockfile', () => {
+    write('package.json', { name: 'ws', allowScripts: { esbuild: true, 'left-pad': true } });
+
+    expect(allowDrifts()).toHaveLength(0);
+  });
+});
+
 describe('applyFix', () => {
   it('writes the policy blocks and leaves everything else alone', () => {
     write('package.json', {

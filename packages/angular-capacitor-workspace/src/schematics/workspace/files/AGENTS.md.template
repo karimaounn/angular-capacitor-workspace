@@ -50,9 +50,10 @@ fails at the app, where it should, instead of resolving silently through a
 source path.
 
 The cost is one extra step: **`ng serve` does not build workspace libraries.**
-A fresh clone must run `npm run build:libs` once. The `prestart` and `pretest`
-hooks cover the common entry points; a bare `ng serve` or `ng test` bypasses
-them and will fail to resolve library imports until you have built once.
+A fresh clone must run `npm run build:libs` once. The `pre*` hooks on
+`npm start`, `npm test`, `npm run build` and every per-app script cover the npm
+entry points; a bare `ng serve` or `ng test` bypasses them and will fail to
+resolve library imports until you have built once.
 
 ## Testing
 

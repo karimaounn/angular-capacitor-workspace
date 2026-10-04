@@ -9,7 +9,7 @@ import { collectDeprecations, type Deprecation } from './gate/deprecations';
 import { formatDecisions } from './gate/report';
 import { applyPolicy, type Manifest } from './policy/apply';
 import { POLICY } from './policy/advisories';
-import type { Policy, PolicyDecision } from './policy/types';
+import type { Policy, PolicyContext, PolicyDecision } from './policy/types';
 import { ANGULAR_CLI_RANGE } from './policy/versions';
 import { withSpinner, withSpinnerAsync } from './spinner';
 import { heading, progress } from './style';
@@ -225,7 +225,7 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
     const files = await runOverlay(directory, options, log);
 
     // ── 3. Apply the dependency policy ────────────────────────────────────
-    const { decisions } = applyPolicyToDisk(directory, options, policy);
+    const { decisions, context } = applyPolicyToDisk(directory, options, policy);
     log(formatDecisions(decisions));
 
     // ── 4. Gate ───────────────────────────────────────────────────────────
@@ -236,6 +236,7 @@ export async function generateWorkspace(options: GenerateOptions): Promise<Gener
       cwd: directory,
       auditLevel: options.auditLevel ?? 'moderate',
       policy,
+      context,
       log,
     });
     log(gate.report);
@@ -432,7 +433,7 @@ function applyPolicyToDisk(
   directory: string,
   options: GenerateOptions,
   policy: Policy,
-): { manifest: Manifest; decisions: PolicyDecision[] } {
+): { manifest: Manifest; decisions: PolicyDecision[]; context: PolicyContext } {
   const manifestPath = join(directory, 'package.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
 
@@ -449,7 +450,8 @@ function applyPolicyToDisk(
     }
   }
 
-  const result = applyPolicy(manifest, { features: featuresFor(options), builders }, policy);
+  const context: PolicyContext = { features: featuresFor(options), builders };
+  const result = applyPolicy(manifest, context, policy);
   writeFileSync(manifestPath, `${JSON.stringify(result.manifest, null, 2)}\n`);
-  return { manifest: result.manifest, decisions: result.decisions };
+  return { manifest: result.manifest, decisions: result.decisions, context };
 }

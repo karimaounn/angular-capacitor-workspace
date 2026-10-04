@@ -167,6 +167,15 @@ function readJsonIfPresent(path: string): unknown {
   }
 }
 
+/**
+ * The context the policy's guards are judged against, read off the workspace on
+ * disk: what `doctor` diffs with, and what `audit` scopes acceptances by.
+ */
+export function workspaceContext(cwd: string, manifest?: Manifest): PolicyContext {
+  const own = manifest ?? ((readJsonIfPresent(join(cwd, 'package.json')) ?? {}) as Manifest);
+  return { features: inferFeatures(cwd, own), builders: collectBuilders(cwd) };
+}
+
 function collectBuilders(cwd: string): Set<string> {
   const builders = new Set<string>();
   const angularJson = readJsonIfPresent(join(cwd, 'angular.json')) as
@@ -194,8 +203,8 @@ export function diagnose(cwd: string, policy: Policy = POLICY): Diagnosis {
   }
 
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
-  const features = inferFeatures(cwd, manifest);
-  const ctx: PolicyContext = { features, builders: collectBuilders(cwd) };
+  const ctx = workspaceContext(cwd, manifest);
+  const { features } = ctx;
   const { manifest: desired } = applyPolicy(manifest, ctx, policy);
 
   const drifts: Drift[] = [];
@@ -307,45 +316,32 @@ export function diagnose(cwd: string, policy: Policy = POLICY): Diagnosis {
     }
   }
 
-  // Allowlist entries that are no longer needed: nothing in the tree provides
-  // them any more, so the exemption is pure attack surface.
-  const installed = installedPackages(cwd);
-  if (installed !== undefined) {
+  // Allowlist entries that nothing in the tree needs any more: the exemption is
+  // surface for nothing. Judged on the lockfile, which lists a nested copy as
+  // well as a hoisted one, and only for entries the workspace added itself. The
+  // policy writes its own whatever the tree holds, so flagging one of those
+  // would be a drift that `--fix` removes and the next run puts back.
+  if (locked !== undefined) {
     for (const name of Object.keys(manifest.allowScripts ?? {})) {
-      if (!installed.has(name)) {
-        drifts.push({
-          tier: 'allowScripts',
-          kind: 'unnecessary',
-          actual: `allowScripts.${name}`,
-          expected: '(removed)',
-          description:
-            `${name} is allowlisted to run install scripts but is not in the ` +
-            `dependency tree. An unused exemption is surface for nothing.`,
-        });
-      }
+      if (name in policy.allowScripts || locked.has(name)) continue;
+
+      drifts.push({
+        tier: 'allowScripts',
+        kind: 'unnecessary',
+        actual: `allowScripts.${name}`,
+        expected: '(removed)',
+        description:
+          `${name} is allowlisted to run install scripts but is not in the ` +
+          `lockfile. An unused exemption is surface for nothing.`,
+      });
+      delete desired.allowScripts?.[name];
+    }
+    if (desired.allowScripts && Object.keys(desired.allowScripts).length === 0) {
+      delete desired.allowScripts;
     }
   }
 
   return { cwd, features: [...features].sort(), drifts, desired };
-}
-
-/** Package names present in node_modules, or `undefined` when not installed. */
-function installedPackages(cwd: string): Set<string> | undefined {
-  const modules = join(cwd, 'node_modules');
-  if (!existsSync(modules)) return undefined;
-
-  const names = new Set<string>();
-  for (const entry of readdirSync(modules, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name.startsWith('@')) {
-      for (const scoped of readdirSync(join(modules, entry.name), { withFileTypes: true })) {
-        if (scoped.isDirectory()) names.add(`${entry.name}/${scoped.name}`);
-      }
-    } else if (!entry.name.startsWith('.')) {
-      names.add(entry.name);
-    }
-  }
-  return names;
 }
 
 /**

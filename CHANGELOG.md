@@ -109,6 +109,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   docs pages, which were light whatever was chosen. The toolbar gains `System`
   and defaults to it, as `ThemeService` does.
 
+- **CI actions move to their Node 24 majors** — `checkout@v6`, `setup-node@v6`,
+  `upload-artifact@v6`, `download-artifact@v7`, `github-script@v8` — ours and the
+  workflow generated workspaces get. GitHub runs Node 20 actions on Node 24 since
+  June 2026 and removes Node 20 this autumn.
+
 - **`--help` bullets the `--with` catalog.** One unmarked row indented under the
   option's description read as the description continuing; two of them would
   have read as prose. The summaries still line up with every other description
@@ -137,6 +142,54 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   workspace whose Capacitor packages live in the shell's own manifest — every
   generated one — was not `mobile`, and the `xcode > uuid` override could not
   be restored if lost.
+
+- **`audit` enforces an accepted advisory's date and scope.** Only
+  `applyPolicy` checked them, and `audit` never applies the policy, so
+  `npm run audit:policy` would have kept accepting `braces` past its review date
+  — and accepted it in workspaces its `onlyWhen` excludes. The gate now fails on
+  an expired acceptance in scope and excuses nothing outside it. `runGate` takes
+  an optional `context`, inferred from the workspace when omitted.
+
+- **`ng add` no longer overwrites the project's README, AGENTS.md or CI
+  workflow.** The workspace overlay takes `keepExisting`, which `ng add` sets.
+
+- **Generating a project into a translated workspace no longer undoes edits.**
+  It re-runs the i18n schematic, which rewrote the design system's i18n files —
+  a corrected endonym went back to its TODO — and a second explicit run rewrote
+  every app's catalogs, translations included. Files already there are now left
+  alone, and a run asking for a different set of locales than the library has
+  is refused with what to edit instead.
+
+- **Every mobile app gets its `preflight:<app>`**, which the README tells you
+  to run. Only the first did. Each checks only its own platforms, so an
+  Android-only app on a Mac without Xcode passes. The Capacitor `.gitignore`
+  entries are written by the `mobile` schematic, so a target added later gets
+  them too.
+
+- **`doctor --fix` removes the unused `allowScripts` entries it reports.** It
+  said it had applied them and the next run reported them again. It now judges
+  by the lockfile, nested copies included, and only flags entries the policy
+  does not write itself.
+
+- **Focus rings and field errors meet contrast in dark mode.** The ring used
+  `--accent` (as low as 1.7:1 against a dark card; 3:1 is needed) and error text
+  used `--danger` (as low as 2.3:1; 4.5:1 is needed). Both now use their
+  `-strong` step, and `check:contrast` checks error text.
+
+- The app's translation e2e spec switches to whichever locale is not active,
+  rather than the last one — with `--i18n fr,en` it "switched" to the language
+  already showing — and skips the switching tests when one locale ships.
+- A localized site's language links follow client-side navigation; they kept
+  pointing at the page the visitor arrived on.
+- The language picker preloads every catalog when it is opened. It preloaded
+  the active one, which was already loaded.
+- A workspace's own override on a package the policy pins beneath is kept, as
+  npm's `"."` entry, rather than replaced.
+- Codegen hooks each app's `test:` and `e2e:` scripts too.
+- The interactive prompts check locale tags and the selector prefix as they
+  are typed, as the flags already did.
+- The docs said `npm start:site` (it is `npm run start:site`) and the i18n error
+  named a collection called `acw`.
 
 ## [22.4.0] — 2026-09-24
 

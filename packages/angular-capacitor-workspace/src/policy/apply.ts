@@ -1,7 +1,13 @@
 import * as semver from 'semver';
 import { POLICY } from './advisories';
 import { anySatisfied, firstSatisfiedGuard } from './guards';
-import type { OverrideSpec, Policy, PolicyContext, PolicyDecision } from './types';
+import type {
+  AcceptedAdvisory,
+  OverrideSpec,
+  Policy,
+  PolicyContext,
+  PolicyDecision,
+} from './types';
 
 /** The subset of a `package.json` the policy reads and writes. */
 export interface Manifest {
@@ -67,6 +73,11 @@ function mergeOverride(
 /**
  * Writes the policy's pins over a manifest's overrides. Where the two disagree
  * the policy wins; anything the policy does not pin is left as it was.
+ *
+ * A string and an object at the same key are not a disagreement. npm spells
+ * "pin this package and something beneath it" as `{ ".": range, child: range }`,
+ * so a workspace's own pin on a package the policy reaches under keeps its
+ * place as the `"."` entry rather than being replaced by the policy's object.
  */
 function overlayOverride(
   into: Record<string, OverrideSpec>,
@@ -76,6 +87,10 @@ function overlayOverride(
     const existing = into[key];
     if (typeof existing === 'object' && typeof incoming === 'object') {
       overlayOverride(existing, incoming);
+    } else if (typeof existing === 'string' && typeof incoming === 'object') {
+      into[key] = { '.': existing, ...structuredClone(incoming) };
+    } else if (typeof existing === 'object' && typeof incoming === 'string') {
+      existing['.'] = incoming;
     } else {
       into[key] = structuredClone(incoming);
     }
@@ -111,6 +126,35 @@ function parseReviewDate(value: string, field: string): Date {
 }
 
 /**
+ * Where a Tier 4 acceptance stands for one run.
+ *
+ * Shared by `applyPolicy` and the audit gate, so that `audit` — which never
+ * applies the policy — still refuses an acceptance nobody revisited, and still
+ * ignores one scoped to a kind of workspace this is not. The date is parsed
+ * first, so a malformed one fails even where the entry is out of scope.
+ */
+export function acceptanceStatus(
+  accepted: AcceptedAdvisory,
+  ctx: PolicyContext,
+): 'out-of-scope' | 'expired' | 'in-force' {
+  const until = parseReviewDate(accepted.until, `accepted[${accepted.id}].until`);
+  if (!anySatisfied(accepted.onlyWhen, ctx)) {
+    return 'out-of-scope';
+  }
+  return until.getTime() < (ctx.today ?? new Date()).getTime() ? 'expired' : 'in-force';
+}
+
+/** What to tell someone whose acceptance has expired. */
+export function expiredMessage(accepted: AcceptedAdvisory): string {
+  return (
+    `Accepted advisory ${accepted.id} expired on ${accepted.until}. ` +
+    `Re-review it in src/policy/advisories.ts: either a fix has shipped ` +
+    `(move it up the ladder to prune, override or floor) or it has not ` +
+    `(extend \`until\` and say why). Packages: ${accepted.packages.join(', ')}.`
+  );
+}
+
+/**
  * Applies the remedy ladder to a manifest, returning the patched manifest and
  * an ordered account of every decision.
  *
@@ -124,7 +168,6 @@ export function applyPolicy(
 ): PolicyResult {
   const next: Manifest = structuredClone(manifest);
   const decisions: PolicyDecision[] = [];
-  const today = ctx.today ?? new Date();
 
   // ── Tier 4 first: an expired acceptance invalidates the whole run ───────
   // Checked before anything is applied so a stale policy fails loudly rather
@@ -132,8 +175,8 @@ export function applyPolicy(
   // Only for runs the acceptance applies to: an entry kept for an older kind of
   // workspace must not stop the generator producing the current kind.
   for (const accepted of policy.accepted) {
-    const until = parseReviewDate(accepted.until, `accepted[${accepted.id}].until`);
-    if (!anySatisfied(accepted.onlyWhen, ctx)) {
+    const status = acceptanceStatus(accepted, ctx);
+    if (status === 'out-of-scope') {
       decisions.push({
         tier: 'accept',
         outcome: 'skipped',
@@ -142,13 +185,8 @@ export function applyPolicy(
       });
       continue;
     }
-    if (until.getTime() < today.getTime()) {
-      throw new PolicyError(
-        `Accepted advisory ${accepted.id} expired on ${accepted.until}. ` +
-          `Re-review it in src/policy/advisories.ts: either a fix has shipped ` +
-          `(move it up the ladder to prune, override or floor) or it has not ` +
-          `(extend \`until\` and say why). Packages: ${accepted.packages.join(', ')}.`,
-      );
+    if (status === 'expired') {
+      throw new PolicyError(expiredMessage(accepted));
     }
     decisions.push({
       tier: 'accept',

@@ -10,7 +10,15 @@ import {
   type GenerateOptions,
   type MarketingSpec,
 } from 'angular-capacitor-workspace';
-import { ArgError, parseArguments, parseOrigin, USAGE } from './args';
+import {
+  ArgError,
+  localeProblem,
+  parseArguments,
+  parseLocales,
+  parseOrigin,
+  prefixProblem,
+  USAGE,
+} from './args';
 import { Prompter } from './prompts';
 
 const { bold, command, dim, heading, MARK, note, red } = style;
@@ -126,7 +134,11 @@ async function ask(
     // place that already does it, rather than freezing the raw answer here.
     let uiLibPrefix: string | undefined;
     if (uiLib) {
-      const answer = await prompter.text('Component selector prefix', uiLib);
+      // The default is exempt: it is not sent, and the schematic derives the
+      // real prefix from it — a scoped name contributes its last segment.
+      const answer = await prompter.text('Component selector prefix', uiLib, (value) =>
+        value === uiLib ? undefined : prefixProblem(value),
+      );
       uiLibPrefix = answer === uiLib ? undefined : answer;
     }
 
@@ -152,13 +164,23 @@ async function ask(
     // tag, and asking which of the tags just typed comes first is a question
     // about the order they were typed in. `--default-locale` is there for the
     // one person who wants to separate the two.
+    // Checked while the question is on screen, as the flag is checked on the
+    // first line of output: a typo should not cost the minutes `ng new` takes.
     let i18n: string[] | undefined;
     if (uiLib && (await prompter.confirm('Translate the apps at runtime?', false))) {
-      const answer = await prompter.text('Locales, comma-separated (BCP-47)', 'en');
-      i18n = answer
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter((tag) => tag !== '');
+      const tags = (value: string) =>
+        value
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter((tag) => tag !== '');
+      const answer = await prompter.text('Locales, comma-separated (BCP-47)', 'en', (value) =>
+        tags(value).length === 0
+          ? 'Name at least one locale.'
+          : tags(value)
+              .map(localeProblem)
+              .find((problem) => problem !== undefined),
+      );
+      i18n = parseLocales(tags(answer));
     }
 
     const e2e = (await prompter.confirm('Wire up Playwright end-to-end tests?', true))

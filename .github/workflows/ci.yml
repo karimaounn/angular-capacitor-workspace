@@ -19,9 +19,9 @@ jobs:
     name: Build, typecheck and unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # Tracks `engines.node` (>=24.8.0), which exists to guarantee a
           # bundled npm >= 11.6. Below that, --strict-allow-scripts is accepted
@@ -49,9 +49,9 @@ jobs:
     # and new advisories — arrives on wall-clock time, not on commits.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -63,7 +63,7 @@ jobs:
 
       - name: Keep the generated workspace on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: generated-minimal
           path: /tmp/acw-minimal-*

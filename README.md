@@ -188,17 +188,22 @@ packages/
     src/gate/                        lockfile resolve + npm audit + proposals
     src/style.ts                     the terminal palette both CLIs print with
     src/schematics/                  workspace, app, marketing, ui-lib, mobile,
-                                     codegen, packages
+                                     codegen, i18n, packages, ng-add
     src/cli/                         audit, doctor
   create-angular-capacitor-workspace/
     src/                             argv, prompts, bootstrap
 e2e/
+  rows.mjs                           the matrix rows, shared by the two below
   matrix.mjs                         generate → install → build → test → audit
   sweep.mjs                          daily advisory sweep, opens an issue
   deprecations.mjs                   which deprecations are ours to fix
   deprecation-issue.mjs              merges the rows into one issue
 scripts/
   sync-versions.mjs                  reports pins that have moved
+  bump.mjs                           writes the next version everywhere
+  check-release.mjs                  checks a release tag against the tree
+  create-local.mjs                   npm run create: a workspace from this checkout
+  pack-self.mjs                      packs the schematics for the above
 ```
 
 ## Development
@@ -261,8 +266,8 @@ would ship rather than something adjacent to it.
 
 ## Status
 
-Every milestone in [PLAN.md](PLAN.md) is implemented and verified against the
-live registry on Angular 22.1.8 / npm 11.16:
+Every milestone of the plan this repo was built from is implemented and
+verified against the live registry on Angular 22.1.8 / npm 11.16:
 
 | Milestone                      | Verified by                                                                                    |
 | ------------------------------ | ---------------------------------------------------------------------------------------------- |
@@ -320,9 +325,10 @@ decision someone makes rather than code that quietly ran. It is the one rung
 that is preventative rather than reactive.
 
 **No prompt library.** `create-angular-capacitor-workspace` has exactly one
-runtime dependency — the schematics package. The prompts are ~100 lines over
-`node:readline`. A generator arguing that the strongest remedy is not installing
-the package should take its own advice.
+runtime dependency — the schematics package. The prompts, arrow-key lists
+included, are one file over `node:readline` and raw stdin. A generator arguing
+that the strongest remedy is not installing the package should take its own
+advice.
 
 ## Contributing
 

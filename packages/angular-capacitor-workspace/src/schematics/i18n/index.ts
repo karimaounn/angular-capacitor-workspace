@@ -64,8 +64,8 @@ export function i18n(options: I18nOptions = {}): Rule {
       throw new SchematicsException(
         'The i18n schematic wires the translation machinery into the ' +
           'design-system library, and this workspace has none. Generate one ' +
-          'first (`ng generate acw:ui-lib`), or pass --ui-lib when creating ' +
-          'the workspace.',
+          'first (`ng generate angular-capacitor-workspace:ui-lib`), or pass ' +
+          '--ui-lib when creating the workspace.',
       );
     }
 
@@ -123,8 +123,10 @@ export function installedI18n(name: string): Rule {
     // project up with no files in it — silently, because an empty source tree
     // is not an error.
     //
-    // Naming the project re-runs the library half too. That half is idempotent,
-    // and the alternative is a second entry point that exists only to skip it.
+    // Naming the project re-runs the library half too. That half writes only
+    // files that are not there yet, so the library's own — edited or not — are
+    // left as they are, and the alternative is a second entry point that exists
+    // only to skip it.
     return schematic('i18n', {
       locales: installed.locales,
       defaultLocale: installed.defaultLocale,
@@ -268,6 +270,18 @@ function requireRoot(projects: Record<string, AngularProject>, name: string): st
   return root;
 }
 
+/**
+ * Leaves files that already exist alone.
+ *
+ * What this schematic writes is handed over the moment it is written — a
+ * catalog somebody has translated, an endonym somebody corrected — and the
+ * schematic runs again every time a project is generated into a translated
+ * workspace. A re-run that rewrote those files would quietly undo that work.
+ */
+function onlyNew(tree: Tree): Rule {
+  return filter((path) => !tree.exists(path));
+}
+
 // ── The library half: the mechanism ──────────────────────────────────────────
 
 function library(
@@ -277,6 +291,7 @@ function library(
   defaultLocale: string,
 ): Rule {
   const root = requireRoot(readProjects(tree), design.name);
+  assertSameLocales(tree, design, locales, defaultLocale);
 
   const templates = apply(url('./files/lib'), [
     applyTemplates({
@@ -289,6 +304,7 @@ function library(
       labelEntries: mapEntries(locales, (tag) => labelLiteral(tag)),
     }),
     move(`/${root}`),
+    onlyNew(tree),
   ]);
 
   return chain([
@@ -298,6 +314,40 @@ function library(
       exportFromPublicApi(host, root);
     },
   ]);
+}
+
+/**
+ * Refuses a locale set that differs from the one the library already has.
+ *
+ * The library's locale tables are not rewritten once they exist, so a run asking
+ * for other locales would generate catalogs the library does not know about.
+ * Adding a locale is a hand edit the compiler then walks you through, and the
+ * README's Translation section says how.
+ */
+function assertSameLocales(
+  tree: Tree,
+  design: DesignSystem,
+  locales: readonly string[],
+  defaultLocale: string,
+): void {
+  const installed = readInstalledLocales(tree, design);
+  if (!installed) {
+    return;
+  }
+  const same =
+    installed.defaultLocale === defaultLocale &&
+    installed.locales.length === locales.length &&
+    installed.locales.every((tag) => locales.includes(tag));
+  if (!same) {
+    throw new SchematicsException(
+      `${design.name} already translates into ${installed.locales.join(', ')} ` +
+        `(source: ${installed.defaultLocale}), and this schematic does not rewrite ` +
+        `files it has handed over. To change the set, edit LOCALES and the two maps ` +
+        `beside it in i18n.tokens.ts by hand — the compiler then points at every ` +
+        `catalog and loader that needs the change. See the Translation section of ` +
+        `the README.`,
+    );
+  }
 }
 
 /** `  en: 'ltr',` — one indented entry per locale, for an exhaustive map. */
@@ -419,8 +469,8 @@ function application(
     const prefix = prefixOf(tree, name);
 
     return chain([
-      messages(name, root, design, locales, defaultLocale, false),
-      showcase(root, prefix, design),
+      messages(tree, name, root, design, locales, defaultLocale, false),
+      showcase(tree, root, prefix, design),
       e2eSuite(tree, root, './files/app-e2e', locales, defaultLocale, name),
       (host: Tree) => {
         registerTranslations(host, name, root, design.name);
@@ -433,9 +483,11 @@ function application(
 
 /**
  * The catalogs, the typed message map and the loader — the part an app and a
- * site have in common.
+ * site have in common. Written only where missing: a catalog that exists has
+ * been, or is being, translated.
  */
 function messages(
+  tree: Tree,
   name: string,
   root: string,
   design: DesignSystem,
@@ -480,6 +532,7 @@ function messages(
           mark: tag === defaultLocale ? '' : `[${tag}] `,
         }),
         move(`/${root}`),
+        onlyNew(tree),
       ]),
       MergeStrategy.Overwrite,
     ),
@@ -490,6 +543,7 @@ function messages(
       filter((path) => !path.endsWith('__locale__.ts.template')),
       applyTemplates(shared),
       move(`/${root}`),
+      onlyNew(tree),
     ]),
     MergeStrategy.Overwrite,
   );
@@ -530,17 +584,19 @@ function e2eSuite(
         localeList: locales.map((tag) => `'${tag}'`).join(', '),
       }),
       move(`/${root}`),
+      onlyNew(tree),
     ]),
     MergeStrategy.Overwrite,
   );
 }
 
 /** The starter screen's translation section, which an app and a site both carry. */
-function showcase(root: string, prefix: string, design: DesignSystem): Rule {
+function showcase(tree: Tree, root: string, prefix: string, design: DesignSystem): Rule {
   return mergeWith(
     apply(url('./files/showcase'), [
       applyTemplates({ ...strings, importName: design.name, prefix }),
       move(`/${root}`),
+      onlyNew(tree),
     ]),
     MergeStrategy.Overwrite,
   );
@@ -855,6 +911,10 @@ function localizedSite(
     const root = requireRoot(readProjects(tree), name);
     const prefix = prefixOf(tree, name);
 
+    // The first time, these replace pages the marketing schematic wrote in the
+    // source language. After that they are the site's own, and a re-run — which
+    // every `ng generate` into a translated workspace is — leaves them be.
+    const localized = tree.exists(`/${root}/src/app/i18n/build-locale.ts`);
     const siteFiles = mergeWith(
       apply(url('./files/site'), [
         applyTemplates({
@@ -865,16 +925,17 @@ function localizedSite(
           libPrefix: design.prefix,
         }),
         move(`/${root}`),
+        localized ? onlyNew(tree) : noop(),
       ]),
       MergeStrategy.Overwrite,
     );
 
     return chain([
-      messages(name, root, design, locales, defaultLocale, true),
-      showcase(root, prefix, design),
+      messages(tree, name, root, design, locales, defaultLocale, true),
+      showcase(tree, root, prefix, design),
       siteFiles,
       e2eSuite(tree, root, './files/site-e2e', locales, defaultLocale, name),
-      localizedPostbuild(),
+      localizedPostbuild(tree),
       (host: Tree) => {
         localizeSiteUrls(host, root, design.name);
         writeAlternates(host, root, design.name);
@@ -897,16 +958,24 @@ function localizedSite(
 /**
  * Replaces the postbuild scripts with locale-aware versions.
  *
- * Overwritten rather than merged, unlike the marketing schematic's own copy
- * which leaves an existing file alone: these are the same scripts with the
- * locale dimension added, and a site built once per language against the
- * single-output versions would report every page as missing. They still handle
- * a site with no locales, so a workspace with one localized site and one
- * without is not a broken combination.
+ * The first time, overwritten rather than merged, unlike the marketing
+ * schematic's own copy which leaves an existing file alone: these are the same
+ * scripts with the locale dimension added, and a site built once per language
+ * against the single-output versions would report every page as missing. They
+ * still handle a site with no locales, so a workspace with one localized site
+ * and one without is not a broken combination.
+ *
+ * Once `clean-dist.mjs` is there the locale-aware set is too, and from then on
+ * a copy someone has tuned is theirs.
  */
-function localizedPostbuild(): Rule {
+function localizedPostbuild(tree: Tree): Rule {
+  const installed = tree.exists('/scripts/clean-dist.mjs');
   return mergeWith(
-    apply(url('./files/scripts'), [applyTemplates({}), move('/scripts')]),
+    apply(url('./files/scripts'), [
+      applyTemplates({}),
+      move('/scripts'),
+      installed ? onlyNew(tree) : noop(),
+    ]),
     MergeStrategy.Overwrite,
   );
 }
@@ -1393,7 +1462,7 @@ One sitemap covers every language, with \`xhtml:link\` alternates per URL.
 \`verify-prerender.mjs\` fails the build if a language rendered in the wrong one,
 skipped a route the others have, or left out an hreflang.
 
-\`npm start:${sites[0]}\` serves the source locale: \`ng serve\` applies no
+\`npm run start:${sites[0]}\` serves the source locale: \`ng serve\` applies no
 \`define\`, and \`build-locale.ts\` falls back to \`DEFAULT_LOCALE\`.
 
 **Deploy \`dist/${sites[0]}\` as the web root, and redirect \`/\` yourself.** Every page

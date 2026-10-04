@@ -100,6 +100,26 @@ const SELECTOR_PREFIX = /^[a-zA-Z][.0-9a-zA-Z]*(-[.0-9a-zA-Z]*)*$/;
 export class ArgError extends Error {}
 
 /**
+ * Why `prefix` is not a selector prefix Angular would accept, or `undefined`.
+ *
+ * Shared with the interactive questions, so a prefix typed at a prompt is
+ * refused on the spot rather than minutes later inside the library schematic.
+ */
+export function prefixProblem(prefix: string): string | undefined {
+  return SELECTOR_PREFIX.test(prefix)
+    ? undefined
+    : `"${prefix}" is not a valid element-selector prefix.`;
+}
+
+/** Why `tag` is not a locale tag the generator accepts, or `undefined`. */
+export function localeProblem(tag: string): string | undefined {
+  return /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(tag)
+    ? undefined
+    : `"${tag}" is not a BCP-47 locale tag. Expected something like ` +
+        `"en", "fr", "pt-BR" or "zh-Hant".`;
+}
+
+/**
  * Checks and trims a site origin: a scheme and a host, nothing after.
  *
  * Checked here, like the selector prefix, so a mistake fails on the first line
@@ -190,7 +210,7 @@ export function parseArguments(argv: string[]): ParsedArgs {
           'and there is no --ui-lib. Write `--ui-lib ui --ui-lib-prefix acme`.',
       );
     }
-    if (!SELECTOR_PREFIX.test(uiLibPrefix)) {
+    if (prefixProblem(uiLibPrefix) !== undefined) {
       throw new ArgError(
         `--ui-lib-prefix must be a valid element-selector prefix (got "${uiLibPrefix}").`,
       );
@@ -332,7 +352,7 @@ function parsePackages(raw: string[]): string[] {
  * generated with a TODO beside it, which is a better answer than refusing a
  * locale that exists.
  */
-function parseLocales(raw: string[]): string[] {
+export function parseLocales(raw: string[]): string[] {
   const tags: string[] = [];
 
   for (const value of raw.flatMap((entry) => entry.split(','))) {
@@ -340,11 +360,9 @@ function parseLocales(raw: string[]): string[] {
     if (tag === '') {
       throw new ArgError('--i18n needs at least one locale tag, e.g. `--i18n en,fr`.');
     }
-    if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(tag)) {
-      throw new ArgError(
-        `--i18n: "${tag}" is not a BCP-47 locale tag. Expected something like ` +
-          `"en", "fr", "pt-BR" or "zh-Hant".`,
-      );
+    const problem = localeProblem(tag);
+    if (problem !== undefined) {
+      throw new ArgError(`--i18n: ${problem}`);
     }
     if (!tags.includes(tag)) {
       tags.push(tag);

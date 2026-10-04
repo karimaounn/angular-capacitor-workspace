@@ -41,6 +41,7 @@ ng generate angular-capacitor-workspace:marketing site --origin https://example.
 ng generate angular-capacitor-workspace:ui-lib ui --prefix acme
 ng generate angular-capacitor-workspace:mobile shop --platforms ios
 ng generate angular-capacitor-workspace:codegen
+ng generate angular-capacitor-workspace:i18n --locales en,fr,ar
 ng generate angular-capacitor-workspace:packages cdk
 ```
 
@@ -52,6 +53,7 @@ ng generate angular-capacitor-workspace:packages cdk
 | `ui-lib`    | ng-packagr, Storybook (Vite), browser-mode Vitest, SCSS layering, themes, contrast checker               |
 | `mobile`    | a Capacitor sibling registered as its own npm workspace member                                           |
 | `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point                         |
+| `i18n`      | runtime translation in the design system, catalogs per app, one prerendered build per locale per site    |
 | `packages`  | curated packages — the CDK, Angular Aria, a service worker — at ranges resolved against the Angular line |
 
 `ng generate angular-capacitor-workspace:<schematic> --help` lists every
@@ -92,7 +94,7 @@ switch.
 ### Translation
 
 `--i18n en,fr,ar` wires runtime translation into the design system and every
-app that is not a prerendered site.
+app, and builds each prerendered site once per locale (see below).
 
 **Runtime, not `@angular/localize`, and that is the whole decision.** Compile-time
 i18n emits one bundle per locale; a Capacitor `webDir` is a single directory with
@@ -108,9 +110,11 @@ design system that carries its own copy can only serve apps that want that copy,
 and one that takes strings as inputs serves every locale its consumers ship
 without an extraction step.
 
+<!-- prettier-ignore -->
 ```html
-{{ 'home.heading' | t }} {{ 'home.greeting' | t: { name: person() } }} {{ 'home.items' | t: { count:
-items().length } }}
+{{ 'home.heading' | t }}
+{{ 'home.greeting' | t: { name: person() } }}
+{{ 'home.items' | t: { count: items().length } }}
 ```
 
 Every catalog but the source one starts as a copy of it with each value tagged
@@ -181,7 +185,7 @@ skipped a route another rendered. Titles and descriptions are checked for
 duplicates within a language, not across: two languages saying the same thing is
 a translation, not a duplicate.
 
-`npm start:site` serves the source locale. `ng serve` applies no `define`, and
+`npm run start:site` serves the source locale. `ng serve` applies no `define`, and
 `build-locale.ts` falls back to `DEFAULT_LOCALE`.
 
 Deploy `dist/<site>` as the web root. Every page lives under a language, so the
@@ -190,11 +194,6 @@ it, and that cannot be a file, because the destination depends on the visitor.
 It is a 302 on `Accept-Language` falling back to the source locale, which is
 what each page's `x-default` already advertises. `verify-prerender.mjs` warns on
 every build until one exists.
-
-`--i18n` needs a design system, since that is where the mechanism goes. The
-source locale is the first tag unless `--default-locale` names another, and it
-has to be one of the tags being generated: it is what every untranslated key
-falls back to.
 
 ### The translation showcase
 
@@ -227,11 +226,16 @@ That directory is its own npm workspace member, so the Capacitor CLI and
 plugins resolve from there.
 
 The native `android/` and `ios/` projects are not generated. Add each platform
-once:
+once, after a web build — `cap add` ends by copying that build into the
+project it creates, and fails if there is none:
 
 ```bash
-(cd projects/shop/mobile && npx cap add android)
+npm run build:shop
+npm run --workspace projects/shop/mobile cap -- add android
 ```
+
+The workspace README carries these steps for each mobile app, with its
+platforms filled in.
 
 From then on, work from the workspace root:
 
@@ -245,8 +249,8 @@ Use `sync:<app>` rather than `npx cap sync`. The script builds first, and a
 bare `cap sync` copies whatever is left in `dist/` from last time.
 
 Native builds need a JDK 17 or newer and the Android SDK (`ANDROID_HOME`) for
-Android, and macOS with Xcode for iOS. `npm run preflight:shop` checks for them
-before a build fails halfway through.
+Android, and macOS with Xcode for iOS. `npm run preflight:shop` checks for the
+ones its own platforms need before a build fails halfway through.
 
 ### Marketing site
 
@@ -273,18 +277,17 @@ search engines:
   fell back to an empty shell), shares a title or description with another
   page, has a wrong canonical, or pins `data-theme` on `<html>`. Without these
   checks, a prerender that fails still looks like a successful build.
+- **Page budgets.** The initial bundle warns at 380 kB and fails at 450 kB,
+  instead of Angular's app-sized 500 kB and 1 MB.
+- **E2E suite.** With `--e2e playwright`: hydration without console errors,
+  the 404 page, head tags on client-side navigation, the skip link, and AXE on
+  every page reachable from the home page, in light and dark mode.
 
 Run it more than once for more than one site. A product site and a docs site
 are two sets of pages sharing a design system, not two repositories: each site
 gets its own project, dev-server port, scripts and origin, and they share the
 `scripts/` postbuild checks — which a second generation leaves alone, so
 checks someone has tuned survive it.
-
-- **Page budgets.** The initial bundle warns at 380 kB and fails at 450 kB,
-  instead of Angular's app-sized 500 kB and 1 MB.
-- **E2E suite.** With `--e2e playwright`: hydration without console errors,
-  the 404 page, head tags on client-side navigation, the skip link, and AXE on
-  every page reachable from the home page, in light and dark mode.
 
 The generated `projects/<site>/web/README.md` covers hosting: real 404s,
 upload order and caching.
@@ -398,21 +401,24 @@ just future ones — so `doctor` reads the installed policy, diffs it against th
 workspace, and reports the delta:
 
 ```
-3 difference(s) from the installed policy:
+! 3 difference(s) from the installed policy
 
   [floor/stale] vitest sits below the policy floor.
-      now:  vitest@^4.0.8
-      want: vitest@^4.1.11
-  [override/missing] The policy pins a transitive dependency under sockjs.
-      now:  (none)
-      want: overrides.sockjs = {"uuid":"^11.1.1"}
+      now  vitest@^4.0.8
+      want vitest@^4.1.11
+  [override/stale] The override under @scalar/json-magic no longer matches the policy.
+      now  overrides.@scalar/json-magic = {"undici":"^7.29.0"}
+      want overrides.@scalar/json-magic = {"undici":"^7.29.1"}
   [allowScripts/missing] lmdb needs an install script and is not yet allowlisted.
+      now  (absent)
+      want true
 ```
 
 Bumping this package and running `doctor --fix` is how a two-year-old project
-gets this quarter's patches. It also reports allowlist entries that are no
-longer needed — an exemption for a package no longer in the tree is attack
-surface for nothing.
+gets this quarter's patches. It also takes out what nothing needs any more: an
+override a release wrote whose parent has left the lockfile, and an
+`allowScripts` entry the workspace added for a package no longer in it — an
+exemption for a package that is not there is attack surface for nothing.
 
 ## Programmatic API
 

@@ -46,8 +46,14 @@ const PAIRINGS = [
   // Accent-coloured text on the page: links, and anything else that borrows the
   // brand colour for type. `-strong`, never `--accent` — the filled step is
   // chosen to sit under white and does not survive being put on the surface.
-  { fg: 'accent-strong', bg: 'surface', min: 4.5, label: 'a link' },
+  // The focus ring is drawn in the same token, at 3:1, which these cover.
+  { fg: 'accent-strong', bg: 'surface', min: 4.5, label: 'a link, or a focus ring' },
   { fg: 'accent-strong', bg: 'surface-raised', min: 4.5, label: 'a link on a card' },
+
+  // Error text and an invalid field's outline. `-strong` for the same reason as
+  // the accent: `--danger` is the fill step and fails as text on a dark page.
+  { fg: 'danger-strong', bg: 'surface', min: 4.5, label: 'an error message' },
+  { fg: 'danger-strong', bg: 'surface-raised', min: 4.5, label: 'an error message on a card' },
 
   // Boundaries that identify a control — input outlines, selected states.
   // WCAG 1.4.11, 3:1.

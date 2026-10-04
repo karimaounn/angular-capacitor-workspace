@@ -13,8 +13,11 @@
     color: var(--text);
   }
 
+  // `--danger-strong` wherever danger is text or a boundary on the page.
+  // `--danger` is the fill step, chosen to carry white, and against a dark
+  // surface it is under 3:1.
   .required {
-    color: var(--danger);
+    color: var(--danger-strong);
     margin-inline-start: var(--space-1);
   }
 
@@ -51,11 +54,11 @@
   // message itself is the primary signal. Colour alone is not a state.
   :host([data-invalid]) {
     input {
-      border-color: var(--danger);
+      border-color: var(--danger-strong);
     }
 
     .description {
-      color: var(--danger);
+      color: var(--danger-strong);
       font-weight: 500;
     }
   }

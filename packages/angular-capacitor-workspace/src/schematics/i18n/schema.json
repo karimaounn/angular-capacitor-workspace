@@ -17,7 +17,7 @@
     },
     "apps": {
       "type": "array",
-      "description": "Applications to wire. Defaults to every application that is not a prerendered site.",
+      "description": "Applications to wire. Defaults to every application; a prerendered site is built once per locale rather than switched at runtime.",
       "items": { "type": "string" },
       "default": []
     }

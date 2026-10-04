@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * Translation, checked where it actually runs.
@@ -14,52 +14,84 @@ import { expect, test } from '@playwright/test';
  *   • that a locale switch actually repaints, which depends on an impure pipe
  *     subscribing the host view under zoneless change detection.
  */
-const htmlAttr = (page: import('@playwright/test').Page, name: string) =>
-  page.locator('html').getAttribute(name);
+const LOCALES = [<%= localeList %>];
 
-test('the picker switches the language, and the choice survives a reload', async ({ page }) => {
-  await page.goto('/');
+const htmlAttr = (page: Page, name: string) => page.locator('html').getAttribute(name);
 
-  const plain = page.getByTestId('plain');
-  const before = await plain.textContent();
+/**
+ * Switches to a locale other than the one showing, and waits for it to land.
+ *
+ * Picked against what is active rather than by position in the list: the first
+ * load negotiates from the browser's languages, so the active locale is not
+ * necessarily the source one, and a fixed pick would sometimes "switch" to the
+ * language already on screen.
+ */
+async function switchLanguage(page: Page): Promise<string> {
+  const current = await htmlAttr(page, 'lang');
+  const other = LOCALES.find((locale) => locale !== current)!;
+  await page.getByLabel('Language').selectOption(other);
+  await expect(page.locator('html')).toHaveAttribute('lang', other);
+  return other;
+}
 
-  const picker = page.getByLabel('Language');
-  const options = await picker.locator('option').all();
-  const other = await options[options.length - 1]!.getAttribute('value');
+test.describe('switching language', () => {
+  test.skip(LOCALES.length < 2, 'One locale ships, so there is nothing to switch to.');
 
-  await picker.selectOption(other!);
+  test('the picker switches the language, and the choice survives a reload', async ({ page }) => {
+    await page.goto('/');
 
-  // The catalog is a lazy chunk, so the text arrives a moment after the switch.
-  await expect(page.locator('html')).toHaveAttribute('lang', other!);
-  await expect(plain).not.toHaveText(before!.trim());
+    const plain = page.getByTestId('plain');
+    const before = await plain.textContent();
 
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('lang', other!);
-});
+    // The catalog is a lazy chunk, so the text arrives a moment after the switch.
+    const other = await switchLanguage(page);
+    await expect(plain).not.toHaveText(before!.trim());
 
-test('lang and dir are right before Angular boots', async ({ page }) => {
-  await page.goto('/');
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', other);
+  });
 
-  const picker = page.getByLabel('Language');
-  const options = await picker.locator('option').all();
-  const other = await options[options.length - 1]!.getAttribute('value');
-  await picker.selectOption(other!);
-  await expect(page.locator('html')).toHaveAttribute('lang', other!);
-  const direction = await htmlAttr(page, 'dir');
+  test('lang and dir are right before Angular boots', async ({ page }) => {
+    await page.goto('/');
 
-  // Now load the page again with the application bundle blocked, so Angular
-  // never bootstraps and TranslationService never runs. Whatever is on <html>
-  // after this came from the inline script in index.html alone.
-  //
-  // This is the assertion the library's own tests cannot make. The script and
-  // the service duplicate the same decision — the storage key, the order of
-  // preferences, the direction per locale — and when they drift nothing fails.
-  // A right-to-left reader just gets one frame of a left-to-right layout.
-  await page.route('**/main*.js', (route) => route.abort());
-  await page.goto('/');
+    const other = await switchLanguage(page);
+    const direction = await htmlAttr(page, 'dir');
 
-  expect(await htmlAttr(page, 'lang')).toBe(other);
-  expect(await htmlAttr(page, 'dir')).toBe(direction);
+    // Now load the page again with the application bundle blocked, so Angular
+    // never bootstraps and TranslationService never runs. Whatever is on <html>
+    // after this came from the inline script in index.html alone.
+    //
+    // This is the assertion the library's own tests cannot make. The script and
+    // the service duplicate the same decision — the storage key, the order of
+    // preferences, the direction per locale — and when they drift nothing fails.
+    // A right-to-left reader just gets one frame of a left-to-right layout.
+    await page.route('**/main*.js', (route) => route.abort());
+    await page.goto('/');
+
+    expect(await htmlAttr(page, 'lang')).toBe(other);
+    expect(await htmlAttr(page, 'dir')).toBe(direction);
+  });
+
+  test('dates and currency follow the active locale, not the build', async ({ page }) => {
+    await page.goto('/');
+
+    const date = page.getByTestId('date');
+    const currency = page.getByTestId('currency');
+    const before = { date: await date.textContent(), currency: await currency.textContent() };
+
+    await switchLanguage(page);
+
+    // Angular's DatePipe and CurrencyPipe read the build-time LOCALE_ID and would
+    // not have moved. These go through TranslationService, which reads the signal.
+    await expect(date).not.toHaveText(before.date!.trim());
+    expect(await currency.textContent()).not.toBe(before.currency);
+
+    // The plain number is deliberately NOT asserted on. Which digits a locale
+    // uses is its CLDR default numbering system, and that is not what people
+    // assume: region-less `ar` resolves to Latin digits, so `1,234,567.891` is
+    // correct in both English and Arabic. Pass `{ numberingSystem: 'arab' }` to
+    // TranslationService.formatNumber if you want the Eastern Arabic ones.
+  });
 });
 
 test('a plural picks its form from the count, not from a ternary', async ({ page }) => {
@@ -89,29 +121,4 @@ test('a plural picks its form from the count, not from a ternary', async ({ page
   await expect(plural).toContainText('0');
 
   expect((await plural.textContent())!.replace(/\d+/, '')).toBe(two.replace(/\d+/, ''));
-});
-
-test('dates and currency follow the active locale, not the build', async ({ page }) => {
-  await page.goto('/');
-
-  const date = page.getByTestId('date');
-  const currency = page.getByTestId('currency');
-  const before = { date: await date.textContent(), currency: await currency.textContent() };
-
-  const picker = page.getByLabel('Language');
-  const options = await picker.locator('option').all();
-  const other = await options[options.length - 1]!.getAttribute('value');
-  await picker.selectOption(other!);
-  await expect(page.locator('html')).toHaveAttribute('lang', other!);
-
-  // Angular's DatePipe and CurrencyPipe read the build-time LOCALE_ID and would
-  // not have moved. These go through TranslationService, which reads the signal.
-  await expect(date).not.toHaveText(before.date!.trim());
-  expect(await currency.textContent()).not.toBe(before.currency);
-
-  // The plain number is deliberately NOT asserted on. Which digits a locale
-  // uses is its CLDR default numbering system, and that is not what people
-  // assume: region-less `ar` resolves to Latin digits, so `1,234,567.891` is
-  // correct in both English and Arabic. Pass `{ numberingSystem: 'arab' }` to
-  // TranslationService.formatNumber if you want the Eastern Arabic ones.
 });

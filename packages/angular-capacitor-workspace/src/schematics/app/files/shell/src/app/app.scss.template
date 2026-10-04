@@ -44,7 +44,7 @@ main {
   border-radius: var(--radius-md);
   background: var(--surface-raised);
   color: var(--text);
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-strong);
   transform: translateY(-200%);
 
   &:focus {

@@ -14,9 +14,12 @@ import { TranslationService } from './translation';
  * necessarily read the locale that is active. `LOCALE_LABELS` holds endonyms
  * for the same reason — "Arabic" is useless to a reader who needs العربية.
  *
- * `preload` on pointer-down rather than on change: the catalog is a lazy chunk,
- * so fetching it while the finger is still on the option hides the round trip
- * behind the gesture. A switch whose catalog has not arrived renders the
+ * `preload` on pointer-down rather than on change: each catalog is a lazy
+ * chunk, so fetching while the list is still open hides the round trip behind
+ * the gesture. It fetches every locale, because at pointer-down the select
+ * still holds the active one and nothing yet says which option the finger will
+ * land on. Catalogs are small, and opening the picker is a reader saying they
+ * are about to switch. A switch whose catalog has not arrived renders the
  * fallback locale for an instant, which is correct but visible.
  */
 @Component({
@@ -37,10 +40,9 @@ export class LanguagePicker {
     }
   }
 
-  protected preload(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    if (isLocale(value)) {
-      void this.i18n.preload(value);
+  protected preload(): void {
+    for (const locale of LOCALES) {
+      void this.i18n.preload(locale);
     }
   }
 }

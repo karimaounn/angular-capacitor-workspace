@@ -31,6 +31,12 @@ export interface WorkspaceOverlayOptions {
   mobile?: boolean;
   /** Dependency spec for this package. Defaults to the installed version. */
   selfSpec?: string;
+  /**
+   * Leave files that already exist alone. Set by `ng add`, where the README,
+   * the house rules and the CI workflow are the project's own; generation
+   * leaves it off, because the README there is the one `ng new` wrote.
+   */
+  keepExisting?: boolean;
 }
 
 /**
@@ -67,6 +73,9 @@ export function workspaceOverlay(options: WorkspaceOverlayOptions = {}): Rule {
         dot: '.',
       }),
       move('/'),
+      // Into an existing project, a file that is already there is somebody's:
+      // their README, their CI. Overwriting it is a diff they did not ask for.
+      filter((path) => !options.keepExisting || !tree.exists(path)),
     ]);
 
     return chain([
@@ -238,15 +247,8 @@ function gitignore(options: WorkspaceOverlayOptions): Rule {
       ]);
     }
 
-    if (options.mobile) {
-      addGitignoreSection(tree, 'Capacitor', [
-        '/projects/*/mobile/android/app/build/',
-        '/projects/*/mobile/android/.gradle/',
-        '/projects/*/mobile/android/local.properties',
-        '/projects/*/mobile/ios/App/Pods/',
-        '/projects/*/mobile/ios/App/build/',
-      ]);
-    }
+    // Capacitor's entries are written by the mobile schematic, which is what
+    // runs for a mobile target added later as well as at generation.
 
     // The design-token working directory, if the team uses one.
     addGitignoreSection(tree, 'Design scratch', ['/.design/']);

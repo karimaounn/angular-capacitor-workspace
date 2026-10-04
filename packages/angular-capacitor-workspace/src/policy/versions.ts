@@ -6,8 +6,8 @@
  * Angular schematics instead of freezing a template tree. Pinning
  * `@angular/core` here would reintroduce the drift we are avoiding.
  *
- * Regenerate with `npm run sync-versions`, which resolves the highest release
- * of each package compatible with `ANGULAR_LINE` and opens a PR.
+ * `npm run sync-versions` reports which pins the registry has moved past. It
+ * does not rewrite them: each one is a decision, and its `constraint` says why.
  */
 
 export interface VersionPin {

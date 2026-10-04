@@ -18,12 +18,17 @@
     },
     "mobile": {
       "type": "boolean",
-      "description": "Emit the Capacitor helper scripts under scripts/.",
+      "description": "Show the Capacitor shells in the README's layout.",
       "default": false
     },
     "selfSpec": {
       "type": "string",
       "description": "Dependency spec for this package in the generated workspace. Defaults to the installed version. Used by the integration matrix to point at a local tarball before publication."
+    },
+    "keepExisting": {
+      "type": "boolean",
+      "description": "Leave files that already exist alone, rather than overwriting them with the templates. Set by ng add.",
+      "default": false
     }
   },
   "additionalProperties": false

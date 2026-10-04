@@ -24,6 +24,8 @@ export function ngAdd(options: NgAddOptions = {}): Rule {
       e2e: options.e2e ?? false,
       uiLib: options.uiLib,
       mobile: false,
+      // The project's README, house rules and CI are its own.
+      keepExisting: true,
     }),
     options.uiLib ? schematic('ui-lib', { name: options.uiLib }) : noop(),
     applyDependencyPolicy(),

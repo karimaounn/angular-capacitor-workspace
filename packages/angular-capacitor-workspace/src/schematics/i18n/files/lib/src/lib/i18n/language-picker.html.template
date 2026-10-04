@@ -6,7 +6,7 @@
        property bindings are applied before the @for block has created any
        options, so a bound `value` would be assigned against an empty list. See
        the palette picker in theme-toggle. -->
-  <select (change)="select($event)" (pointerdown)="preload($event)">
+  <select (change)="select($event)" (pointerdown)="preload()">
     @for (locale of locales; track locale) {
       <option [value]="locale" [attr.lang]="locale" [selected]="locale === i18n.locale()">
         {{ labels[locale] }}

@@ -12,11 +12,12 @@ import {
   type Tree,
 } from '@angular-devkit/schematics';
 import { pins } from '../../policy/versions';
-import { updateJson } from '../../utils/json-file';
+import { JsonFile, updateJson } from '../../utils/json-file';
 import {
   addGitignoreSection,
   addScripts,
   documentScripts,
+  PACKAGE_JSON,
   prependHook,
   readProject,
   readProjects,
@@ -121,9 +122,15 @@ function codegenScripts(apps: string[], specEnvVar: string): Rule {
       prependHook(tree, name, hook);
     }
 
+    // Each app's own entry points too, since npm hooks each under its own
+    // `pre` name — and only the ones the app has, as `hookLibraryBuild` does.
+    const scripts = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
     for (const app of apps) {
-      prependHook(tree, `prebuild:${app}`, hook);
-      prependHook(tree, `prestart:${app}`, hook);
+      for (const verb of ['build', 'start', 'test', 'e2e']) {
+        if (scripts[`${verb}:${app}`]) {
+          prependHook(tree, `pre${verb}:${app}`, hook);
+        }
+      }
     }
   };
 }

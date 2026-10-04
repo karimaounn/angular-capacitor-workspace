@@ -14,6 +14,7 @@ import {
 import { VERSIONS } from '../../policy/versions';
 import { JsonFile } from '../../utils/json-file';
 import {
+  addGitignoreSection,
   addScripts,
   addWorkspaceMember,
   documentMobile,
@@ -77,8 +78,17 @@ export function mobile(options: MobileOptions): Rule {
         addWorkspaceMember(host, mobileRoot);
         mobileScripts(host, app, mobileRoot, [...platforms]);
         documentMobile(host, mobileReadmeBlock(app, appName, [...platforms], appId, mobileRoot));
+        // Here rather than in the workspace overlay, so a mobile target added
+        // with `ng generate` long after generation gets it too.
+        addGitignoreSection(host, 'Capacitor', [
+          '/projects/*/mobile/android/app/build/',
+          '/projects/*/mobile/android/.gradle/',
+          '/projects/*/mobile/android/local.properties',
+          '/projects/*/mobile/ios/App/Pods/',
+          '/projects/*/mobile/ios/App/build/',
+        ]);
       },
-      helperScripts(app),
+      helperScripts(app, [...platforms]),
     ]);
   };
 }
@@ -291,21 +301,30 @@ const PLATFORM_NAMES: Record<MobilePlatform, { label: string; ide: string; targe
 };
 
 /**
- * Root helper scripts for the parts of a mobile build that npm scripts model
- * badly — multi-step Gradle invocations and SDK preflight checks.
+ * The preflight check, as one shared script and one `preflight:<app>` per app.
+ *
+ * The script is written once and takes the platforms to check as arguments, so
+ * each app asks only about its own: an Android-only app on a Mac without Xcode
+ * is not a failed preflight. An existing copy is left alone — somebody may have
+ * tuned it — but every app still gets its script, which is what the README
+ * block written for it tells the reader to run.
  */
-function helperScripts(app: string): Rule {
+function helperScripts(app: string, platforms: MobilePlatform[]): Rule {
   return (tree: Tree) => {
     const path = '/scripts/cap-preflight.sh';
-    if (tree.exists(path)) {
-      return;
+    if (!tree.exists(path)) {
+      tree.create(path, PREFLIGHT_SH);
     }
-    tree.create(path, PREFLIGHT_SH);
+
+    const needs = list([
+      ...(platforms.includes('android') ? ['a JDK', 'the Android SDK'] : []),
+      ...(platforms.includes('ios') ? ['Xcode'] : []),
+    ]);
     addScripts(tree, {
-      [`preflight:${app}`]: 'bash scripts/cap-preflight.sh',
+      [`preflight:${app}`]: `bash scripts/cap-preflight.sh ${platforms.join(' ')}`,
     });
     documentScripts(tree, {
-      [`preflight:${app}`]: 'checks for a JDK, the Android SDK and Xcode before a native build',
+      [`preflight:${app}`]: `checks for ${needs} before a native build of \`${app}\``,
     });
   };
 }
@@ -313,36 +332,46 @@ function helperScripts(app: string): Rule {
 const PREFLIGHT_SH = `#!/usr/bin/env bash
 # Checks the things a Capacitor build needs before it fails halfway through
 # with a Gradle stack trace that does not mention any of them.
+#
+#   bash scripts/cap-preflight.sh android ios
+#
+# Only the platforms named are checked. With none, both are.
 set -euo pipefail
 
+platforms="\${*:-android ios}"
 fail=0
 note() { printf '  %-22s %s\\n' "$1" "$2"; }
+wants() { [[ " $platforms " == *" $1 "* ]]; }
 
-echo "Capacitor preflight"
+echo "Capacitor preflight ($platforms)"
 
-if command -v java >/dev/null 2>&1; then
-  note "java" "$(java -version 2>&1 | head -1)"
-else
-  note "java" "MISSING — Android builds need a JDK (17 or newer)"
-  fail=1
-fi
-
-if [ -n "\${ANDROID_HOME:-}" ] || [ -n "\${ANDROID_SDK_ROOT:-}" ]; then
-  note "android sdk" "\${ANDROID_HOME:-\$ANDROID_SDK_ROOT}"
-else
-  note "android sdk" "MISSING — set ANDROID_HOME or ANDROID_SDK_ROOT"
-  fail=1
-fi
-
-if [ "$(uname)" = "Darwin" ]; then
-  if command -v xcodebuild >/dev/null 2>&1; then
-    note "xcode" "$(xcodebuild -version 2>/dev/null | head -1)"
+if wants android; then
+  if command -v java >/dev/null 2>&1; then
+    note "java" "$(java -version 2>&1 | head -1)"
   else
-    note "xcode" "MISSING — iOS builds need Xcode and its command line tools"
+    note "java" "MISSING — Android builds need a JDK (17 or newer)"
     fail=1
   fi
-else
-  note "xcode" "skipped (iOS builds require macOS)"
+
+  if [ -n "\${ANDROID_HOME:-}" ] || [ -n "\${ANDROID_SDK_ROOT:-}" ]; then
+    note "android sdk" "\${ANDROID_HOME:-\$ANDROID_SDK_ROOT}"
+  else
+    note "android sdk" "MISSING — set ANDROID_HOME or ANDROID_SDK_ROOT"
+    fail=1
+  fi
+fi
+
+if wants ios; then
+  if [ "$(uname)" = "Darwin" ]; then
+    if command -v xcodebuild >/dev/null 2>&1; then
+      note "xcode" "$(xcodebuild -version 2>/dev/null | head -1)"
+    else
+      note "xcode" "MISSING — iOS builds need Xcode and its command line tools"
+      fail=1
+    fi
+  else
+    note "xcode" "skipped (iOS builds require macOS)"
+  fi
 fi
 
 if [ "$fail" -ne 0 ]; then

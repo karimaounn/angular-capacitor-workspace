@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CATALOG_IDS } from 'angular-capacitor-workspace';
-import { ArgError, parseArguments, USAGE } from '../src/args';
+import { ArgError, localeProblem, parseArguments, prefixProblem, USAGE } from '../src/args';
 
 describe('--ui-lib-prefix', () => {
   it('rides along with the library it names', () => {
@@ -222,6 +222,23 @@ describe('--i18n', () => {
 
   it('rejects an empty entry rather than silently dropping it', () => {
     expect(() => parseArguments(['ws', '--i18n', 'en,'])).toThrow(/at least one locale tag/);
+  });
+});
+
+/**
+ * The checks the interactive questions run while they are still on screen —
+ * the same ones as the flags, so a typo costs a retyped answer rather than the
+ * minutes `ng new` takes to reach the schematic that would refuse it.
+ */
+describe('the checks the prompts share', () => {
+  it('names a locale tag that is not one, and passes one that is', () => {
+    expect(localeProblem('english')).toMatch(/not a BCP-47 locale tag/);
+    expect(localeProblem('pt-BR')).toBeUndefined();
+  });
+
+  it('names a selector prefix Angular would refuse, and passes one it accepts', () => {
+    expect(prefixProblem('9lives')).toMatch(/not a valid element-selector prefix/);
+    expect(prefixProblem('acme')).toBeUndefined();
   });
 });
 

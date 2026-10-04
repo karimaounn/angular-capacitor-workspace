@@ -373,6 +373,17 @@ describe('i18n', () => {
       // A spec in a project with no runner is a file nothing runs.
       expect(tree.exists('/projects/shop/web/e2e/translation.spec.ts')).toBe(false);
     });
+
+    it('switches to whichever locale is not showing, not to a fixed one', () => {
+      // The first load negotiates from the browser's languages, so with
+      // `fr,en` the last locale is the one already on screen, and a fixed pick
+      // would "switch" to it and fail. One locale has nothing to switch to.
+      const spec = withE2e.readContent('/projects/shop/web/e2e/translation.spec.ts');
+      expect(spec).toContain("const LOCALES = ['en', 'fr'];");
+      expect(spec).toContain('LOCALES.find((locale) => locale !== current)');
+      expect(spec).toContain('test.skip(LOCALES.length < 2');
+      expect(spec).not.toContain('options.length - 1');
+    });
   });
 
   describe('a prerendered site', () => {
@@ -524,6 +535,35 @@ describe('i18n', () => {
       expect(site.readContent('/scripts/generate-sitemap.mjs')).toContain('xhtml:link');
     });
 
+    it('tells the reader the npm command that serves the source locale', () => {
+      expect(site.readContent('/README.md')).toContain(
+        '`npm run start:site` serves the source locale',
+      );
+    });
+
+    it('keeps the language links current after a client-side navigation', () => {
+      // The links sit in the shell, which nothing re-renders on navigation
+      // unless the template reads a signal that changes with it.
+      const links = site.readContent('/projects/site/web/src/app/i18n/locale-links.ts');
+      expect(links).toContain('toSignal(');
+      expect(links).toContain('routePath(this.url())');
+    });
+
+    it('leaves the scripts and pages alone once the site is localized', async () => {
+      // The first run replaces the marketing schematic's single-language files;
+      // after that they are the site's own, and every `ng generate` into the
+      // workspace runs this schematic again.
+      const tuned = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, site);
+      tuned.overwrite('/scripts/verify-prerender.mjs', '// tuned\n');
+      tuned.overwrite('/projects/site/web/src/app/pages/home.page.ts', '// edited\n');
+
+      const again = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, tuned);
+      expect(again.readContent('/scripts/verify-prerender.mjs')).toBe('// tuned\n');
+      expect(again.readContent('/projects/site/web/src/app/pages/home.page.ts')).toBe(
+        '// edited\n',
+      );
+    });
+
     it('is idempotent, including the scripts it replaces', async () => {
       const twice = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, site);
       const scripts = JSON.parse(twice.readContent('/package.json')).scripts;
@@ -586,6 +626,48 @@ describe('i18n', () => {
     await expect(runner().runSchematic('i18n', { locales: ['en'] }, withApp)).rejects.toThrow(
       /design-system library/,
     );
+    // Naming a command that works, under the collection's real name.
+    await expect(runner().runSchematic('i18n', { locales: ['en'] }, withApp)).rejects.toThrow(
+      /ng generate angular-capacitor-workspace:ui-lib/,
+    );
+  });
+
+  it('keeps edits to what it wrote when a project is generated later', async () => {
+    // Generating an app into a translated workspace re-runs this schematic.
+    // An endonym someone corrected, or a catalog someone translated, is theirs.
+    const localized = await runner().runSchematic(
+      'i18n',
+      { locales: ['en', 'xx'] },
+      await workspaceWithApp(),
+    );
+    const tokens = '/projects/ui/src/lib/i18n/i18n.tokens.ts';
+    const catalog = '/projects/shop/web/src/app/i18n/xx.ts';
+    const labelled = localized.readContent(tokens).replace(/'xx',\s*\/\/ TODO[^\n]*/, "'Xxish',");
+    expect(labelled).toContain("'Xxish'");
+    localized.overwrite(tokens, labelled);
+    localized.overwrite(catalog, '// translated by hand\n');
+
+    const later = await runner().runSchematic('app', { name: 'admin' }, localized);
+    expect(later.readContent(tokens)).toBe(labelled);
+    expect(later.readContent(catalog)).toBe('// translated by hand\n');
+    expect(later.exists('/projects/admin/web/src/app/i18n/xx.ts')).toBe(true);
+
+    const again = await runner().runSchematic('i18n', { locales: ['en', 'xx'] }, later);
+    expect(again.readContent(tokens)).toBe(labelled);
+    expect(again.readContent(catalog)).toBe('// translated by hand\n');
+  });
+
+  it('refuses a different set of locales once the library has its own', async () => {
+    // Its tables are not rewritten, so catalogs for a locale it does not know
+    // would not compile. Adding one is a hand edit the README describes.
+    const localized = await runner().runSchematic(
+      'i18n',
+      { locales: ['en', 'fr'] },
+      await workspaceWithApp(),
+    );
+    await expect(
+      runner().runSchematic('i18n', { locales: ['en', 'fr', 'de'] }, localized),
+    ).rejects.toThrow(/already translates into en, fr/);
   });
 
   it('reaches a project generated after it', async () => {

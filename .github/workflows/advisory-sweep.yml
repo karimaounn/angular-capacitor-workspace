@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # Tracks `engines.node` (>=24.8.0), which exists to guarantee a
           # bundled npm >= 11.6. Below that, --strict-allow-scripts is accepted
@@ -37,7 +37,7 @@ jobs:
 
       - name: Open or update an issue
         if: steps.sweep.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('node:fs');
@@ -84,9 +84,9 @@ jobs:
       matrix:
         row: [minimal, full, multi-app, lib-only]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -112,7 +112,7 @@ jobs:
       # job needs — but a cancelled run has nothing to say and should stay quiet.
       - name: Keep the deprecation report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: deprecations-${{ matrix.row }}
           path: ${{ runner.temp }}/deprecations-${{ matrix.row }}.json
@@ -129,9 +129,9 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -139,7 +139,7 @@ jobs:
       # continue-on-error: with nothing to download this step fails, and the
       # judgement about what an empty set of reports means belongs to the script
       # below — which treats it as a broken nightly rather than a clean one.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           pattern: deprecations-*
@@ -160,7 +160,7 @@ jobs:
       # RUNNER_TEMP.
       - name: Open or update an issue
         if: steps.merge.outcome == 'failure' && hashFiles('issue.md') != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('node:fs');
