@@ -62,7 +62,7 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
   --audit-level <lvl>     low|moderate|high|critical  (default: moderate)
   --no-install            stop after generating; still writes the lockfile to audit
   --dry-run               show what would be generated
-  -h, --help
+  -h, --help              this message
 ```
 
 `--mobile` binds to the `--app` before it, and `--marketing-origin` to the

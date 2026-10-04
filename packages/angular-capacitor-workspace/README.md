@@ -313,6 +313,11 @@ Build, serve and test scripts run codegen first. When `OPENAPI_SPEC` is unset
 they skip it with a message rather than failing, so a fresh clone without
 access to the spec still starts.
 
+To give an app generated later its own client, run the schematic again with
+`--apps <app>`. It adds that app's entry to `orval.config.ts` and its
+`api-client.ts`, and leaves the existing entries, any edits to the config and
+every other app's `api-client.ts` as they are.
+
 ### Curated packages
 
 ```bash

@@ -3,6 +3,7 @@ import {
   apply,
   applyTemplates,
   chain,
+  filter,
   MergeStrategy,
   mergeWith,
   move,
@@ -60,19 +61,121 @@ export function codegen(options: CodegenOptions = {}): Rule {
       }),
     );
 
+    // Written once. A second run — to give an app generated later its client —
+    // must not reset the config to the apps named this time, nor a spec variable
+    // chosen with --spec-env-var back to the default. It adds entries instead.
     const rootTemplates = apply(url('./files/root'), [
-      applyTemplates({ ...strings, apps, appRoots, specEnvVar }),
+      applyTemplates({ specEnvVar }),
       move('/'),
+      filter((path) => !tree.exists(path)),
     ]);
 
     return chain([
       mergeWith(rootTemplates, MergeStrategy.Overwrite),
-      ...apps.map((name) => apiClientFor(name, appRoots[name]!)),
+      (host: Tree) => addOrvalEntries(host, apps, appRoots),
+      ...apps.map((name) => apiClientFor(tree, name, appRoots[name]!)),
       codegenScripts(apps, specEnvVar),
       codegenDependencies(),
       codegenGitignore(),
     ]);
   };
+}
+
+const ORVAL_CONFIG = '/orval.config.ts';
+
+/**
+ * Gives each app an entry in `orval.config.ts`, unless it already has one.
+ *
+ * Appended rather than rendered with the rest of the file, so the first run and
+ * every later one go through the same code: the template writes an empty
+ * `defineConfig({})` and this fills it. An entry already there — the app's, by
+ * its key or by its output path — is left as it is, along with whatever else
+ * someone has changed in the file.
+ *
+ * The end of the object is found by matching braces from its opening one, as
+ * `appendProvider` does for a providers array. A brace inside a string or a
+ * comment would fool it, and nothing this collection writes there has one.
+ */
+function addOrvalEntries(tree: Tree, apps: string[], appRoots: Record<string, string>): void {
+  const source = tree.read(ORVAL_CONFIG)?.toString('utf8');
+  if (source === undefined) {
+    throw new SchematicsException(`Expected ${ORVAL_CONFIG} to exist; this schematic writes it.`);
+  }
+
+  const missing = apps.filter((app) => !configures(source, app, appRoots[app]!));
+  if (missing.length === 0) {
+    return;
+  }
+
+  const entries = missing.map((app) => orvalEntry(app, appRoots[app]!)).join('');
+  const handEdited = new SchematicsException(
+    `Could not find \`export default defineConfig({ … })\` in ${ORVAL_CONFIG}, so ` +
+      `${missing.join(', ')} could not be added to it. Add the entry by hand:\n\n${entries}`,
+  );
+
+  const opening = 'export default defineConfig({';
+  const start = source.indexOf(opening);
+  if (start === -1) {
+    throw handEdited;
+  }
+
+  const from = start + opening.length;
+  let depth = 1;
+  let end = -1;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) {
+      end = index;
+      break;
+    }
+  }
+  if (end === -1) {
+    throw handEdited;
+  }
+
+  // The template ends every entry with a comma; a file someone has tidied may not.
+  const existing = source.slice(from, end).replace(/\s+$/, '');
+  const comma = existing === '' || existing.endsWith(',') ? '' : ',';
+  tree.overwrite(
+    ORVAL_CONFIG,
+    `${source.slice(0, from)}${existing}${comma}\n${entries}${source.slice(end)}`,
+  );
+}
+
+/** True when the config already has an entry for `app`, by its key or its output. */
+function configures(source: string, app: string, root: string): boolean {
+  return (
+    new RegExp(`^ {2}${strings.camelize(app)}: \\{`, 'm').test(source) ||
+    source.includes(`'${root}/src/api/generated/index.ts'`)
+  );
+}
+
+/** One app's entry in `orval.config.ts`, at the indent of a top-level key. */
+function orvalEntry(app: string, root: string): string {
+  return `  ${strings.camelize(app)}: {
+    input: { target: spec },
+    output: {
+      mode: 'tags-split',
+      target: '${root}/src/api/generated/index.ts',
+      schemas: '${root}/src/api/generated/model',
+      client: 'angular',
+      clean: true,
+      override: {
+        // Every generated call routes through this factory, which is where an
+        // interceptor, a base URL or auth headers get attached. Generated code
+        // should never be edited; this is the seam that means you never need to.
+        mutator: {
+          path: '${root}/src/api/api-client.ts',
+          name: 'apiClient',
+        },
+      },
+    },
+    hooks: {
+      afterAllFilesWrite: 'prettier --write',
+    },
+  },
+`;
 }
 
 function applicationNames(tree: Tree): string[] {
@@ -81,7 +184,15 @@ function applicationNames(tree: Tree): string[] {
     .map(([name]) => name);
 }
 
-function apiClientFor(name: string, root: string): Rule {
+/**
+ * The app's `api-client.ts`, written only if it has none.
+ *
+ * The file is the app's from the moment it exists: its own header promises
+ * that regeneration never overwrites the base URL, auth headers and error
+ * mapping configured there. Running this schematic again — for an app added
+ * later, say — is regeneration too.
+ */
+function apiClientFor(tree: Tree, name: string, root: string): Rule {
   const templates = apply(url('./files/app'), [
     applyTemplates({
       ...strings,
@@ -91,6 +202,7 @@ function apiClientFor(name: string, root: string): Rule {
       baseUrlPlaceholder: '/api',
     }),
     move(`/${root}/src/api`),
+    filter((path) => !tree.exists(path)),
   ]);
   return mergeWith(templates, MergeStrategy.Overwrite);
 }

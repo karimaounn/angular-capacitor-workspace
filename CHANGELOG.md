@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Running the `codegen` schematic again no longer undoes the first run.** It
+  rewrote everything it had written, which is what a second run is for: giving
+  an app generated later its client. Three things were lost:
+  - each app's `api-client.ts`, whose header promises that regeneration never
+    touches the base URL, auth headers and error mapping configured there
+  - with `--apps admin`, every other app's entry in `orval.config.ts`, so their
+    clients stopped being generated
+  - a spec variable chosen with `--spec-env-var`, which reverted to
+    `OPENAPI_SPEC` in both `orval.config.ts` and `scripts/codegen.mjs`
+
+  Those files are now written only when missing, and a later run adds an entry
+  per new app to `orval.config.ts`, leaving the existing ones and any edits
+  alone. A config edited past recognition fails with the entry to paste. This
+  takes effect in existing workspaces once they install this release, since
+  `ng generate` runs the installed schematic.
+
+- **`doctor` recognises a translated workspace.** Generation sets an `i18n`
+  feature from `--i18n`, but `doctor` and `audit` never inferred one, so a
+  policy rule guarded on it would have applied at generation and been ignored
+  in every existing workspace. It is now read from the design system's
+  `i18n.tokens.ts`, the same file the i18n schematic reads back. No rule uses
+  it yet; `doctor`'s feature list now includes it.
+
+- The create package's README showed `-h, --help` with no description, unlike
+  `--help` itself. A test now holds the README's options block to `--help`
+  line for line.
+
 ## [22.5.0] — 2026-10-04
 
 ### Added

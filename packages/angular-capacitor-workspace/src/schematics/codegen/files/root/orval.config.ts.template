@@ -25,27 +25,5 @@ if (!spec) {
   );
 }
 
-export default defineConfig({<% for (const app of apps) { %>
-  <%= camelize(app) %>: {
-    input: { target: spec },
-    output: {
-      mode: 'tags-split',
-      target: '<%= appRoots[app] %>/src/api/generated/index.ts',
-      schemas: '<%= appRoots[app] %>/src/api/generated/model',
-      client: 'angular',
-      clean: true,
-      override: {
-        // Every generated call routes through this factory, which is where an
-        // interceptor, a base URL or auth headers get attached. Generated code
-        // should never be edited; this is the seam that means you never need to.
-        mutator: {
-          path: '<%= appRoots[app] %>/src/api/api-client.ts',
-          name: 'apiClient',
-        },
-      },
-    },
-    hooks: {
-      afterAllFilesWrite: 'prettier --write',
-    },
-  },<% } %>
+export default defineConfig({
 });

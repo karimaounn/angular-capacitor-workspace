@@ -1276,6 +1276,73 @@ describe('codegen', () => {
     expect(tree.readContent('/.gitignore')).toContain('**/src/api/generated/');
   });
 
+  /** A workspace whose one app, `shop`, has been through codegen once. */
+  async function codegenOnce(options: Record<string, unknown> = {}): Promise<UnitTestTree> {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
+    return runner().runSchematic('codegen', { apps: ['shop'], ...options }, withApp);
+  }
+
+  /** `tree` with one string in one file replaced, failing if it was not there. */
+  function edit(tree: UnitTestTree, path: string, from: string, to: string): string {
+    const before = tree.readContent(path);
+    expect(before, `${path} has no "${from}"`).toContain(from);
+    const after = before.replace(from, to);
+    tree.overwrite(path, after);
+    return after;
+  }
+
+  it('leaves an api-client.ts that exists alone when it runs again', async () => {
+    // Its header promises regeneration never touches it, and running the
+    // schematic again — for an app added later — is regeneration too.
+    const first = await codegenOnce();
+    const path = '/projects/shop/web/src/api/api-client.ts';
+    const edited = edit(first, path, "'/api'", "'https://api.acme.example'");
+    const config = first.readContent('/orval.config.ts');
+
+    const again = await runner().runSchematic('codegen', { apps: ['shop'] }, first);
+    expect(again.readContent(path)).toBe(edited);
+    expect(again.readContent('/orval.config.ts')).toBe(config);
+  });
+
+  it('adds an app to the config, keeping the entries and edits already there', async () => {
+    // `--apps admin` names the app being added, not the whole set. Rendering the
+    // config from it alone took every earlier client away, and a setting
+    // someone had changed went with it.
+    const first = await codegenOnce();
+    edit(first, '/orval.config.ts', "mode: 'tags-split'", "mode: 'split'");
+
+    const admin = await runner().runSchematic('app', { name: 'admin' }, first);
+    const again = await runner().runSchematic('codegen', { apps: ['admin'] }, admin);
+    const config = again.readContent('/orval.config.ts');
+
+    expect(config).toContain("target: 'projects/shop/web/src/api/generated/index.ts'");
+    expect(config).toContain("target: 'projects/admin/web/src/api/generated/index.ts'");
+    expect(config).toContain("mode: 'split'");
+    expect(config.match(/^ {2}shop: \{/gm)).toHaveLength(1);
+    expect(again.files).toContain('/projects/admin/web/src/api/api-client.ts');
+  });
+
+  it('keeps the spec variable the first run chose', async () => {
+    // A second run without --spec-env-var gets the schema default, and used to
+    // write it over the variable the workspace was set up with.
+    const first = await codegenOnce({ specEnvVar: 'API_SPEC' });
+    const again = await runner().runSchematic('codegen', { apps: ['shop'] }, first);
+
+    expect(again.readContent('/orval.config.ts')).toContain("process.env['API_SPEC']");
+    expect(again.readContent('/scripts/codegen.mjs')).toContain("process.env['API_SPEC']");
+  });
+
+  it('says what to add by hand when the config no longer has the shape it writes', async () => {
+    const first = await codegenOnce();
+    first.overwrite('/orval.config.ts', 'export default { shop: {} };\n');
+    const admin = await runner().runSchematic('app', { name: 'admin' }, first);
+
+    await expect(runner().runSchematic('codegen', { apps: ['admin'] }, admin)).rejects.toThrow(
+      /Add the entry by hand:[\s\S]*projects\/admin\/web\/src\/api\/api-client\.ts/,
+    );
+  });
+
   it('refuses to run with no application to generate into', async () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     await expect(runner().runSchematic('codegen', {}, base)).rejects.toThrow(

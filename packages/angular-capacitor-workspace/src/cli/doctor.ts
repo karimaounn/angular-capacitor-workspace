@@ -102,6 +102,19 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
     if (root && existsSync(join(cwd, dirname(root), 'mobile', 'capacitor.config.ts'))) {
       features.add('mobile');
     }
+
+    // Runtime translation lives in the design system, and its locale table is
+    // the file the i18n schematic itself reads back to decide a workspace is
+    // translated (`readInstalledLocales`). The same witness, so `doctor` agrees
+    // with a later `ng generate` — and with `featuresFor`, which sets the token
+    // at generation from `--i18n`.
+    if (
+      project.projectType === 'library' &&
+      root &&
+      existsSync(join(cwd, root, 'src', 'lib', 'i18n', 'i18n.tokens.ts'))
+    ) {
+      features.add('i18n');
+    }
     void projectName;
   }
 

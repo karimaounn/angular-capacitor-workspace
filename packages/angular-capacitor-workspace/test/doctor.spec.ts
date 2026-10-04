@@ -123,6 +123,21 @@ describe('inferFeatures', () => {
     expect(inferFeatures(cwd, {})).not.toContain('pkg:cdk');
   });
 
+  it('detects runtime translation from the design system, where the i18n schematic puts it', () => {
+    // `featuresFor` sets `i18n` at generation. Without this, a rule guarded on
+    // it would apply when the workspace is generated and be ignored by doctor.
+    write('angular.json', {
+      projects: { ui: { projectType: 'library', root: 'projects/ui' } },
+    });
+    expect(inferFeatures(cwd, {})).not.toContain('i18n');
+
+    writeText(
+      'projects/ui/src/lib/i18n/i18n.tokens.ts',
+      "export const LOCALES = ['en'] as const;\n",
+    );
+    expect(inferFeatures(cwd, {})).toContain('i18n');
+  });
+
   it('detects a static marketing target from angular.json', () => {
     write('angular.json', {
       projects: {

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CATALOG_IDS } from 'angular-capacitor-workspace';
 import { ArgError, localeProblem, parseArguments, prefixProblem, USAGE } from '../src/args';
@@ -285,7 +287,30 @@ describe('the usage text', () => {
       expect(row).toMatch(/^ {24}• /);
     }
   });
+
+  it('is what the README shows, so the package page cannot fall behind --help', () => {
+    // The README's options block is a copy of these rows, kept by hand, and it
+    // is what npm renders on the package page — where most people read the
+    // flags before they ever run --help.
+    expect(readmeOptions()).toEqual(usageOptions());
+  });
 });
+
+/** The option rows of `--help`, from the first flag down to `--help` itself. */
+function usageOptions(): string[] {
+  const lines = USAGE.split('\n');
+  const first = lines.findIndex((line) => line.startsWith('  --'));
+  const last = lines.findIndex((line) => line.trimStart().startsWith('-h, --help'));
+  return lines.slice(first, last + 1).map((line) => line.trimEnd());
+}
+
+/** The same rows, as the README's options block spells them. */
+function readmeOptions(): string[] {
+  const readme = readFileSync(join(__dirname, '..', 'README.md'), 'utf8');
+  const block = readme.match(/\n```\n( {2}--[\s\S]*?)\n```\n/)?.[1];
+  expect(block, 'README.md has no options block').toBeDefined();
+  return block!.split('\n').map((line) => line.trimEnd());
+}
 
 /** The `--with` rows, found the way a reader finds them: by the id they offer. */
 function catalogRows(): string[] {
