@@ -99,9 +99,15 @@ an existing Angular workspace under the policy, run
 
 ```bash
 npm run audit:policy                            # fail on any advisory the policy does not cover
-npm install -D angular-capacitor-workspace@22   # pick up newer policy patches
-npx angular-capacitor-workspace doctor --fix    # apply them to this workspace
+ng update angular-capacitor-workspace@22        # newer policy patches, and fixes to generated files
+npx angular-capacitor-workspace doctor --fix    # apply the policy to this workspace
 ```
+
+`ng update` runs the release's migrations, which fix files an earlier release
+generated and print the change to make by hand in any file you have edited. A
+plain `npm install` runs none;
+`ng update angular-capacitor-workspace --migrate-only --from=<old version>` runs
+them afterwards.
 
 The [schematics package README](packages/angular-capacitor-workspace/README.md)
 covers every schematic, the `audit` and `doctor` output, and the programmatic
@@ -185,6 +191,7 @@ packages/
     src/policy/advisories.ts         ← the file you patch
     src/policy/versions.ts           ← pins for what ng new does not choose
     src/catalog.ts                   ← the packages --with knows how to wire in
+    src/migrations.json              ng update fixes for files a release wrote
     src/gate/                        lockfile resolve + npm audit + proposals
     src/style.ts                     the terminal palette both CLIs print with
     src/schematics/                  workspace, app, marketing, ui-lib, mobile,

@@ -9,7 +9,8 @@
  * There are five places, and a release needs all five: the version in each of
  * the three manifests, the exact `angular-capacitor-workspace` pin in
  * `create-*`, and the changelog's `## [Unreleased]` heading with the two link
- * definitions at the foot of the file.
+ * definitions at the foot of the file. A release that ships an `ng update`
+ * migration has a sixth: that migration's `version`.
  *
  * Every one of them is already checked, but late. `test/release-line.spec.ts`
  * catches a missed manifest on the next CI run; `check-release.mjs` catches an
@@ -30,6 +31,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const generator = 'packages/angular-capacitor-workspace/package.json';
 const create = 'packages/create-angular-capacitor-workspace/package.json';
+const migrations = 'packages/angular-capacitor-workspace/src/migrations.json';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -53,6 +55,7 @@ pin('package.json', /^( {2}"version": ")[^"]+(")/m, 'version');
 pin(generator, /^( {2}"version": ")[^"]+(")/m, 'version');
 pin(create, /^( {2}"version": ")[^"]+(")/m, 'version');
 pin(create, /^( {4}"angular-capacitor-workspace": ")[^"]+(")/m, 'angular-capacitor-workspace pin');
+versionMigrations();
 promoteChangelog();
 
 for (const line of summary) {
@@ -170,6 +173,39 @@ function pin(path, pattern, what) {
 
   edits.set(path, text.replace(pattern, `$1${target}$2`));
   summary.push(`${path}  ${what}: ${current} → ${target}`);
+}
+
+/**
+ * Gives every migration this release ships the release's version.
+ *
+ * `ng update` runs a migration only when the installed version is below its
+ * `version` and the target is at or above it, so the version has to be the
+ * release that ships it. Whether that is a minor or a patch is decided here,
+ * after the migration was written. A migration above the version already out
+ * is one this release ships; the rest shipped earlier and keep theirs.
+ */
+function versionMigrations() {
+  const base = parse(current);
+  let count = 0;
+  const text = read(migrations).replace(
+    /("version":\s*")([^"]*)(")/g,
+    (match, open, version, close) => {
+      const parsed = parse(version);
+      if (!parsed) {
+        fail(`${migrations} has a migration at \`${version}\`, which is not a version.`);
+      }
+      if (rank(parsed) <= rank(base)) {
+        return match;
+      }
+      count++;
+      return `${open}${target}${close}`;
+    },
+  );
+
+  if (count > 0) {
+    edits.set(migrations, text);
+    summary.push(`${migrations}  ${count} migration(s) → ${target}`);
+  }
 }
 
 /**

@@ -128,7 +128,18 @@ npx angular-capacitor-workspace doctor --fix   # apply the fix
   dependency that wants to run one will fail the build until someone
   approves it.
 
-To pick up new fixes after upgrading the generator, run `doctor --fix`.
+To pick up newer fixes:
+
+```bash
+ng update angular-capacitor-workspace@<%= angularLine %>
+npx angular-capacitor-workspace doctor --fix
+```
+
+`ng update` also runs the generator's migrations, which fix files it wrote here.
+A file you have edited is left as it is, and the change to make by hand is
+printed instead. A plain `npm install` runs no migrations;
+`ng update angular-capacitor-workspace --migrate-only --from=<old version>`
+runs them afterwards.
 
 ## Scripts
 

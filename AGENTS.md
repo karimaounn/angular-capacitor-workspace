@@ -25,8 +25,10 @@ in `packages/angular-capacitor-workspace/src/api.ts`, which runs, in this order:
 The generated workspace keeps `angular-capacitor-workspace` as a
 devDependency, so `audit`, `doctor` (`src/cli/`) and
 `ng generate angular-capacitor-workspace:<schematic>` keep running there for
-years, against whatever version it has installed. The package's major is the
-Angular major it targets (`ANGULAR_LINE` in `src/policy/versions.ts`).
+years, against whatever version it has installed, and
+`ng update angular-capacitor-workspace@22` runs our migrations there
+(`src/migrations.json`). The package's major is the Angular major it targets
+(`ANGULAR_LINE` in `src/policy/versions.ts`).
 
 Paths below are relative to `packages/angular-capacitor-workspace/` unless they
 start with the package name or name a root file.
@@ -70,9 +72,9 @@ Before calling a change done:
 8. This file still true. If your change renames or moves something it names,
    adds a feature token, a coupling, a test file or a command, or changes how a
    kind of change is made, update the section that says so in the same change.
-   Setting up the first `ng update` migration, for example, turns
-   [that section](#migration-schematics-ng-update) from setup steps into a
-   description of what exists.
+   The first migration, for example, removes the line in
+   [that section](#migration-schematics-ng-update) saying the collection is
+   empty.
 
 ## Recipes
 
@@ -192,40 +194,42 @@ Storybook move to Vite is the precedent.
 
 ### Migration schematics (`ng update`)
 
-There is no migrations collection yet. The first migration sets it up:
+`src/migrations.json` is the collection `ng update` runs, named by `ng-update`
+in the package manifest. It is empty: no fix has needed a migration yet. The
+documented upgrade is `ng update angular-capacitor-workspace@22`, then
+`npx angular-capacitor-workspace doctor --fix`. A plain `npm install` runs no
+migrations; `ng update angular-capacitor-workspace --migrate-only --from=<old>`
+runs them afterwards.
 
-- `src/migrations.json` in Angular's format
+A migration is:
+
+- An entry in `src/migrations.json`, in Angular's format
   (`node_modules/@schematics/angular/migrations/migration-collection.json`):
-  each entry has `version`, `factory` and `description`.
-  `scripts/copy-assets.mjs` already copies every `.json` under `src/` to `dist/`.
-- `"ng-update": { "migrations": "./dist/migrations.json" }` in the package manifest.
-- Factories at `src/migrations/<slug>/index.ts`.
-- `test/migrations.spec.ts`, loading `dist/migrations.json` through
-  `SchematicTestRunner` the way `schematics.spec.ts` loads the collection.
-- A check in `test/release-line.spec.ts` that every migration's `version` is on
-  `ANGULAR_LINE` and not above the package version.
-- A new documented upgrade command: `ng update angular-capacitor-workspace@22`,
-  then `npx angular-capacitor-workspace doctor --fix`. A plain `npm install` runs
-  no migrations; `ng update angular-capacitor-workspace --migrate-only --from=<old>`
-  runs them afterwards. Change it in the root README ("Keep it audit-clean"), the
-  package README (the top and `doctor`), and the generated README ("Dependency
-  policy") and AGENTS.md ("Dependencies") templates.
+  `version`, `factory` and `description`. `ng update` prints the description's
+  first sentence as the title.
+- A factory at `src/migrations/<slug>/index.ts`.
+- Tests in `test/migrations.spec.ts` (which already resolves every factory in
+  `dist/migrations.json`): one per shape a release wrote, one with the file
+  edited (left alone, one warning), and a second run that changes nothing.
+- A CHANGELOG entry naming it in backticks.
 
 Every migration:
 
-- Has a `version` equal to the release that ships it. `ng update` runs a
-  migration only when `installed < version <= target`, so a version above the
-  actual release never runs for that release. Set it to the expected next
-  version and re-check it when `npm run bump` picks patch or minor.
+- Has a `version` above the release already out. `ng update` runs a migration
+  only when `installed < version <= target`, so the version must be the release
+  that ships it. `npm run bump` sets it, and `test/release-line.spec.ts` checks
+  it against the CHANGELOG section that names the migration.
 - Is idempotent: it detects that it has already been applied.
 - Handles every shape that 22.0.0 onwards produced.
-- Edits a file only where it finds the exact text the generator wrote, as
-  `replaceScript` in `schematics/i18n` and `POLICY.retired` do. Anywhere else it
-  calls `context.logger.warn()` with the manual step and moves on. It never
-  throws, because that aborts the whole `ng update`, and never overwrites a
-  user's edit.
+- Edits files only through `replaceGeneratedText` and `replaceGeneratedValue`
+  (`src/migrations/edit.ts`). They change a file only where it holds exactly
+  what a release wrote, and otherwise log the manual step as a warning and move
+  on. A missing file returns `'absent'` without a warning; warn yourself if the
+  workspace should have it.
+- Never throws. `ng update` would report it as failed and skip every migration
+  after it, Angular's own included when both are updated in one command, while
+  the new versions stay installed.
 - Leaves dependency blocks to the policy and never queues an install.
-- Is named in its CHANGELOG entry.
 
 ### Deprecations
 
@@ -293,6 +297,8 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   palettes. Only `check:contrast` in a generated workspace enforces it.
 - **The `ngsw-config.json` content** in `schematics/packages/index.ts` must match
   Angular's own default (_tested_).
+- **A migration's `version`** must be the release whose CHANGELOG section first
+  names it in backticks (_tested_). `npm run bump` sets it.
 - **The README markers** in `workspace/files/README.md.template`
   (`angular-capacitor-workspace:scripts`, `:mobile`) are matched by constants in
   `src/utils/workspace.ts`.
@@ -349,16 +355,17 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 `dist/collection.json` and run against real `@schematics/angular` output
 (`baseWorkspace()`), never a hand-built tree.
 
-| Changed                                     | Test in                                                               |
-| ------------------------------------------- | --------------------------------------------------------------------- |
-| policy entries, `applyPolicy`, version pins | `test/policy.spec.ts`                                                 |
-| `doctor`, `inferFeatures`                   | `test/doctor.spec.ts`                                                 |
-| gate, acceptances in `audit`                | `test/gate.spec.ts`                                                   |
-| catalog                                     | `test/catalog.spec.ts`, plus `test/schematics.spec.ts` for the wiring |
-| a schematic                                 | `test/schematics.spec.ts`; i18n in `test/i18n.spec.ts`                |
-| manifest versions, licence copies           | `test/release-line.spec.ts`                                           |
-| CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                            |
-| the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                 |
+| Changed                                     | Test in                                                                 |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| policy entries, `applyPolicy`, version pins | `test/policy.spec.ts`                                                   |
+| `doctor`, `inferFeatures`                   | `test/doctor.spec.ts`                                                   |
+| gate, acceptances in `audit`                | `test/gate.spec.ts`                                                     |
+| catalog                                     | `test/catalog.spec.ts`, plus `test/schematics.spec.ts` for the wiring   |
+| a schematic                                 | `test/schematics.spec.ts`; i18n in `test/i18n.spec.ts`                  |
+| manifest versions, licence copies           | `test/release-line.spec.ts`                                             |
+| a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts` |
+| CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                              |
+| the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                   |
 
 Templates are compiled only by the matrix, which uses the live registry and
 takes minutes per row:
@@ -389,8 +396,9 @@ change in a real workspace, run `npm run create -- ../ws <flags>`.
 ## Releases and versions
 
 - Never bump a version in a change. At release time, `npm run bump -- minor` or
-  `patch` makes all five edits, and a pushed `v*` tag publishes. The major is
-  `ANGULAR_LINE` and is never bumped.
+  `patch` makes every version edit, including each new migration's `version`,
+  and a pushed `v*` tag publishes. The major is `ANGULAR_LINE` and is never
+  bumped.
 - Within a line, a breaking change is a minor and a fix is a patch.
 - `CHANGELOG.md` follows Keep a Changelog: entries go under `## [Unreleased]`, in
   `### Added`, `### Changed`, `### Fixed` or `### Removed`. Each one opens with a

@@ -75,6 +75,10 @@ This workspace carries a dependency policy. Before adding a package:
   generation — resolve a lockfile, audit it, fail on anything unaccounted for.
 - `npx angular-capacitor-workspace doctor` reports drift from the current
   policy, and `--fix` applies it.
+- Upgrade the generator with `ng update angular-capacitor-workspace@<%= angularLine %>`,
+  then `doctor --fix`. `ng update` runs its migrations and `npm install` does
+  not. A migration that finds a file edited since generation leaves it alone and
+  prints the change to make by hand. Make that change.
 - `allowScripts` in `package.json` is an allowlist: a dependency that wants to
   run an install script needs a deliberate entry. Adding one is a decision, not
   a formality.

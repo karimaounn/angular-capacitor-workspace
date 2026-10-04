@@ -117,7 +117,9 @@ A release is a tag. With the changelog's `## [Unreleased]` section written,
 [`scripts/bump.mjs`](scripts/bump.mjs) makes the five edits a release needs —
 the version in the root manifest and in both packages, the exact
 `angular-capacitor-workspace` pin in `create-angular-capacitor-workspace`, and
-the changelog heading with its compare links:
+the changelog heading with its compare links. When the release ships an
+`ng update` migration, it also sets that migration's `version` to the release,
+which is the only version `ng update` runs it at:
 
 ```bash
 npm run bump -- minor        # or patch, or 22.2.0 in full

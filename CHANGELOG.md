@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`ng update angular-capacitor-workspace@22` is now the upgrade within the
+  line**, followed by `npx angular-capacitor-workspace doctor --fix` as before.
+  The package now declares an `ng update` migrations collection, so a fix to a
+  file an earlier release generated (template output, an `angular.json` or
+  `tsconfig` patch, an npm script) can reach workspaces that already exist
+  instead of only new ones. The collection is empty until a fix needs it. A
+  migration edits a file only where it still holds exactly what a release wrote;
+  anywhere else it prints the change to make by hand and carries on, since a
+  migration that fails stops every migration after it.
+  `npm install -D angular-capacitor-workspace@22` still brings in the newer
+  policy but runs no migrations;
+  `ng update angular-capacitor-workspace --migrate-only --from=<old version>`
+  runs them afterwards.
+
+  New workspaces' README and AGENTS.md give the new command. Existing workspaces
+  keep the old wording, and the command works in them from whichever 22.x they
+  are on.
+
 ### Fixed
 
 - **Running the `codegen` schematic again no longer undoes the first run.** It

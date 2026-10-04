@@ -38,6 +38,9 @@
   "ng-add": {
     "save": "devDependencies"
   },
+  "ng-update": {
+    "migrations": "./dist/migrations.json"
+  },
   "files": [
     "dist",
     "README.md"

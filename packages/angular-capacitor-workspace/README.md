@@ -15,6 +15,19 @@ workspace afterwards. It requires Node ≥ 24.8 and npm ≥ 11.6. 24.8 is the fi
 npm clears that floor; on anything older, `allowScripts` and
 `--strict-allow-scripts` are accepted and ignored.
 
+Upgrade it with `ng update`, then apply the policy the new version ships:
+
+```bash
+ng update angular-capacitor-workspace@22
+npx angular-capacitor-workspace doctor --fix
+```
+
+`ng update` also runs this package's migrations, which fix files an earlier
+release generated. A file you have edited is left as it is, and the change to
+make by hand is printed instead. A plain `npm install` runs no migrations;
+`ng update angular-capacitor-workspace --migrate-only --from=<old version>` runs
+them afterwards.
+
 Its major version is the Angular major it targets: 22.x is for Angular 22
 workspaces. When moving to a new Angular major, update the two together:
 
@@ -419,8 +432,8 @@ workspace, and reports the delta:
       want true
 ```
 
-Bumping this package and running `doctor --fix` is how a two-year-old project
-gets this quarter's patches. It also takes out what nothing needs any more: an
+`ng update angular-capacitor-workspace@22` followed by `doctor --fix` is how a
+two-year-old project gets this quarter's patches. It also takes out what nothing needs any more: an
 override a release wrote whose parent has left the lockfile, and an
 `allowScripts` entry the workspace added for a package no longer in it — an
 exemption for a package that is not there is attack surface for nothing.

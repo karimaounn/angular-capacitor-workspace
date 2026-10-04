@@ -52,6 +52,47 @@ describe('release line', () => {
 });
 
 /**
+ * `ng update` runs a migration only when the installed version is below its
+ * `version` and the target is at or above it. So a migration carries the
+ * version of the release that ships it: lower, and workspaces already on that
+ * version never run it; higher, and the release ships it without running it.
+ *
+ * Which release ships it is read from the CHANGELOG, where every migration is
+ * named. Until the release is cut it sits under `## [Unreleased]` and only has
+ * to be above the version already out, because `npm run bump` sets it exactly.
+ */
+describe('migrations', () => {
+  const { schematics } = JSON.parse(
+    readFileSync(join(__dirname, '..', 'src', 'migrations.json'), 'utf8'),
+  ) as { schematics: Record<string, { version?: string }> };
+
+  // Newest first. `version` is undefined for `## [Unreleased]`.
+  const sections = readFileSync(join(__dirname, '..', '..', '..', 'CHANGELOG.md'), 'utf8')
+    .split(/^## /m)
+    .slice(1)
+    .map((body) => ({ version: /^\[(\d+\.\d+\.\d+[^\]]*)\]/.exec(body)?.[1], body }));
+
+  it('versions every migration as the release that ships it', () => {
+    for (const [name, { version }] of Object.entries(schematics)) {
+      // The oldest mention is the release that introduced it; later entries may refer back.
+      const shipped = sections.findLast((section) => section.body.includes(`\`${name}\``));
+      expect(shipped, `${name} is not named in CHANGELOG.md`).toBeDefined();
+      expect(semver.valid(version), `${name}: version`).not.toBeNull();
+
+      if (shipped!.version === undefined) {
+        expect(String(semver.major(version!)), name).toBe(ANGULAR_LINE);
+        expect(
+          semver.gt(version!, manifest.version),
+          `${name} must be above ${manifest.version}`,
+        ).toBe(true);
+      } else {
+        expect(version, name).toBe(shipped!.version);
+      }
+    }
+  });
+});
+
+/**
  * npm packs a LICENSE only from the package's own directory, and MIT requires
  * the notice to travel with the code. So each package carries a copy of the
  * root file, and a copy that drifts from it is a licence nobody chose.
