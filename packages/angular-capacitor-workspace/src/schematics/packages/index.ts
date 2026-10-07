@@ -236,8 +236,8 @@ const inNativeShell =
  * registering it there is a 404 in the console on every reload.
  *
  * `!inNativeShell` because the mobile sibling is not a second build.
- * `sync:<app>` runs `build:<app>` and copies `dist/<app>/browser` into the
- * native projects, so the worker would ship on device, where the assets are
+ * The shell's `sync` runs the app's `build` and copies `dist/<app>/browser` into
+ * the native projects, so the worker would ship on device, where the assets are
  * already local files and the only thing it can do is serve the shell it cached
  * before the last native update.
  */

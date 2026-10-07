@@ -29,7 +29,7 @@
 // It also warns — never fails — when a localized build has nothing at `/`. What
 // serves the bare domain is a host redirect, which this cannot see.
 //
-// Runs as the last postbuild:<app> step.
+// Runs as the last step of the site's `postbuild`.
 //
 //   node scripts/verify-prerender.mjs <app> [--locales en,fr]
 // ─────────────────────────────────────────────────────────────────────────────

@@ -4,11 +4,13 @@ A site that is prerendered at build time: `outputMode: "static"` renders every
 route to its own HTML file, and a static host serves those files. There is no
 server, so nothing has to run between a request and the page.
 
+Its scripts are in `package.json` beside this file. From the workspace root:
+<% const width = Math.max(...['start', 'build', 'e2e'].map((verb) => run(verb).length)) + 2; %>
 ```bash
-npm run start:<%= name %>   # http://localhost:<%= port %>
-npm run build:<%= name %>   # dist/<%= name %>/browser, then the checks below
-npm run test:<%= name %><% if (e2e) { %>
-npm run e2e:<%= name %>     # hydration, the 404 page, and AXE on every page in both colour schemes<% } %>
+<%= run('start').padEnd(width) %># http://localhost:<%= port %>
+<%= run('build').padEnd(width) %># dist/<%= name %>/browser, then the checks below
+<%= run('test') %><% if (e2e) { %>
+<%= run('e2e').padEnd(width) %># hydration, the 404 page, and AXE on every page in both colour schemes<% } %>
 ```
 
 ## Pages
@@ -25,7 +27,7 @@ way, and so does the e2e accessibility check.
 
 ## After the build
 
-`build:<%= name %>` runs `postbuild:<%= name %>` afterwards:
+The `build` script runs `postbuild` afterwards:
 
 1. `scripts/generate-sitemap.mjs` writes `sitemap.xml` from the prerendered
    pages, using each page's canonical and skipping noindex pages. The sitemap

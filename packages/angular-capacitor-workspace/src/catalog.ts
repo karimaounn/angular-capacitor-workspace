@@ -281,7 +281,7 @@ excepted, for the reason below:
 - \`provideServiceWorker\` in \`app.config.ts\`.
 
 **It is off inside the Capacitor shell, on purpose.** The mobile sibling is not
-a second build: \`npm run sync:<app>\` runs \`build:<app>\` and copies
+a second build: the shell's \`sync\` script runs the app's \`build\` and copies
 \`dist/<app>/browser\` into the native projects, so whatever the web app emits
 is what ships on device. A service worker there is at best pointless — the
 assets are already local files — and at worst the reason a native update appears

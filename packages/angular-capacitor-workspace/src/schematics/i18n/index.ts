@@ -20,15 +20,14 @@ import { updateJson } from '../../utils/json-file';
 import {
   ANGULAR_JSON,
   appendSection,
-  documentScripts,
   findDesignSystem,
-  PACKAGE_JSON,
   readProjects,
   README_MD,
   titleFromName,
   type AngularProject,
   type DesignSystem,
 } from '../../utils/workspace';
+import { documentProjectScripts, projectScripts } from '../../utils/project-scripts';
 
 export interface I18nOptions {
   locales?: string[];
@@ -1320,7 +1319,7 @@ function localeConfiguration(locale: string): string {
 }
 
 /**
- * `build:<site>` becomes one `ng build` per language.
+ * A site's `build` becomes one `ng build` per language.
  *
  * Sequential rather than parallel: they write into one output tree, and the
  * postbuild step that follows reads all of it. The postbuild scripts are told
@@ -1328,32 +1327,38 @@ function localeConfiguration(locale: string): string {
  * a directory fails the check rather than quietly shipping one language.
  */
 function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[]): void {
+  // The site's own manifest, or the root one in a workspace from before sites
+  // had one. Either way the commands are the marketing schematic's, with paths
+  // to the shared scripts written from where they run.
+  const scripts = projectScripts(tree, name);
+  const script = (file: string) => `node ${scripts.rootPath(`scripts/${file}`)} ${name}`;
   const list = locales.join(',');
   const build = [
     // Once, before the first language: the locale configurations turn Angular's
     // own output cleaning off, because it would delete the shared base each of
     // them writes into.
-    `node scripts/clean-dist.mjs ${name}`,
+    script('clean-dist.mjs'),
     ...locales.map((locale) => `ng build ${name} --configuration ${localeConfiguration(locale)}`),
   ].join(' && ');
   const postbuild =
-    `node scripts/generate-sitemap.mjs ${name} --locales ${list} && ` +
-    `node scripts/verify-prerender.mjs ${name} --locales ${list}`;
+    `${script('generate-sitemap.mjs')} --locales ${list} && ` +
+    `${script('verify-prerender.mjs')} --locales ${list}`;
 
   // Replaced, not added: `addScripts` preserves whatever is already there, and
   // what is already there is the single-language build that this supersedes.
   // Replacing only the exact command the marketing schematic wrote, so a script
   // somebody has tuned is a failure here rather than a silent overwrite.
-  replaceScript(tree, `build:${name}`, `ng build ${name}`, build);
+  replaceScript(tree, scripts.manifest, scripts.key('build'), `ng build ${name}`, build);
   replaceScript(
     tree,
-    `postbuild:${name}`,
-    `node scripts/generate-sitemap.mjs ${name} && node scripts/verify-prerender.mjs ${name}`,
+    scripts.manifest,
+    scripts.key('postbuild'),
+    `${script('generate-sitemap.mjs')} && ${script('verify-prerender.mjs')}`,
     postbuild,
   );
 
-  documentScripts(tree, {
-    [`build:${name}`]:
+  documentProjectScripts(tree, scripts, {
+    build:
       `prerenders \`${name}\` once per language into \`dist/${name}/<locale>\`, writes one ` +
       `sitemap with hreflang alternates, and fails on any page a crawler could not use`,
   });
@@ -1364,15 +1369,21 @@ function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[
  *
  * Idempotent: a re-run finds the replacement already in place and stops.
  */
-function replaceScript(tree: Tree, name: string, expected: string, replacement: string): void {
-  updateJson(tree, PACKAGE_JSON, (file) => {
+function replaceScript(
+  tree: Tree,
+  manifest: string,
+  name: string,
+  expected: string,
+  replacement: string,
+): void {
+  updateJson(tree, manifest, (file) => {
     const current = file.get<string>(['scripts', name]);
     if (current === replacement) {
       return;
     }
     if (current !== undefined && current !== expected) {
       throw new SchematicsException(
-        `\`${name}\` in package.json is not the command this schematic replaces. ` +
+        `\`${name}\` in ${manifest.slice(1)} is not the command this schematic replaces. ` +
           `Expected "${expected}", found "${current}". Add the per-locale builds ` +
           `to it by hand: "${replacement}".`,
       );
@@ -1447,7 +1458,7 @@ ${
   sites.length > 0
     ? `**${sites.map((site) => `\`${site}\``).join(' and ')} ${sites.length > 1 ? 'are' : 'is'} prerendered, so ${sites.length > 1 ? 'they are' : 'it is'} translated differently** — built
 once per language into \`dist/<site>/<locale>\`, one \`ng build\` per
-\`locale-*\` configuration. \`npm run build:${sites[0]}\` runs all of them.
+\`locale-*\` configuration. \`${projectScripts(tree, sites[0]!).command('build')}\` runs all of them.
 
 A prerender happens in Node, where there is no \`navigator\` and no
 \`localStorage\`, and what it writes is what every visitor and every crawler is
@@ -1462,7 +1473,7 @@ One sitemap covers every language, with \`xhtml:link\` alternates per URL.
 \`verify-prerender.mjs\` fails the build if a language rendered in the wrong one,
 skipped a route the others have, or left out an hreflang.
 
-\`npm run start:${sites[0]}\` serves the source locale: \`ng serve\` applies no
+\`${projectScripts(tree, sites[0]!).command('start')}\` serves the source locale: \`ng serve\` applies no
 \`define\`, and \`build-locale.ts\` falls back to \`DEFAULT_LOCALE\`.
 
 **Deploy \`dist/${sites[0]}\` as the web root, and redirect \`/\` yourself.** Every page

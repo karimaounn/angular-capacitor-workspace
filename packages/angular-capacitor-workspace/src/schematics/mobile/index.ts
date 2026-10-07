@@ -15,14 +15,14 @@ import { VERSIONS } from '../../policy/versions';
 import { JsonFile } from '../../utils/json-file';
 import {
   addGitignoreSection,
-  addScripts,
   addWorkspaceMember,
+  documentCommands,
   documentMobile,
-  documentScripts,
   PACKAGE_JSON,
   readProject,
   type AngularProject,
 } from '../../utils/workspace';
+import { projectScripts, upToRoot, type ProjectScripts } from '../../utils/project-scripts';
 import type { MobilePlatform } from '../../api';
 
 export interface MobileOptions {
@@ -55,6 +55,8 @@ export function mobile(options: MobileOptions): Rule {
     const mobileRoot = `${appRoot}/${MOBILE_SUBDIR}`;
     const appId = options.appId ?? defaultAppId(workspace, app);
     const appName = options.appName ?? strings.classify(app);
+    const packageName = `@${workspace}/${app}-mobile`;
+    const web = projectScripts(tree, app);
 
     const templates = apply(url('./files'), [
       applyTemplates({
@@ -65,6 +67,9 @@ export function mobile(options: MobileOptions): Rule {
         appId,
         appName,
         webDir: webDirFor(tree, app, mobileRoot),
+        // Build then sync, always in that order. See capacitor.config.ts.
+        buildWeb: web.runFrom(mobileRoot, 'build'),
+        toRoot: upToRoot(mobileRoot),
         versions: Object.fromEntries(
           Object.entries(VERSIONS).map(([name, pin]) => [name, pin.range]),
         ),
@@ -76,8 +81,11 @@ export function mobile(options: MobileOptions): Rule {
       mergeWith(templates, MergeStrategy.Overwrite),
       (host: Tree) => {
         addWorkspaceMember(host, mobileRoot);
-        mobileScripts(host, app, mobileRoot, [...platforms]);
-        documentMobile(host, mobileReadmeBlock(app, appName, [...platforms], appId, mobileRoot));
+        documentMobileScripts(host, app, packageName, [...platforms]);
+        documentMobile(
+          host,
+          mobileReadmeBlock(app, appName, [...platforms], appId, mobileRoot, packageName, web),
+        );
         // Here rather than in the workspace overlay, so a mobile target added
         // with `ng generate` long after generation gets it too.
         addGitignoreSection(host, 'Capacitor', [
@@ -88,7 +96,7 @@ export function mobile(options: MobileOptions): Rule {
           '/projects/*/mobile/ios/App/build/',
         ]);
       },
-      helperScripts(app, [...platforms]),
+      preflightScript(),
     ]);
   };
 }
@@ -110,6 +118,8 @@ function mobileReadmeBlock(
   platforms: MobilePlatform[],
   appId: string,
   mobileRoot: string,
+  packageName: string,
+  web: ProjectScripts,
 ): string {
   const needs = list([
     ...(platforms.includes('android') ? ['a JDK (17+)', 'the Android SDK'] : []),
@@ -123,19 +133,19 @@ function mobileReadmeBlock(
   const steps = [
     [
       `Check this machine has what a native build needs — ${needs}${caveat}:`,
-      [`npm run preflight:${app}`],
+      [`npm run preflight -w ${packageName}`],
     ],
     [
       'Build the web app, then add each platform once. `cap add` copies that ' +
         'build into the native project it creates, so it has to exist first:',
       [
-        `npm run build:${app}`,
-        ...platforms.map((platform) => `npm run --workspace ${mobileRoot} cap -- add ${platform}`),
+        web.command('build'),
+        ...platforms.map((platform) => `npm run cap -w ${packageName} -- add ${platform}`),
       ],
     ],
     [
       'From then on, one command builds, syncs and runs it on a device or emulator:',
-      platforms.map((platform) => `npm run run:${app}:${platform}`),
+      platforms.map((platform) => `npm run run:${platform} -w ${packageName}`),
     ],
     [
       `Before publishing, change its app id — \`${appId}\`, set in ` +
@@ -260,39 +270,40 @@ function defaultAppId(workspace: string, app: string): string {
   return `com.${clean(workspace) || 'example'}.${clean(app)}`;
 }
 
-function mobileScripts(
+/**
+ * The README rows for the shell's scripts, which live in its own
+ * `package.json` (`files/package.json.template`) and are run from the root
+ * with `-w`.
+ */
+function documentMobileScripts(
   tree: Tree,
   app: string,
-  mobileRoot: string,
+  packageName: string,
   platforms: MobilePlatform[],
 ): void {
-  const inMobile = `npm run --workspace ${mobileRoot}`;
-  const scripts: Record<string, string> = {
-    // Build then sync, always in that order. See capacitor.config.ts.
-    [`sync:${app}`]: `npm run build:${app} && ${inMobile} sync`,
-  };
+  const run = (script: string) => `npm run ${script} -w ${packageName}`;
+  const needs = list([
+    ...(platforms.includes('android') ? ['a JDK', 'the Android SDK'] : []),
+    ...(platforms.includes('ios') ? ['Xcode'] : []),
+  ]);
   const docs: Record<string, string> = {
     // The native projects are not generated, and every sync fails until one
     // exists. This row is where someone reading the table first hits that.
-    [`sync:${app}`]:
+    [run('sync')]:
       `builds \`${app}\` and copies it into every native project — ` +
       `add each platform once first, as the Mobile section above describes`,
   };
 
   for (const platform of platforms) {
     const native = PLATFORM_NAMES[platform];
-    scripts[`sync:${app}:${platform}`] = `npm run build:${app} && ${inMobile} sync -- ${platform}`;
-    scripts[`open:${app}:${platform}`] = `${inMobile} open:${platform}`;
-    scripts[`run:${app}:${platform}`] = `npm run build:${app} && ${inMobile} run:${platform}`;
-
-    docs[`sync:${app}:${platform}`] =
+    docs[run(`sync:${platform}`)] =
       `builds \`${app}\` and copies it into the ${native.label} project`;
-    docs[`open:${app}:${platform}`] = `opens the ${native.label} project in ${native.ide}`;
-    docs[`run:${app}:${platform}`] = `builds, syncs and runs \`${app}\` on ${native.target}`;
+    docs[run(`run:${platform}`)] = `builds, syncs and runs \`${app}\` on ${native.target}`;
+    docs[run(`open:${platform}`)] = `opens the ${native.label} project in ${native.ide}`;
   }
+  docs[run('preflight')] = `checks for ${needs} before a native build of \`${app}\``;
 
-  addScripts(tree, scripts);
-  documentScripts(tree, docs);
+  documentCommands(tree, docs);
 }
 
 const PLATFORM_NAMES: Record<MobilePlatform, { label: string; ide: string; target: string }> = {
@@ -301,31 +312,19 @@ const PLATFORM_NAMES: Record<MobilePlatform, { label: string; ide: string; targe
 };
 
 /**
- * The preflight check, as one shared script and one `preflight:<app>` per app.
+ * The preflight check, written once and shared by every app.
  *
- * The script is written once and takes the platforms to check as arguments, so
- * each app asks only about its own: an Android-only app on a Mac without Xcode
- * is not a failed preflight. An existing copy is left alone — somebody may have
- * tuned it — but every app still gets its script, which is what the README
- * block written for it tells the reader to run.
+ * It takes the platforms to check as arguments, so each shell's `preflight`
+ * script asks only about its own: an Android-only app on a Mac without Xcode is
+ * not a failed preflight. An existing copy is left alone — somebody may have
+ * tuned it.
  */
-function helperScripts(app: string, platforms: MobilePlatform[]): Rule {
+function preflightScript(): Rule {
   return (tree: Tree) => {
     const path = '/scripts/cap-preflight.sh';
     if (!tree.exists(path)) {
       tree.create(path, PREFLIGHT_SH);
     }
-
-    const needs = list([
-      ...(platforms.includes('android') ? ['a JDK', 'the Android SDK'] : []),
-      ...(platforms.includes('ios') ? ['Xcode'] : []),
-    ]);
-    addScripts(tree, {
-      [`preflight:${app}`]: `bash scripts/cap-preflight.sh ${platforms.join(' ')}`,
-    });
-    documentScripts(tree, {
-      [`preflight:${app}`]: `checks for ${needs} before a native build of \`${app}\``,
-    });
   };
 }
 

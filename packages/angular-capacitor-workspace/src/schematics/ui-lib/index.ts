@@ -19,15 +19,16 @@ import {
   addScripts,
   addStyleIncludePath,
   aggregateTests,
-  hookLibraryBuild,
   importDesignSystemStyles,
   appendToScript,
   documentScripts,
   ANGULAR_JSON,
-  prependHook,
+  documentCommands,
+  projectRunner,
   readProject,
   readProjects,
 } from '../../utils/workspace';
+import { hookLibraryBuild, syncRootHooks } from '../../utils/project-scripts';
 import { installedPackages } from '../packages';
 
 export interface UiLibOptions {
@@ -270,10 +271,17 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
   return (tree: Tree) => {
     // Composed, because Angular has no "build every library" command.
     appendToScript(tree, 'build:libs', `ng build ${name} --configuration production`);
+    // A library's own tests run through the project runner, `npm test <lib>`,
+    // where the root `test` is one. Elsewhere it is a root script, as an
+    // earlier 22.x wrote it.
+    const runner =
+      new JsonFile(tree, '/package.json').get<string>(['scripts', 'test']) ===
+      projectRunner('test');
+    const testScript = runner ? `npm test ${name}` : `npm run test:${name}`;
     addScripts(tree, {
       'watch:libs': `ng build ${name} --watch --configuration development`,
       'check:contrast': `node ${root}/scripts/check-contrast.mjs`,
-      [`test:${name}`]: `ng test ${name}`,
+      ...(runner ? {} : { [`test:${name}`]: `ng test ${name}` }),
 
       // Browser-mode tests need the engines on disk, and Playwright ships the
       // headless shell as a download separate from `chromium` — installing
@@ -287,25 +295,16 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
         'builds every library into `dist/`, where apps import them from; ' +
         'every other npm script here runs it first',
       'watch:libs': 'rebuilds libraries on change',
-      [`test:${name}`]: `component tests for \`${name}\`, in a real browser engine`,
       'setup:test-browsers': 'downloads the browser engines those tests run in — once per machine',
       'check:contrast': 'checks every declared colour pairing against WCAG, in light and dark mode',
+    });
+    documentCommands(tree, {
+      [testScript]: `component tests for \`${name}\`, in a real browser engine`,
     });
 
     // Part of `npm test`, like every app's suite. Browser mode needs the
     // engines `setup:test-browsers` downloads; CI installs them before this.
     aggregateTests(tree);
-
-    // `ng serve` does not build workspace libraries, and an app that imports
-    // from dist/ cannot start until one exists. These three cover the
-    // workspace-wide entry points.
-    prependHook(tree, 'prestart', 'npm run build:libs');
-    prependHook(tree, 'pretest', 'npm run build:libs');
-
-    // `prebuild` joins them now that every application's stylesheet imports the
-    // library's tokens: a build from a fresh clone would otherwise fail in Sass,
-    // on a path that does not exist yet rather than one that is wrong.
-    prependHook(tree, 'prebuild', 'npm run build:libs');
 
     // And the same for the per-project entry points of whatever is already
     // here. An app generated after this library hooks its own; one that
@@ -316,6 +315,13 @@ function libraryScripts(name: string, root: string, storybook: boolean): Rule {
         hookLibraryBuild(tree, projectName);
       }
     }
+
+    // `ng serve` does not build workspace libraries, and every application's
+    // stylesheet imports the library's tokens, so nothing that compiles an app
+    // works from a fresh clone until they are built. The root `npm start`,
+    // `npm run build` and `npm test` need a hook for that only while they run
+    // something that does not do it itself. See syncRootHooks.
+    syncRootHooks(tree);
 
     if (storybook) {
       addScripts(tree, {

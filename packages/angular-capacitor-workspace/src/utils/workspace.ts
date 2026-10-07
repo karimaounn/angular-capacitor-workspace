@@ -2,6 +2,16 @@ import { SchematicsException, type Tree } from '@angular-devkit/schematics';
 import { JsonFile, updateJson } from './json-file';
 
 export const ANGULAR_JSON = '/angular.json';
+
+/**
+ * The root script that runs a project's script by name, or every project's
+ * (`workspace/files/scripts/project.mjs.template`). The root `start`, `watch`,
+ * `build`, `test` and `e2e` are this with the verb, so the root manifest names
+ * no project.
+ */
+export function projectRunner(verb: string): string {
+  return `node scripts/project.mjs ${verb}`;
+}
 export const PACKAGE_JSON = '/package.json';
 export const TSCONFIG_JSON = '/tsconfig.json';
 
@@ -74,9 +84,15 @@ export function addDependencies(
  * Adds npm scripts, refusing to overwrite one that already differs.
  *
  * Silently replacing a script is how a regenerate eats a user's customisation.
+ * The root manifest unless another is named: a project's own scripts live in
+ * its own `package.json` (see `utils/project-scripts.ts`).
  */
-export function addScripts(tree: Tree, scripts: Record<string, string>): void {
-  updateJson(tree, PACKAGE_JSON, (file) => {
+export function addScripts(
+  tree: Tree,
+  scripts: Record<string, string>,
+  manifest = PACKAGE_JSON,
+): void {
+  updateJson(tree, manifest, (file) => {
     for (const [name, command] of Object.entries(scripts)) {
       const existing = file.get<string>(['scripts', name]);
       if (existing !== undefined && existing !== command) {
@@ -113,8 +129,13 @@ export function setEngines(tree: Tree, engines: Record<string, string>): void {
  * Sequential `&&` rather than parallel because libraries can depend on one
  * another, and generation order is the only dependency order we know.
  */
-export function appendToScript(tree: Tree, name: string, command: string): void {
-  updateJson(tree, PACKAGE_JSON, (file) => {
+export function appendToScript(
+  tree: Tree,
+  name: string,
+  command: string,
+  manifest = PACKAGE_JSON,
+): void {
+  updateJson(tree, manifest, (file) => {
     const existing = file.get<string>(['scripts', name]);
     if (existing === undefined) {
       file.modify(['scripts', name], command);
@@ -133,8 +154,13 @@ export function appendToScript(tree: Tree, name: string, command: string): void 
  * Codegen needs to run before every build, serve and test entry point, and the
  * hooks are shared with whatever else the workspace has bolted on.
  */
-export function prependHook(tree: Tree, hookName: string, command: string): void {
-  updateJson(tree, PACKAGE_JSON, (file) => {
+export function prependHook(
+  tree: Tree,
+  hookName: string,
+  command: string,
+  manifest = PACKAGE_JSON,
+): void {
+  updateJson(tree, manifest, (file) => {
     const existing = file.get<string>(['scripts', hookName]);
     if (existing === undefined) {
       file.modify(['scripts', hookName], command);
@@ -145,33 +171,6 @@ export function prependHook(tree: Tree, hookName: string, command: string): void
     }
     file.modify(['scripts', hookName], `${command} && ${existing}`);
   });
-}
-
-/**
- * Makes a project's own entry points build the libraries first.
- *
- * The root `prestart`, `pretest` and `prebuild` hooks cover `npm start`,
- * `npm test` and `npm run build` — and nothing else. Every project adds four
- * more entry points of its own, and in a workspace that imports libraries from
- * `dist/` all four fail on a fresh clone: `start:` and `e2e:` cannot resolve
- * the import, `test:` the same, `build:` dies in Sass on a path nothing has
- * created yet. npm hooks each of them under its own `pre` name, which is the
- * only place a fix can go.
- *
- * Only the scripts the project actually has, and only once `build:libs`
- * exists: a `pre` hook for a script nobody can run is dead weight, and one
- * calling a script that does not exist fails on first use.
- */
-export function hookLibraryBuild(tree: Tree, projectName: string): void {
-  const scripts = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
-  if (!scripts['build:libs']) {
-    return;
-  }
-  for (const verb of ['start', 'build', 'test', 'e2e']) {
-    if (scripts[`${verb}:${projectName}`]) {
-      prependHook(tree, `pre${verb}:${projectName}`, 'npm run build:libs');
-    }
-  }
 }
 
 /** Registers a directory as an npm workspace member. */
@@ -379,6 +378,19 @@ export const SCRIPTS_TABLE_END = '<!-- /angular-capacitor-workspace:scripts -->'
  * put the documentation ahead of the thing it documents.
  */
 export function documentScripts(tree: Tree, scripts: Record<string, string>): void {
+  documentCommands(
+    tree,
+    Object.fromEntries(
+      Object.entries(scripts).map(([name, description]) => [invocation(name), description]),
+    ),
+  );
+}
+
+/**
+ * `documentScripts` for commands that are not a bare root script, such as a
+ * project's own `npm start -w @acme/shop`.
+ */
+export function documentCommands(tree: Tree, commands: Record<string, string>): void {
   if (!tree.exists(README_MD)) {
     return;
   }
@@ -390,8 +402,8 @@ export function documentScripts(tree: Tree, scripts: Record<string, string>): vo
   }
 
   const table = current.slice(start + SCRIPTS_TABLE_START.length, end);
-  const rows = Object.entries(scripts)
-    .map(([name, description]) => ({ cell: `| \`${invocation(name)}\` |`, description }))
+  const rows = Object.entries(commands)
+    .map(([command, description]) => ({ cell: `| \`${command}\` |`, description }))
     .filter(({ cell }) => !table.includes(cell))
     .map(({ cell, description }) => `${cell} ${description} |`);
   if (rows.length === 0) {
@@ -487,6 +499,10 @@ export function addGitignoreSection(tree: Tree, heading: string, patterns: strin
  * A `test` script someone has rewritten is left alone.
  */
 export function aggregateTests(tree: Tree): void {
+  // The project runner already runs every suite, and documents itself.
+  if (new JsonFile(tree, PACKAGE_JSON).get<string>(['scripts', 'test']) === projectRunner('test')) {
+    return;
+  }
   updateJson(tree, PACKAGE_JSON, (file) => {
     const existing = file.get<string>(['scripts', 'test']);
     if (existing === undefined || existing.trim() === 'ng test') {
@@ -496,73 +512,6 @@ export function aggregateTests(tree: Tree): void {
   documentScripts(tree, {
     test: 'every unit-test suite in the workspace, once, without watching',
   });
-}
-
-/**
- * Adds an application to `npm run build`.
- *
- * `ng build`, unlike `ng test`, is single-target: with no project named it
- * builds the only one, and with several it is an error. So the aggregate is an
- * `&&` chain of the per-app scripts, which also keeps each app's `prebuild:*`
- * hooks running.
- *
- * While the script is still Angular's project-less `ng build`, it is replaced
- * by every application already in the workspace, not just this one. In a fresh
- * workspace that is the same thing; in `ng add` into an existing one, starting
- * from this app alone would silently stop building the apps that were there
- * first. A `build` script someone has rewritten is appended to.
- */
-export function addToBuild(tree: Tree, name: string): void {
-  updateJson(tree, PACKAGE_JSON, (file) => {
-    const existing = file.get<string>(['scripts', 'build']);
-    if (existing !== undefined && existing.trim() !== 'ng build') {
-      return;
-    }
-    const scripts = file.get<Record<string, string>>(['scripts']) ?? {};
-    const apps = Object.entries(readProjects(tree))
-      .filter(
-        ([, project]) => project.projectType === 'application' && project.architect?.['build'],
-      )
-      .map(([app]) => (scripts[`build:${app}`] ? `npm run build:${app}` : `ng build ${app}`));
-    if (apps.length > 0) {
-      file.modify(['scripts', 'build'], apps.join(' && '));
-    } else {
-      file.remove(['scripts', 'build']);
-    }
-  });
-  appendToScript(tree, 'build', `npm run build:${name}`);
-  documentScripts(tree, { build: 'builds every app in the workspace' });
-}
-
-/**
- * Makes `npm start` and `npm run watch` mean this project, if nothing has
- * claimed them yet.
- *
- * Angular's `start` and `watch` are project-less, which works in a
- * single-project workspace and fails in this one — `ng serve` with three
- * projects and no default is an error, not a choice. Unlike `build` and
- * `test`, these cannot aggregate: one command serves one app. So the first app
- * generated takes them, and a marketing site takes them only when there is no
- * app.
- */
-export function claimDefaultStart(tree: Tree, name: string): void {
-  let claimed = false;
-  updateJson(tree, PACKAGE_JSON, (file) => {
-    const start = file.get<string>(['scripts', 'start']);
-    if (start !== undefined && start !== 'ng serve') {
-      return;
-    }
-    file.modify(['scripts', 'start'], `npm run start:${name}`);
-    file.modify(['scripts', 'watch'], `ng build ${name} --watch --configuration development`);
-    claimed = true;
-  });
-
-  if (claimed) {
-    documentScripts(tree, {
-      start: `\`npm run start:${name}\` — the first app generated is the default`,
-      watch: `rebuilds \`${name}\` on change`,
-    });
-  }
 }
 
 /** Angular's dev-server port when a project does not set one. */
@@ -601,7 +550,7 @@ export function nextFreePort(tree: Tree): number {
 /**
  * Writes a project's dev-server port into `angular.json`.
  *
- * There, rather than only in the Playwright config, so `npm run start:<app>`,
+ * There, rather than only in the Playwright config, so `npm start -w <app>`,
  * a bare `ng serve <app>` and the e2e suite all agree on where the app lives.
  */
 export function setDevServerPort(tree: Tree, name: string, port: number): void {

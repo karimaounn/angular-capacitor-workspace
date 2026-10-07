@@ -1,7 +1,8 @@
 /*
  * Type-checks the Playwright specs, which sit outside every application
- * tsconfig. Playwright strips types without checking them; `npm run e2e:<%= name %>`
- * runs `tsc -p` on this file first so a type error fails before the browser starts.
+ * tsconfig. Playwright strips types without checking them; the app's `e2e`
+ * script runs `tsc -p` on this file first so a type error fails before the
+ * browser starts.
  */
 {
   "extends": "<%= pathToRoot %>../tsconfig.json",

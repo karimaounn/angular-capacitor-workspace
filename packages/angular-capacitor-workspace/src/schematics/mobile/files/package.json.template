@@ -5,9 +5,11 @@
   "description": "Capacitor shell for the <%= app %> application.",
   "scripts": {
     "cap": "cap",
-    "sync": "cap sync",<% for (const platform of platforms) { %>
-    "open:<%= platform %>": "cap open <%= platform %>",
-    "run:<%= platform %>": "cap run <%= platform %>",<% } %>
+    "sync": "<%= buildWeb %> && cap sync",<% for (const platform of platforms) { %>
+    "sync:<%= platform %>": "<%= buildWeb %> && cap sync <%= platform %>",
+    "run:<%= platform %>": "<%= buildWeb %> && cap run <%= platform %>",
+    "open:<%= platform %>": "cap open <%= platform %>",<% } %>
+    "preflight": "bash <%= toRoot %>/scripts/cap-preflight.sh <%= platforms.join(' ') %>",
     "doctor": "cap doctor"
   },
   "dependencies": {

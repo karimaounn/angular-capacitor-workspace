@@ -244,9 +244,10 @@ function runCheck(check, cwd) {
     case 'build:libs':
       return run('npm', ['run', 'build:libs'], cwd);
     case 'build:marketing':
-      // Through npm, not `ng build`, so postbuild:site runs: the sitemap and the
-      // prerender checks are part of what a marketing build is.
-      return run('npm', ['run', 'build:site'], cwd, () => assertPrerendered(cwd));
+      // Through npm and the project runner, not `ng build`, so the site's
+      // postbuild runs: the sitemap and the prerender checks are part of what a
+      // marketing build is.
+      return run('npm', ['run', 'build', 'site'], cwd, () => assertPrerendered(cwd));
     case 'test':
       return run('npm', ['test'], cwd);
     case 'contrast':
@@ -296,7 +297,7 @@ function assertPrerendered(cwd) {
     if (!existsSync(join(output, 'index.html'))) return `no prerendered index.html in ${where}`;
     if (!existsSync(join(output, '404/index.html'))) return `no prerendered 404 page in ${where}`;
   }
-  if (!existsSync(sitemap)) return 'no sitemap.xml — postbuild:site did not run';
+  if (!existsSync(sitemap)) return "no sitemap.xml — the site's postbuild did not run";
   if (existsSync(join(root, 'server'))) return 'a server bundle was emitted for a static site';
   return undefined;
 }

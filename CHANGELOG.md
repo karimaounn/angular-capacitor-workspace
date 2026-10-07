@@ -28,6 +28,47 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   keep the old wording, and the command works in them from whichever 22.x they
   are on.
 
+### Changed
+
+- **The root `package.json` no longer names any project, and nothing is the
+  default app.** `npm start shop` serves `shop`, and `npm start` without a name
+  lists the apps instead of serving whichever was generated first. `watch`,
+  `build`, `test` and `e2e` take a name the same way (`npm run build site`), and
+  without one `build`, `test` and `e2e` run every project as before. All five
+  are `scripts/project.mjs`, which finds each project's scripts from
+  `angular.json`, so `ng generate app` no longer edits the root scripts.
+
+  Each app, site and mobile shell now keeps its own scripts in its own
+  `package.json`, which is what lets the root stay that way: a new app gets
+  `projects/<app>/web/package.json` (`@<workspace>/<app>`), registered as an
+  npm workspace member beside the mobile shell, holding its `start`, `watch`,
+  `build`, `test` and `e2e` and the `pre*` hooks that build the libraries and
+  run codegen first. `watch` is hooked too, which it was not at the root. A site's `postbuild` moves there too. The shell's `sync`,
+  `sync:<platform>` and `run:<platform>` now build the web app first
+  themselves, and `preflight` moves into it, so
+  `npm run run:shop:android` becomes `npm run run:android -w @acme/shop-mobile`.
+  A library's tests are `npm test ui` rather than `npm run test:ui`.
+  Dependencies stay in the root manifest. The root `prestart`, `prebuild` and
+  `pretest` hooks are no longer written, since the runner builds the libraries
+  and runs codegen itself where a project's own hooks do not; with both,
+  `npm run build` built the libraries once for the root and again per project.
+
+  `ng add` replaces the root `start`, `watch`, `build` and `test` only where
+  they are still the commands `ng new` wrote, so after it `npm start` needs
+  the app's name too.
+
+  Existing workspaces are left as they are. `ng generate` in one of them adds
+  new projects with their own `package.json` and chains them into the same root
+  `build` and `e2e`; `ui-lib`, `codegen` and `i18n` still patch the root
+  `<verb>:<project>` scripts of the projects already there. To adopt the new
+  shape by hand, copy `scripts/project.mjs` from a newly generated workspace,
+  point the root `start`, `watch`, `build`, `test` and `e2e` at
+  `node scripts/project.mjs <verb>`, move each project's `<verb>:<project>`
+  scripts, hooks included, into a `package.json` in its directory under the
+  bare verb, with paths relative to it, add that directory to `workspaces`, and
+  delete the root `pre*` hooks. A newly generated app's `package.json` shows
+  the shape.
+
 ### Fixed
 
 - **Running the `codegen` schematic again no longer undoes the first run.** It

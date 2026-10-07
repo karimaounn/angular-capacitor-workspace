@@ -17,22 +17,26 @@ import { pins } from '../../policy/versions';
 import { JsonFile, updateJson } from '../../utils/json-file';
 import {
   addDependencies,
-  addScripts,
   addStyleIncludePath,
-  addToBuild,
   aggregateTests,
   ANGULAR_JSON,
   appendSection,
-  claimDefaultStart,
-  documentScripts,
   findDesignSystem,
-  hookLibraryBuild,
   importDesignSystemStyles,
   nextFreePort,
   PACKAGE_JSON,
   readProject,
   setDevServerPort,
 } from '../../utils/workspace';
+import {
+  addProjectScripts,
+  addToBuild,
+  claimDefaultStart,
+  documentProjectScripts,
+  ensureProjectManifest,
+  hookLibraryBuild,
+  projectScripts,
+} from '../../utils/project-scripts';
 import { e2eScripts } from '../app';
 import { installedI18n } from '../i18n';
 import { installedPackages } from '../packages';
@@ -98,6 +102,8 @@ export function marketing(options: MarketingOptions): Rule {
         setDevServerPort(host, name, port);
         tightenBudgets(host, name);
       },
+      // Before the scaffold, whose README names the site's package.
+      marketingScripts(name),
       siteScaffold(name, {
         prefix,
         origin,
@@ -107,7 +113,6 @@ export function marketing(options: MarketingOptions): Rule {
         e2e,
       }),
       designTokens(name),
-      marketingScripts(name),
       postbuildChecks(name),
       houseRules(),
       e2e ? e2eConfig(name, port, prefix) : (host: Tree) => host,
@@ -282,8 +287,14 @@ function siteScaffold(name: string, options: SiteTemplateOptions): Rule {
     const root = requireRoot(tree, name);
     assertKnownProviders(tree, `/${root}/src/app/app.config.ts`);
 
+    const scripts = projectScripts(tree, name);
     const templates = apply(url('./files/site'), [
-      applyTemplates({ ...strings, name, ...options }),
+      applyTemplates({
+        ...strings,
+        name,
+        ...options,
+        run: (verb: string) => scripts.command(verb),
+      }),
       move(`/${root}`),
     ]);
     return mergeWith(templates, MergeStrategy.Overwrite);
@@ -339,7 +350,8 @@ function designTokens(name: string): Rule {
  *
  * They take the app name as an argument and live in the root `scripts/`, so a
  * second marketing site shares them. Existing copies are left alone: a second
- * `ng generate` must not overwrite checks someone has tuned.
+ * `ng generate` must not overwrite checks someone has tuned. The hook that
+ * runs them is the site's own `postbuild`, which npm runs after its `build`.
  */
 function postbuildChecks(name: string): Rule {
   return (tree: Tree) => {
@@ -352,32 +364,37 @@ function postbuildChecks(name: string): Rule {
     return chain([
       mergeWith(scripts),
       (host: Tree) => {
-        addScripts(host, {
-          [`postbuild:${name}`]:
-            `node scripts/generate-sitemap.mjs ${name} && ` +
-            `node scripts/verify-prerender.mjs ${name}`,
+        const own = projectScripts(host, name);
+        addProjectScripts(host, own, {
+          postbuild:
+            `node ${own.rootPath('scripts/generate-sitemap.mjs')} ${name} && ` +
+            `node ${own.rootPath('scripts/verify-prerender.mjs')} ${name}`,
         });
       },
     ]);
   };
 }
 
+/** The site's own scripts, in its own `package.json`. See the app schematic. */
 function marketingScripts(name: string): Rule {
   return (tree: Tree) => {
-    addScripts(tree, {
-      [`start:${name}`]: `ng serve ${name}`,
-      [`build:${name}`]: `ng build ${name}`,
-      [`test:${name}`]: `ng test ${name}`,
+    const scripts = ensureProjectManifest(tree, name);
+    addProjectScripts(tree, scripts, {
+      start: `ng serve ${name}`,
+      watch: `ng build ${name} --watch --configuration development`,
+      build: `ng build ${name}`,
+      test: `ng test ${name}`,
     });
-    documentScripts(tree, {
-      [`start:${name}`]: `serves \`${name}\``,
-      [`build:${name}`]:
+    documentProjectScripts(tree, scripts, {
+      start: `serves \`${name}\``,
+      build:
         `prerenders \`${name}\` to static HTML, writes its sitemap, and fails on any page ` +
         `a crawler could not use`,
-      [`test:${name}`]: `unit tests for \`${name}\``,
+      test: `unit tests for \`${name}\``,
     });
 
-    // A workspace whose only app is its marketing site still needs `npm start`.
+    // Only in a workspace from an earlier 22.x, without the project runner,
+    // whose only app is its marketing site: it still needs `npm start`.
     claimDefaultStart(tree, name);
     addToBuild(tree, name);
     aggregateTests(tree);
@@ -393,7 +410,7 @@ function houseRules(): Rule {
       'Prerendered sites',
       `
 A marketing site is rendered to static HTML at build time, and that HTML is
-what crawlers and first-time visitors get. \`npm run build:<site>\` fails on
+what crawlers and first-time visitors get. A site's \`build\` script fails on
 the rules below that the build can see (\`scripts/verify-prerender.mjs\`).
 
 - Every route states \`data.seo\` — a title, and a description no other page

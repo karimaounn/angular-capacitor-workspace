@@ -24,7 +24,7 @@ accepted and silently ignored, so the workspace looks gated and is not.
 ```bash
 npm install
 <% if (uiLib) { %>npm run build:libs   # before the first serve — see below
-<% } %>npm start
+<% } %>npm start <app>      # there is no default app: name the one to serve
 ```
 <% if (uiLib) { %>
 ### Why `build:libs` comes first
@@ -38,10 +38,9 @@ npm run build:libs
 ```
 
 Run it again any time a library's public API changes. Every `npm` script that
-needs it runs it for you first, through a `pre*` hook — `npm start`,
-`npm test`, `npm run build`, and the per-app `start:`, `build:`, `test:` and
-`e2e:` scripts. Only `ng serve` and `ng test` invoked directly bypass the
-hooks, so those are the two that need it by hand.
+needs it runs it for you first: `npm start`, `npm run watch`, `npm run build`,
+`npm test` and `npm run e2e`, whether from the root or with `-w`. Only `ng serve` and
+`ng test` invoked directly skip it, so those are the two that need it by hand.
 
 Working on a library and an app that consumes it at the same time? Run this
 in the background to rebuild the library on every save:
@@ -143,10 +142,16 @@ runs them afterwards.
 
 ## Scripts
 
-Scripts are named `<verb>:<app>[:<platform>]`. Every time you generate
-something new with `angular-capacitor-workspace`, it adds a row here for the
-scripts it created, so this table always reflects what the workspace can
-actually run. Rows you edit by hand are left alone.
+The root `package.json` holds the scripts that concern the whole workspace,
+and names no project. Each app, site and mobile shell keeps its own in a
+`package.json` of its own — `projects/<app>/web` and `projects/<app>/mobile` —
+registered as an npm workspace member. From the root, `npm start`, `watch`,
+`build`, `test` and `e2e` take the project's name (`npm run build shop`), and
+`build`, `test` and `e2e` without one run every project. Anything else in a
+project's `package.json` runs with `-w <package>`. Every
+time you generate something new with `angular-capacitor-workspace`, it adds a
+row here for the scripts it created, so this table always reflects what the
+workspace can actually run. Rows you edit by hand are left alone.
 
 <!-- angular-capacitor-workspace:scripts -->
 

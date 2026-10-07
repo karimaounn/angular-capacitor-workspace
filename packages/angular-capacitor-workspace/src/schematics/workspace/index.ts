@@ -20,7 +20,9 @@ import {
   addDependencies,
   addGitignoreSection,
   addScripts,
+  documentCommands,
   PACKAGE_JSON,
+  projectRunner,
   setEngines,
   TSCONFIG_JSON,
 } from '../../utils/workspace';
@@ -76,6 +78,9 @@ export function workspaceOverlay(options: WorkspaceOverlayOptions = {}): Rule {
       // Into an existing project, a file that is already there is somebody's:
       // their README, their CI. Overwriting it is a diff they did not ask for.
       filter((path) => !options.keepExisting || !tree.exists(path)),
+      // The project runner is the user's once written, like the other shared
+      // scripts: a second run must not undo changes made to it.
+      filter((path) => path !== '/scripts/project.mjs' || !tree.exists(path)),
     ]);
 
     return chain([
@@ -135,8 +140,40 @@ function preparePathsBlock(): Rule {
   };
 }
 
-function rootScripts(_options: WorkspaceOverlayOptions): Rule {
+/**
+ * The scripts `ng new` writes, which the project runner replaces. Only these
+ * exact commands: a script someone has written is theirs, and `ng add` meets
+ * workspaces that have them.
+ */
+const ANGULAR_SCRIPTS: Record<string, string> = {
+  start: 'ng serve',
+  watch: 'ng build --watch --configuration development',
+  build: 'ng build',
+  test: 'ng test',
+};
+
+function rootScripts(options: WorkspaceOverlayOptions): Rule {
   return (tree: Tree) => {
+    // `start`, `watch`, `build`, `test` and `e2e` take a project name, and run
+    // every project without one where that makes sense. Angular's versions are
+    // project-less, which in a workspace of several projects is an error for
+    // `ng serve` and `ng build`. The alternative, a `<verb>:<project>` per
+    // project or a default app, grows the root manifest with every project and
+    // picks an app for the reader.
+    const verbs = [
+      ...Object.keys(ANGULAR_SCRIPTS),
+      ...(options.e2e === 'playwright' ? ['e2e'] : []),
+    ];
+    updateJson(tree, PACKAGE_JSON, (file) => {
+      for (const verb of verbs) {
+        const existing = file.get<string>(['scripts', verb]);
+        if (existing === undefined || existing === ANGULAR_SCRIPTS[verb]) {
+          file.modify(['scripts', verb], projectRunner(verb));
+        }
+      }
+    });
+    documentRunner(tree, verbs);
+
     // Angular has no "build every library" command, so `build:libs` is composed
     // one `ng build` at a time by the library schematics. It is deliberately not
     // created here: an empty `build:libs` that silently succeeds would make the
@@ -147,6 +184,25 @@ function rootScripts(_options: WorkspaceOverlayOptions): Rule {
       doctor: 'angular-capacitor-workspace doctor',
     });
   };
+}
+
+/** The README rows for the project runner's scripts, one per verb it took over. */
+function documentRunner(tree: Tree, verbs: string[]): void {
+  const scripts = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
+  const rows: Record<string, string> = {
+    'npm start <app>': 'serves an app or site; there is no default, so name one',
+    'npm run watch <app>': 'rebuilds an app or site on change',
+    'npm run build [<project>]': 'builds one project, or every app and site',
+    'npm test [<project>]': "runs one project's unit tests, or every suite in the workspace once",
+    'npm run e2e [<project>]': "runs one project's Playwright suite, or every one",
+  };
+  const ours = Object.fromEntries(
+    Object.entries(rows).filter(([command]) => {
+      const verb = command.replace(/^npm (?:run )?(\w+).*$/, '$1');
+      return verbs.includes(verb) && scripts[verb] === projectRunner(verb);
+    }),
+  );
+  documentCommands(tree, ours);
 }
 
 function rootDependencies(options: WorkspaceOverlayOptions): Rule {

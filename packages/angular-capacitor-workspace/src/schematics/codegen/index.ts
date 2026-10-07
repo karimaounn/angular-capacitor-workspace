@@ -13,16 +13,15 @@ import {
   type Tree,
 } from '@angular-devkit/schematics';
 import { pins } from '../../policy/versions';
-import { JsonFile, updateJson } from '../../utils/json-file';
+import { updateJson } from '../../utils/json-file';
 import {
   addGitignoreSection,
   addScripts,
   documentScripts,
-  PACKAGE_JSON,
-  prependHook,
   readProject,
   readProjects,
 } from '../../utils/workspace';
+import { hookProjectEntryPoints, syncRootHooks } from '../../utils/project-scripts';
 
 export interface CodegenOptions {
   apps?: string[];
@@ -229,21 +228,15 @@ function codegenScripts(apps: string[], specEnvVar: string): Rule {
         '(a path or a URL); build, serve and test run it first, and skip it when unset',
     });
 
-    const hook = 'npm run codegen:optional';
-    for (const name of ['prebuild', 'prestart', 'pretest']) {
-      prependHook(tree, name, hook);
-    }
-
     // Each app's own entry points too, since npm hooks each under its own
     // `pre` name — and only the ones the app has, as `hookLibraryBuild` does.
-    const scripts = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
     for (const app of apps) {
-      for (const verb of ['build', 'start', 'test', 'e2e']) {
-        if (scripts[`${verb}:${app}`]) {
-          prependHook(tree, `pre${verb}:${app}`, hook);
-        }
-      }
+      hookProjectEntryPoints(tree, app, 'codegen:optional');
     }
+
+    // And the root `npm start`, `npm run build` and `npm test`, while they run
+    // anything that does not run it itself. See syncRootHooks.
+    syncRootHooks(tree);
   };
 }
 

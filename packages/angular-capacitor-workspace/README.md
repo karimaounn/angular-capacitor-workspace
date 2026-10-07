@@ -173,7 +173,7 @@ So a site is built once per language instead, into its own directory and its own
 URL:
 
 ```bash
-npm run build:site   # ng build site --configuration locale-en && … locale-fr
+npm run build site   # ng build site --configuration locale-en && … locale-fr
 ```
 
 Each `locale-*` configuration sets a `baseHref` of `/<locale>/`, an `outputPath`
@@ -198,7 +198,7 @@ skipped a route another rendered. Titles and descriptions are checked for
 duplicates within a language, not across: two languages saying the same thing is
 a translation, not a duplicate.
 
-`npm run start:site` serves the source locale. `ng serve` applies no `define`, and
+`npm start site` serves the source locale. `ng serve` applies no `define`, and
 `build-locale.ts` falls back to `DEFAULT_LOCALE`.
 
 Deploy `dist/<site>` as the web root. Every page lives under a language, so the
@@ -243,26 +243,26 @@ once, after a web build — `cap add` ends by copying that build into the
 project it creates, and fails if there is none:
 
 ```bash
-npm run build:shop
-npm run --workspace projects/shop/mobile cap -- add android
+npm run build shop
+npm run cap -w @acme/shop-mobile -- add android
 ```
 
 The workspace README carries these steps for each mobile app, with its
 platforms filled in.
 
-From then on, work from the workspace root:
+From then on, run the shell's own scripts from the workspace root:
 
 ```bash
-npm run sync:shop:android   # build, then copy the bundle into android/
-npm run open:shop:android   # open the project in Android Studio
-npm run run:shop:android    # build, sync and run on a device or emulator
+npm run sync:android -w @acme/shop-mobile   # build, then copy the bundle into android/
+npm run open:android -w @acme/shop-mobile   # open the project in Android Studio
+npm run run:android -w @acme/shop-mobile    # build, sync and run on a device or emulator
 ```
 
-Use `sync:<app>` rather than `npx cap sync`. The script builds first, and a
-bare `cap sync` copies whatever is left in `dist/` from last time.
+Use the shell's `sync` scripts rather than `npx cap sync`. They build first, and
+a bare `cap sync` copies whatever is left in `dist/` from last time.
 
 Native builds need a JDK 17 or newer and the Android SDK (`ANDROID_HOME`) for
-Android, and macOS with Xcode for iOS. `npm run preflight:shop` checks for the
+Android, and macOS with Xcode for iOS. `npm run preflight -w @acme/shop-mobile` checks for the
 ones its own platforms need before a build fails halfway through.
 
 ### Marketing site
@@ -285,7 +285,7 @@ search engines:
   `https://example.com`, and every build warns until it is changed.
 - **A prerendered 404.** `/404` is `noindex`. Configure the host to serve it
   with a 404 status for unknown paths, not to rewrite them to `index.html`.
-- **Postbuild checks.** `build:<site>` writes `sitemap.xml` from the
+- **Postbuild checks.** The site's `build` writes `sitemap.xml` from the
   prerendered pages. It then fails when a page has no `<h1>` (the prerender
   fell back to an empty shell), shares a title or description with another
   page, has a wrong canonical, or pins `data-theme` on `<html>`. Without these

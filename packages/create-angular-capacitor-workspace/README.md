@@ -85,7 +85,7 @@ marketing site once per language, into `/en/` and `/fr/` with their own
 canonicals and hreflang alternates. It needs `--ui-lib`, because the mechanism
 lives in the design system. See
 [Translation](../angular-capacitor-workspace/README.md#translation). Both flags are repeatable: sites, like
-apps, get their own dev-server port, their own `start:`/`build:`/`test:` scripts
+apps, get their own dev-server port, their own `package.json` of scripts
 and their own entry in `npm run build`, while sharing the design system and the
 postbuild checks.
 
@@ -118,7 +118,7 @@ them.
 ```bash
 cd my-workspace
 npm run build:libs   # libraries are consumed from dist/ — see the generated README
-npm start
+npm start shop       # there is no default app: name the one to serve
 ```
 
 The generated workspace carries the dependency policy with it:

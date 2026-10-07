@@ -1,0 +1,144 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Runs one project's script, or every project's, from the workspace root.
+//
+//   npm start <app>               serves one app or site
+//   npm run watch <app>           rebuilds one app or site on change
+//   npm run build [<project>]     builds one project, or every app and site
+//   npm test [<project>]          tests one project, or every project once
+//   npm run e2e [<project>]       one project's Playwright suite, or every one
+//
+// Flags after the name go to the project, behind npm's `--`:
+//
+//   npm start -- shop --port 4300
+//
+// Each app and site keeps its scripts in a package.json of its own, an npm
+// workspace member, and this finds that from angular.json. So the root
+// package.json names no project, nothing here changes when one is added, and
+// nothing is a default: serving needs a name. The project's own `pre*` and
+// `post*` hooks still run, because its script is run through npm.
+//
+// A project without a manifest of its own, such as a library or an app Angular
+// generated before this workspace adopted the generator, is run with `ng`.
+// ─────────────────────────────────────────────────────────────────────────────
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const VERBS = ['start', 'watch', 'build', 'test', 'e2e'];
+
+// Set by prepare(). Declared before anything runs, since everything below the
+// declarations runs at load.
+let prepared = false;
+
+const [verb, ...rest] = process.argv.slice(2);
+if (!VERBS.includes(verb)) {
+  fail(`usage: node scripts/project.mjs <${VERBS.join('|')}> [<project>] [flags]`);
+}
+const name = rest[0] && !rest[0].startsWith('-') ? rest.shift() : undefined;
+const flags = rest;
+
+const projects = readJson('angular.json').projects ?? {};
+const rootManifest = readJson('package.json');
+const members = new Set(rootManifest.workspaces ?? []);
+const apps = Object.keys(projects).filter((key) => projects[key].projectType === 'application');
+
+if (name) {
+  if (!projects[name]) {
+    fail(`There is no project "${name}". Projects: ${Object.keys(projects).join(', ')}.`);
+  }
+  runProject(name);
+} else if (verb === 'start' || verb === 'watch') {
+  // One command serves one app, and choosing one for the reader is what this
+  // script exists to avoid.
+  fail(
+    `Name the app: npm ${verb === 'start' ? 'start' : 'run watch'} <app>.\n` +
+      `Apps: ${apps.join(', ') || '(none yet — ng generate angular-capacitor-workspace:app)'}.`,
+  );
+} else if (verb === 'test') {
+  // A project-less `ng test` already runs every project, libraries included,
+  // in one process. Running each project's own script instead would build the
+  // libraries once per project.
+  prepare();
+  run('ng', ['test', '--no-watch', ...flags]);
+} else if (verb === 'e2e') {
+  const suites = Object.keys(projects).filter((key) => ownScript(key, 'e2e'));
+  if (suites.length === 0) {
+    fail('No project has an e2e suite.');
+  }
+  suites.forEach(runProject);
+} else if (apps.length > 0) {
+  apps.forEach(runProject);
+} else {
+  // No apps: Angular's own project-less build, which builds the only project.
+  run('ng', ['build', ...flags]);
+}
+
+/** Runs `verb` for one project: its own script when it has one, `ng` otherwise. */
+function runProject(project) {
+  const manifest = ownScript(project, verb);
+  if (manifest) {
+    const npmVerb = verb === 'start' || verb === 'test' ? [verb] : ['run', verb];
+    run('npm', [...npmVerb, '-w', manifest.name, ...(flags.length ? ['--', ...flags] : [])]);
+    return;
+  }
+  if (verb === 'e2e') {
+    fail(`"${project}" has no e2e suite.`);
+  }
+  // An app without hooks of its own still imports the libraries from dist/.
+  if (projects[project].projectType === 'application') {
+    prepare();
+  }
+  const ng = {
+    start: ['serve', project],
+    watch: ['build', project, '--watch', '--configuration', 'development'],
+    build: ['build', project],
+    test: ['test', project],
+  }[verb];
+  run('ng', [...ng, ...flags]);
+}
+
+/** The project's own manifest, if it is a workspace member with a `verb` script. */
+function ownScript(project, script) {
+  const root = projects[project].root;
+  if (!root || !members.has(root)) {
+    return undefined;
+  }
+  const manifest = readJson(path.join(root, 'package.json'));
+  return manifest.scripts?.[script] ? manifest : undefined;
+}
+
+/** What the projects' own `pre*` hooks would run, once: codegen, then the libraries. */
+function prepare() {
+  if (prepared) {
+    return;
+  }
+  prepared = true;
+  for (const script of ['codegen:optional', 'build:libs']) {
+    if (rootManifest.scripts?.[script]) {
+      run('npm', ['run', script]);
+    }
+  }
+}
+
+function run(command, args) {
+  const result = spawnSync(command, args, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    // `npm` and `ng` are .cmd shims on Windows, which only a shell runs.
+    shell: process.platform === 'win32',
+  });
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+}
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}

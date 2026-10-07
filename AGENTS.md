@@ -285,7 +285,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **Marketing templates and the app shell** hold exact strings that the i18n
   schematic finds and replaces: `siteUrl` in `site.ts`, lines in `page-meta.ts`,
   the TestBed providers lines in the specs, `<a routerLink="/">{{ siteName }}</a>`,
-  `<prefix-theme-toggle />`, and the `build:`/`postbuild:` commands. _Tested_ by
+  `<prefix-theme-toggle />`, and the site's `build`/`postbuild` commands. _Tested_ by
   `i18n.spec.ts`, since the patches throw by name.
 - **`EXPECTED_PROVIDERS`** in `schematics/marketing/index.ts` must match
   `marketing/files/site/src/app/app.config.ts.template` and Angular's SSR output
@@ -299,10 +299,17 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   Angular's own default (_tested_).
 - **A migration's `version`** must be the release whose CHANGELOG section first
   names it in backticks (_tested_). `npm run bump` sets it.
+- **The project runner's command** `node scripts/project.mjs <verb>` is
+  `projectRunner()` in `src/utils/workspace.ts`, and its file is
+  `workspace/files/scripts/project.mjs.template`. The runner reads which
+  projects have a manifest from the root `workspaces`, and runs the same
+  `codegen:optional` and `build:libs` that the projects' hooks do
+  (`ROOT_PREREQUISITES`); a new prerequisite belongs in both. Its behaviour is
+  _tested_ by running it against stubbed `npm` and `ng`.
 - **The README markers** in `workspace/files/README.md.template`
   (`angular-capacitor-workspace:scripts`, `:mobile`) are matched by constants in
   `src/utils/workspace.ts`.
-- **The e2e harness hard-codes names**: `projects/shop/web` and `dist/site` in
+- **The e2e harness hard-codes names**: `projects/shop/web`, `site` and `dist/site` in
   `e2e/matrix.mjs`, and it reads `--i18n` from `ROWS.full`.
 - **The generated README, AGENTS.md and CI template** describe the policy, the
   scripts and the upgrade path in prose. Change them when those change.
@@ -338,9 +345,19 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **Templates** are `files/**/*.template` (EJS). `__dot__` becomes `.`, and
   `__name__` path segments are template variables. They are excluded from `tsc`
   and from prettier (`requirePragma`), so only the e2e matrix ever compiles them.
-- **Scripts** are named `<verb>:<project>[:<platform>]`. Document each new one
-  with `documentScripts`, and hook library builds with `hookLibraryBuild` once
-  the script exists.
+- **Scripts** that belong to one app or site go in its own `package.json`, a
+  workspace member, through `ensureProjectManifest` and `addProjectScripts`
+  (`src/utils/project-scripts.ts`); a mobile shell's are in its
+  `package.json.template`. Never write `<verb>:<project>` or a project name into
+  the root: its `start`, `watch`, `build`, `test` and `e2e` are the project
+  runner (`workspace/files/scripts/project.mjs.template`), which takes the
+  project as an argument and finds its manifest through `angular.json` and
+  `workspaces`. Earlier 22.x workspaces have neither the runner nor project
+  manifests, so anything that patches an existing project's scripts goes
+  through `projectScripts()`, and anything that edits a root aggregate checks
+  for the runner first (`addToBuild`, `addToE2e`, `claimDefaultStart`). Document each script
+  with `documentScripts` or `documentProjectScripts`, and hook library builds
+  with `hookLibraryBuild` once the script exists.
 - **No new runtime dependencies without a reason.** `create-*` has exactly one,
   the schematics package. There is no prompt, colour or argv library: output
   goes through `src/style.ts` and `src/spinner.ts`. An install script this

@@ -15,7 +15,7 @@
 //     no canonical at all
 //   • sitemap.xml lists exactly the indexable pages, and robots.txt points at it
 //
-// Runs as the last postbuild:<app> step.
+// Runs as the last step of the site's `postbuild`.
 //
 //   node scripts/verify-prerender.mjs <app>
 // ─────────────────────────────────────────────────────────────────────────────

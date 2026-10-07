@@ -1,6 +1,14 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { HostTree } from '@angular-devkit/schematics';
 import { SchematicTestRunner, type UnitTestTree } from '@angular-devkit/schematics/testing';
 import { latestVersions } from '@schematics/angular/utility/latest-versions';
@@ -54,6 +62,68 @@ function scriptsTable(tree: UnitTestTree): string {
   const table = match[1]!;
   expect(table.split('\n').every((line) => line.startsWith('|'))).toBe(true);
   return table;
+}
+
+/** The scripts in a project's own manifest, `projects/<project>/<half>/package.json`. */
+function ownScripts(
+  tree: UnitTestTree,
+  project: string,
+  half: 'web' | 'mobile' = 'web',
+): Record<string, string> {
+  return JSON.parse(tree.readContent(`/projects/${project}/${half}/package.json`)).scripts;
+}
+
+/** The scripts in the root manifest. */
+function rootScripts(tree: UnitTestTree): Record<string, string> {
+  return JSON.parse(tree.readContent('/package.json')).scripts;
+}
+
+/**
+ * Puts a project's scripts back where releases before per-project manifests
+ * wrote them: `<verb>:<project>` in the root manifest, with paths from the
+ * root. The shape `ng generate` still meets in a workspace from one of those.
+ */
+function withRootScripts(tree: UnitTestTree, project: string): UnitTestTree {
+  const manifest = `/projects/${project}/web/package.json`;
+  const own: Record<string, string> = JSON.parse(tree.readContent(manifest)).scripts;
+  const root = JSON.parse(tree.readContent('/package.json'));
+  const fromRoot = (command: string) =>
+    command
+      .replaceAll(' --prefix ../../..', '')
+      .replaceAll('../../../', '')
+      .replace(
+        new RegExp(`npm (?:run )?(\\w+) -w @test-ws/${project}`, 'g'),
+        `npm run $1:${project}`,
+      );
+
+  for (const [name, command] of Object.entries(own)) {
+    if (name !== 'watch') {
+      root.scripts[`${name}:${project}`] = fromRoot(command);
+    }
+  }
+  for (const [name, command] of Object.entries<string>(root.scripts)) {
+    root.scripts[name] = fromRoot(command);
+  }
+  // Those releases had no project runner: the root scripts named the project.
+  const named: Record<string, string> = {
+    start: `npm run start:${project}`,
+    watch: `ng build ${project} --watch --configuration development`,
+    build: `npm run build:${project}`,
+    test: 'ng test --no-watch',
+    e2e: `npm run e2e:${project}`,
+  };
+  for (const [verb, command] of Object.entries(named)) {
+    if (root.scripts[verb] === `node scripts/project.mjs ${verb}`) {
+      root.scripts[verb] = command;
+    }
+  }
+  tree.delete('/scripts/project.mjs');
+  root.workspaces = root.workspaces.filter(
+    (member: string) => member !== `projects/${project}/web`,
+  );
+  tree.overwrite('/package.json', JSON.stringify(root, null, 2));
+  tree.delete(manifest);
+  return tree;
 }
 
 /** A project's global `styles`, as plain paths. */
@@ -291,10 +361,35 @@ describe('app', () => {
     expect(options.outputMode).toBeUndefined();
   });
 
-  it('points npm start at the first app rather than a project-less ng serve', () => {
-    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
-    expect(scripts['start']).toBe('npm run start:shop');
-    expect(scripts['watch']).toContain('shop');
+  it('names no app in the root scripts, which take the app as an argument', () => {
+    // No default app: `npm start shop`, through the project runner.
+    const scripts = rootScripts(tree);
+    for (const verb of ['start', 'watch', 'build', 'test', 'e2e']) {
+      expect(scripts[verb]).toBe(`node scripts/project.mjs ${verb}`);
+    }
+    expect(tree.exists('/scripts/project.mjs')).toBe(true);
+    expect(ownScripts(tree, 'shop')['watch']).toBe(
+      'ng build shop --watch --configuration development',
+    );
+  });
+
+  it('keeps its own scripts in its own manifest, as a workspace member', () => {
+    // So the root manifest stays the same size however many apps there are.
+    expect(JSON.parse(tree.readContent('/projects/shop/web/package.json'))).toMatchObject({
+      name: '@test-ws/shop',
+      private: true,
+      scripts: { start: 'ng serve shop', build: 'ng build shop', test: 'ng test shop' },
+    });
+    expect(JSON.parse(tree.readContent('/package.json')).workspaces).toContain('projects/shop/web');
+    expect(Object.keys(rootScripts(tree)).filter((name) => name.includes('shop'))).toEqual([]);
+  });
+
+  it('runs dependencies from the root manifest, not its own', () => {
+    // The audit gate and doctor read the root. A project manifest with
+    // dependencies would be a second install nothing audits.
+    const manifest = JSON.parse(tree.readContent('/projects/shop/web/package.json'));
+    expect(manifest.dependencies).toBeUndefined();
+    expect(manifest.devDependencies).toBeUndefined();
   });
 
   it('delegates the per-app Playwright config to the workspace base', () => {
@@ -305,9 +400,9 @@ describe('app', () => {
 
   it('lists its scripts in the README', () => {
     const table = scriptsTable(tree);
-    expect(table).toContain('| `npm run start:shop` |');
-    expect(table).toContain('| `npm start` | `npm run start:shop`');
-    expect(table).toContain('| `npm run e2e:shop` |');
+    expect(table).toContain('| `npm start <app>` |');
+    expect(table).toContain('| `npm start shop` |');
+    expect(table).toContain('| `npm run e2e shop` |');
   });
 
   it('adds each README row once, however many apps share the script', async () => {
@@ -321,8 +416,8 @@ describe('app', () => {
     const one = await runner().runSchematic('app', { name: 'shop', e2e: 'playwright' }, base);
     const two = await runner().runSchematic('app', { name: 'admin', e2e: 'playwright' }, one);
     const table = scriptsTable(two);
-    expect(table.match(/\| `npm run e2e` \|/g)).toHaveLength(1);
-    expect(table).toContain('| `npm run e2e:admin` |');
+    expect(table.match(/\| `npm run e2e \[<project>\]` \|/g)).toHaveLength(1);
+    expect(table).toContain('| `npm run e2e admin` |');
   });
 
   it('leaves a README without the scripts table alone', async () => {
@@ -374,13 +469,10 @@ describe('app', () => {
 
   it('builds and tests every app from npm run build and npm test', async () => {
     const two = await runner().runSchematic('app', { name: 'admin' }, await withShop());
-    const scripts = JSON.parse(two.readContent('/package.json')).scripts;
-    expect(scripts['build']).toBe('npm run build:shop && npm run build:admin');
-    // Project-less `ng test` already runs every project. Without --no-watch the
-    // first would watch in a terminal and never hand over to the second.
-    expect(scripts['test']).toBe('ng test --no-watch');
-    // One command serves one app, so start stays with the first.
-    expect(scripts['start']).toBe('npm run start:shop');
+    // The runner finds every app in angular.json, so a second one changes
+    // nothing at the root.
+    expect(rootScripts(two)).toEqual(rootScripts(await withShop()));
+    expect(rootScripts(two)['build']).toBe('node scripts/project.mjs build');
   });
 
   it('keeps building the apps a workspace already had', async () => {
@@ -395,16 +487,26 @@ describe('app', () => {
     );
     const added = await runner().runSchematic('app', { name: 'shop' }, existing);
     expect(JSON.parse(added.readContent('/package.json')).scripts['build']).toBe(
-      'ng build legacy && npm run build:shop',
+      'ng build legacy && npm run build -w @test-ws/shop',
     );
   });
 
-  it('type-checks its e2e specs before running them', () => {
-    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
-    expect(scripts['e2e:shop']).toBe(
-      'tsc -p projects/shop/web/e2e/tsconfig.json && ' +
-        'playwright test --config projects/shop/web/playwright.config.ts',
+  it('joins the build chain of a workspace whose apps keep their scripts at the root', async () => {
+    // An earlier 22.x wrote `build:<app>` into the root manifest.
+    const legacy = withRootScripts(await withShop(), 'shop');
+    const added = await runner().runSchematic('app', { name: 'admin', e2e: 'playwright' }, legacy);
+    expect(rootScripts(added)['build']).toBe(
+      'npm run build:shop && npm run build -w @test-ws/admin',
     );
+    expect(rootScripts(added)['e2e']).toBe('npm run e2e:shop && npm run e2e -w @test-ws/admin');
+  });
+
+  it('type-checks its e2e specs before running them', () => {
+    // From the app's own directory, where npm runs its scripts.
+    expect(ownScripts(tree, 'shop')['e2e']).toBe(
+      'tsc -p e2e/tsconfig.json && playwright test --config playwright.config.ts',
+    );
+    expect(rootScripts(tree)['e2e']).toBe('node scripts/project.mjs e2e');
     expect(tree.readContent('/projects/shop/web/e2e/tsconfig.json')).toContain(
       '"extends": "../../../../tsconfig.json"',
     );
@@ -475,17 +577,18 @@ describe('app, in a workspace that already has a design system', () => {
   });
 
   it('builds the libraries before every entry point of its own, which npm cannot hook', () => {
-    // The root `prestart`/`pretest`/`prebuild` cover `npm start`, `npm test`
-    // and `npm run build` and nothing else. On a fresh clone each per-app
-    // script fails without its own hook: `build:` in Sass, the rest on an
-    // import that resolves to a directory nothing has created.
-    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
-    for (const hook of ['prestart:shop', 'prebuild:shop', 'pretest:shop']) {
-      expect(scripts[hook]).toContain('npm run build:libs');
+    // npm hooks each script under its own name, so on a fresh clone each of
+    // the app's scripts fails without its own hook: `build` and `watch` in
+    // Sass, the rest on an import that resolves to a directory nothing has
+    // created. A project's scripts run in its own directory, so the hook
+    // reaches the root script through --prefix.
+    const scripts = ownScripts(tree, 'shop');
+    for (const hook of ['prestart', 'prewatch', 'prebuild', 'pretest']) {
+      expect(scripts[hook]).toBe('npm run build:libs --prefix ../../..');
     }
     // This app has no e2e suite, and a hook for a script nobody can run is a
     // key that only ever has to be explained.
-    expect(scripts['pree2e:shop']).toBeUndefined();
+    expect(scripts['pree2e']).toBeUndefined();
   });
 
   it('hooks the e2e script too, when the app has one', async () => {
@@ -500,27 +603,36 @@ describe('app, in a workspace that already has a design system', () => {
       { name: 'shop', e2e: 'playwright' },
       withLib,
     );
-    expect(JSON.parse(withApp.readContent('/package.json')).scripts['pree2e:shop']).toContain(
-      'npm run build:libs',
-    );
+    expect(ownScripts(withApp, 'shop')['pree2e']).toBe('npm run build:libs --prefix ../../..');
   });
 
   it('adds no library hooks to a workspace that has no libraries', async () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
-    const scripts = JSON.parse(withApp.readContent('/package.json')).scripts;
     // There is no `build:libs` to call, so a hook calling it would fail on the
-    // first `npm run start:shop`.
-    expect(scripts['prestart:shop']).toBeUndefined();
+    // first `npm start -w @test-ws/shop`.
+    expect(ownScripts(withApp, 'shop')['prestart']).toBeUndefined();
   });
 
   it('retrofits the hooks onto apps that predate the library', async () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
     const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withApp);
-    expect(JSON.parse(withLib.readContent('/package.json')).scripts['prestart:shop']).toContain(
-      'npm run build:libs',
+    expect(ownScripts(withLib, 'shop')['prestart']).toBe('npm run build:libs --prefix ../../..');
+  });
+
+  it('retrofits the hooks onto apps that keep their scripts at the root', async () => {
+    // An app from an earlier 22.x, before apps had a manifest of their own.
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const legacy = withRootScripts(
+      await runner().runSchematic('app', { name: 'shop' }, base),
+      'shop',
     );
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, legacy);
+
+    expect(withLib.exists('/projects/shop/web/package.json')).toBe(false);
+    expect(rootScripts(withLib)['prestart:shop']).toBe('npm run build:libs');
+    expect(rootScripts(withLib)['prebuild:shop']).toBe('npm run build:libs');
   });
 
   it('puts the theme toggle in the shell, so every route has it', () => {
@@ -593,17 +705,38 @@ describe('mobile', () => {
   });
 
   it('builds before syncing, because cap copies whatever is already in dist', () => {
-    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
-    expect(scripts['sync:shop']).toMatch(/^npm run build:shop &&/);
+    const scripts = ownScripts(tree, 'shop', 'mobile');
+    const build = 'npm run build -w @test-ws/shop --prefix ../../..';
+    expect(scripts['sync']).toBe(`${build} && cap sync`);
+    expect(scripts['sync:android']).toBe(`${build} && cap sync android`);
+    expect(scripts['run:android']).toBe(`${build} && cap run android`);
+    expect(scripts['open:android']).toBe('cap open android');
+  });
+
+  it('adds nothing to the root scripts', () => {
+    expect(Object.keys(rootScripts(tree)).filter((name) => name.includes('shop'))).toEqual([]);
+  });
+
+  it('builds a web app that keeps its scripts at the root', async () => {
+    // `ng generate mobile` for an app from an earlier 22.x.
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const legacy = withRootScripts(
+      await runner().runSchematic('app', { name: 'shop' }, base),
+      'shop',
+    );
+    const withMobile = await runner().runSchematic('mobile', { app: 'shop' }, legacy);
+    expect(ownScripts(withMobile, 'shop', 'mobile')['sync']).toBe(
+      'npm run build:shop --prefix ../../.. && cap sync',
+    );
   });
 
   it('lists the native scripts in the README', () => {
     const table = scriptsTable(tree);
-    expect(table).toContain('| `npm run sync:shop:android` |');
+    expect(table).toContain('| `npm run sync:android -w @test-ws/shop-mobile` |');
     expect(table).toContain(
-      '| `npm run open:shop:android` | opens the Android project in Android Studio |',
+      '| `npm run open:android -w @test-ws/shop-mobile` | opens the Android project in Android Studio |',
     );
-    expect(table).toContain('| `npm run preflight:shop` |');
+    expect(table).toContain('| `npm run preflight -w @test-ws/shop-mobile` |');
     expect(table).not.toContain(':ios');
   });
 
@@ -613,9 +746,9 @@ describe('mobile', () => {
     const readme = tree.readContent('/README.md');
     expect(readme).toContain('## Mobile');
     expect(readme).toContain('### Shop');
-    expect(readme).toContain('npm run --workspace projects/shop/mobile cap -- add android');
-    expect(readme).toContain('npm run run:shop:android');
-    expect(readme).toContain('npm run preflight:shop');
+    expect(readme).toContain('npm run cap -w @test-ws/shop-mobile -- add android');
+    expect(readme).toContain('npm run run:android -w @test-ws/shop-mobile');
+    expect(readme).toContain('npm run preflight -w @test-ws/shop-mobile');
     expect(readme).toContain('`com.testws.shop`');
   });
 
@@ -624,10 +757,11 @@ describe('mobile', () => {
     // reader on a fresh clone gets "Could not find the web assets directory"
     // as the very first native command they run.
     const readme = tree.readContent('/README.md');
-    expect(readme.indexOf('npm run build:shop')).toBeLessThan(readme.indexOf('cap -- add android'));
-    expect(readme.indexOf('npm run preflight:shop')).toBeLessThan(
-      readme.indexOf('npm run build:shop'),
+    const build = 'npm run build shop';
+    expect(readme.indexOf(build)).toBeLessThan(
+      readme.indexOf('cap -w @test-ws/shop-mobile -- add'),
     );
+    expect(readme.indexOf('npm run preflight -w')).toBeLessThan(readme.indexOf(build));
   });
 
   it('reads the requirements as a list, however many platforms there are', async () => {
@@ -682,10 +816,13 @@ describe('mobile', () => {
     const one = await runner().runSchematic('app', { name: 'shop', mobile: ['android'] }, base);
     const two = await runner().runSchematic('app', { name: 'admin', mobile: ['ios'] }, one);
 
-    const scripts = JSON.parse(two.readContent('/package.json')).scripts;
-    expect(scripts['preflight:shop']).toBe('bash scripts/cap-preflight.sh android');
-    expect(scripts['preflight:admin']).toBe('bash scripts/cap-preflight.sh ios');
-    expect(two.readContent('/README.md')).toContain('npm run preflight:admin');
+    expect(ownScripts(two, 'shop', 'mobile')['preflight']).toBe(
+      'bash ../../../scripts/cap-preflight.sh android',
+    );
+    expect(ownScripts(two, 'admin', 'mobile')['preflight']).toBe(
+      'bash ../../../scripts/cap-preflight.sh ios',
+    );
+    expect(two.readContent('/README.md')).toContain('npm run preflight -w @test-ws/admin-mobile');
   });
 
   it('checks only the platforms it is asked about', () => {
@@ -831,8 +968,11 @@ describe('marketing', () => {
   });
 
   it('writes the sitemap and checks every page after each build', () => {
-    expect(scripts(tree)['postbuild:site']).toBe(
-      'node scripts/generate-sitemap.mjs site && node scripts/verify-prerender.mjs site',
+    // The site's own postbuild, which npm runs after its build, reaching the
+    // shared scripts at the root from projects/site/web.
+    expect(ownScripts(tree, 'site')['postbuild']).toBe(
+      'node ../../../scripts/generate-sitemap.mjs site && ' +
+        'node ../../../scripts/verify-prerender.mjs site',
     );
     for (const script of ['prerendered', 'generate-sitemap', 'verify-prerender']) {
       expect(tree.files).toContain(`/scripts/${script}.mjs`);
@@ -852,7 +992,7 @@ describe('marketing', () => {
     edited.overwrite('/scripts/verify-prerender.mjs', '// tuned\n');
     const two = await runner().runSchematic('marketing', { name: 'docs' }, edited);
     expect(two.readContent('/scripts/verify-prerender.mjs')).toBe('// tuned\n');
-    expect(scripts(two)['postbuild:docs']).toContain('verify-prerender.mjs docs');
+    expect(ownScripts(two, 'docs')['postbuild']).toContain('verify-prerender.mjs docs');
   });
 
   it('holds a page to a page budget, not an app one', () => {
@@ -864,18 +1004,18 @@ describe('marketing', () => {
     });
   });
 
-  it('joins npm run build and npm test, and takes npm start when there is no app', () => {
-    expect(scripts(tree)['build']).toBe('npm run build:site');
-    expect(scripts(tree)['test']).toBe('ng test --no-watch');
-    expect(scripts(tree)['start']).toBe('npm run start:site');
+  it('is built by npm run build, and served by name like any app', () => {
+    // The runner finds the site like any app, and serves it only by name.
+    expect(scripts(tree)['build']).toBe('node scripts/project.mjs build');
+    expect(scripts(tree)['start']).toBe('node scripts/project.mjs start');
+    expect(ownScripts(tree, 'site')['build']).toBe('ng build site');
   });
 
-  it('leaves npm start with the app, and takes the next port, when there is one', async () => {
+  it('takes the next port when an app is already there', async () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
     const both = await runner().runSchematic('marketing', { name: 'site' }, withApp);
-    expect(scripts(both)['start']).toBe('npm run start:shop');
-    expect(scripts(both)['build']).toBe('npm run build:shop && npm run build:site');
+    expect(scripts(both)['start']).toBe('node scripts/project.mjs start');
     expect(
       JSON.parse(both.readContent('/angular.json')).projects['site'].architect.serve.options.port,
     ).toBe(4201);
@@ -885,15 +1025,13 @@ describe('marketing', () => {
     expect(tree.files).toContain('/projects/site/web/e2e/site.spec.ts');
     expect(tree.files).toContain('/projects/site/web/e2e/a11y.spec.ts');
     expect(tree.files).not.toContain('/projects/site/web/e2e/smoke.spec.ts');
-    expect(scripts(tree)['e2e:site']).toMatch(
-      /^tsc -p projects\/site\/web\/e2e\/tsconfig.json && /,
-    );
+    expect(ownScripts(tree, 'site')['e2e']).toMatch(/^tsc -p e2e\/tsconfig.json && /);
     expect(JSON.parse(tree.readContent('/package.json')).devDependencies['axe-core']).toBeDefined();
   });
 
   it('documents the site beside it, hosting included', () => {
     const readme = tree.readContent('/projects/site/web/README.md');
-    expect(readme).toContain('npm run e2e:site');
+    expect(readme).toContain('npm run e2e site');
     expect(readme).toContain('404/index.html');
   });
 
@@ -914,11 +1052,9 @@ describe('marketing', () => {
       );
     expect(ports(two)).toEqual({ site: 4200, docs: 4201 });
 
-    expect(scripts(two)['start:docs']).toBe('ng serve docs');
-    expect(scripts(two)['build:docs']).toBe('ng build docs');
-    expect(scripts(two)['build']).toBe('npm run build:site && npm run build:docs');
-    // One command serves one site, so the first keeps `npm start`.
-    expect(scripts(two)['start']).toBe('npm run start:site');
+    expect(ownScripts(two, 'docs')['start']).toBe('ng serve docs');
+    expect(ownScripts(two, 'docs')['build']).toBe('ng build docs');
+    expect(scripts(two)['build']).toBe('node scripts/project.mjs build');
   });
 
   it('gives each site its own origin, so their canonicals do not collide', async () => {
@@ -1102,10 +1238,54 @@ describe('ui-lib', () => {
     expect(tree.readContent('/projects/shop/web/src/app/app.ts')).not.toContain('ThemeToggle');
   });
 
-  it('builds libraries before a build, not only before start and test', () => {
-    expect(JSON.parse(tree.readContent('/package.json')).scripts['prebuild']).toContain(
-      'npm run build:libs',
+  it('builds libraries once per build, from the projects rather than the root as well', () => {
+    // The runner's `npm run build` and `npm start` call the projects' own
+    // scripts, each of which builds the libraries first. A root hook would
+    // build them again.
+    expect(rootScripts(tree)['prebuild']).toBeUndefined();
+    expect(rootScripts(tree)['prestart']).toBeUndefined();
+    expect(ownScripts(tree, 'shop')['prebuild']).toBe('npm run build:libs --prefix ../../..');
+  });
+
+  it('leaves the root hooks to the project runner, which builds the libraries itself', async () => {
+    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
+    const libOnly = await runner().runSchematic('ui-lib', { name: 'ui' }, base);
+    for (const hook of ['prestart', 'prebuild', 'pretest']) {
+      expect(rootScripts(libOnly)[hook]).toBeUndefined();
+    }
+  });
+
+  it('hooks the root entry points while they run something with no hooks of its own', async () => {
+    // A workspace without the runner, which is what `ng generate` meets in
+    // one from an earlier 22.x: a library before any app leaves `npm start`
+    // as Angular's project-less `ng serve`, which nothing else builds the
+    // libraries for.
+    const libOnly = await runner().runSchematic('ui-lib', { name: 'ui' }, await baseWorkspace());
+    expect(rootScripts(libOnly)['prestart']).toBe('npm run build:libs');
+    expect(rootScripts(libOnly)['prebuild']).toBe('npm run build:libs');
+
+    // The first app takes start over, and its own hooks make the root's
+    // redundant. `npm test` is still a project-less `ng test`.
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, libOnly);
+    expect(rootScripts(withApp)['start']).toBe('npm start -w @test-ws/shop');
+    expect(rootScripts(withApp)['prestart']).toBeUndefined();
+    expect(rootScripts(withApp)['prebuild']).toBeUndefined();
+    expect(rootScripts(withApp)['pretest']).toBe('npm run build:libs');
+  });
+
+  it('keeps the root prebuild for an app Angular generated, which has no hooks', async () => {
+    // What `ng add` meets. The library's stylesheet import goes into that app
+    // too, so its `ng build` fails in Sass unless the root builds the library.
+    const existing = await runner().runExternalSchematic(
+      '@schematics/angular',
+      'application',
+      { name: 'legacy', skipInstall: true },
+      await baseWorkspace(),
     );
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, existing);
+    const withApp = await runner().runSchematic('app', { name: 'shop' }, withLib);
+    expect(rootScripts(withApp)['build']).toBe('ng build legacy && npm run build -w @test-ws/shop');
+    expect(rootScripts(withApp)['prebuild']).toBe('npm run build:libs');
   });
 
   it('ships components with tests and stories, so the wiring is exercised', () => {
@@ -1134,17 +1314,19 @@ describe('ui-lib', () => {
     expect(check).toContain("fg: 'accent-strong', bg: 'surface'");
   });
 
-  it('leaves npm test running every project, its own included, without watching', () => {
-    expect(JSON.parse(tree.readContent('/package.json')).scripts['test']).toBe(
-      'ng test --no-watch',
-    );
+  it('runs its tests through the project runner, with no root script of its own', () => {
+    expect(rootScripts(tree)['test']).toBe('node scripts/project.mjs test');
+    expect(rootScripts(tree)['test:ui']).toBeUndefined();
+    expect(scriptsTable(tree)).toContain('| `npm test ui` |');
   });
 
   it('hooks build:libs into prestart, because ng serve does not build libraries', () => {
-    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
+    const scripts = rootScripts(tree);
     expect(scripts['build:libs']).toContain('ng build ui');
-    expect(scripts['prestart']).toContain('npm run build:libs');
-    expect(scripts['pretest']).toContain('npm run build:libs');
+    // `npm start shop` reaches it through the app's own prestart. The runner
+    // runs it itself before a project-less `npm test`, so the root has no hook.
+    expect(ownScripts(tree, 'shop')['prestart']).toBe('npm run build:libs --prefix ../../..');
+    expect(scripts['pretest']).toBeUndefined();
   });
 
   it('lists the library scripts in the README', () => {
@@ -1256,16 +1438,19 @@ describe('codegen', () => {
   });
 
   it('regenerates before every entry point that compiles the app', () => {
-    const scripts = JSON.parse(tree.readContent('/package.json')).scripts;
+    // Not from the root: the runner runs it before a project-less `npm test`,
+    // and `npm start` and `npm run build` go through the app's own hooks.
+    const scripts = rootScripts(tree);
     for (const hook of ['prebuild', 'prestart', 'pretest']) {
-      expect(scripts[hook]).toContain('npm run codegen');
+      expect(scripts[hook]).toBeUndefined();
     }
-    // The app's own entry points too, which npm hooks under their own names —
-    // and only the ones it has.
-    for (const hook of ['prebuild:shop', 'prestart:shop', 'pretest:shop']) {
-      expect(scripts[hook]).toContain('npm run codegen:optional');
+    // The app's own entry points, which npm hooks under their own names — and
+    // only the ones it has.
+    const own = ownScripts(tree, 'shop');
+    for (const hook of ['prebuild', 'prestart', 'prewatch', 'pretest']) {
+      expect(own[hook]).toContain('npm run codegen:optional --prefix ../../..');
     }
-    expect(scripts['pree2e:shop']).toBeUndefined();
+    expect(own['pree2e']).toBeUndefined();
   });
 
   it('says in the README where the spec comes from', () => {
@@ -1667,5 +1852,106 @@ describe('packages service-worker', () => {
       JSON.parse(later.readContent('/angular.json')).projects.admin.architect.build.configurations
         .production.serviceWorker,
     ).toBe('projects/admin/web/ngsw-config.json');
+  });
+});
+
+describe('the project runner', () => {
+  let dir: string;
+
+  /**
+   * The generated workspace's manifests and runner on disk, with `npm` and
+   * `ng` replaced by stubs that log what they were asked to run.
+   */
+  beforeAll(async () => {
+    const base = await runner().runSchematic(
+      'workspace',
+      { e2e: 'playwright' },
+      await baseWorkspace(),
+    );
+    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, base);
+    const withApp = await runner().runSchematic(
+      'app',
+      { name: 'shop', e2e: 'playwright' },
+      withLib,
+    );
+    const tree = await runner().runSchematic(
+      'marketing',
+      { name: 'site', e2e: 'playwright' },
+      withApp,
+    );
+
+    dir = mkdtempSync(join(tmpdir(), 'acw-runner-'));
+    for (const file of [
+      '/scripts/project.mjs',
+      '/angular.json',
+      '/package.json',
+      '/projects/shop/web/package.json',
+      '/projects/site/web/package.json',
+    ]) {
+      mkdirSync(join(dir, dirname(file)), { recursive: true });
+      writeFileSync(join(dir, file), tree.readContent(file));
+    }
+    mkdirSync(join(dir, 'bin'));
+    for (const stub of ['npm', 'ng']) {
+      writeFileSync(join(dir, 'bin', stub), `#!/bin/sh\necho "${stub} $*" >> "$RUNNER_LOG"\n`);
+      chmodSync(join(dir, 'bin', stub), 0o755);
+    }
+  });
+
+  function run(...args: string[]): { status: number | null; ran: string[]; stderr: string } {
+    const log = join(dir, `log-${Math.random().toString(36).slice(2)}`);
+    writeFileSync(log, '');
+    const result = spawnSync(process.execPath, ['scripts/project.mjs', ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { PATH: `${join(dir, 'bin')}:${dirname(process.execPath)}`, RUNNER_LOG: log },
+    });
+    return {
+      status: result.status,
+      ran: readFileSync(log, 'utf8').split('\n').filter(Boolean),
+      stderr: result.stderr,
+    };
+  }
+
+  it('serves only the app it is told to, through its own scripts and hooks', () => {
+    expect(run('start', 'shop').ran).toEqual(['npm start -w @test-ws/shop']);
+
+    const unnamed = run('start');
+    expect(unnamed.status).toBe(1);
+    expect(unnamed.stderr).toContain('Apps: shop, site.');
+    expect(unnamed.ran).toEqual([]);
+  });
+
+  it('passes flags after the name to the project', () => {
+    expect(run('start', 'site', '--port', '4300').ran).toEqual([
+      'npm start -w @test-ws/site -- --port 4300',
+    ]);
+  });
+
+  it('builds every app and site without a name, in angular.json order', () => {
+    expect(run('build').ran).toEqual([
+      'npm run build -w @test-ws/shop',
+      'npm run build -w @test-ws/site',
+    ]);
+  });
+
+  it('tests every project in one ng test, after the libraries are built', () => {
+    // One process, not one per project, so the libraries build once.
+    expect(run('test').ran).toEqual(['npm run build:libs', 'ng test --no-watch']);
+  });
+
+  it('runs a library, which has no manifest of its own, with ng', () => {
+    expect(run('test', 'ui').ran).toEqual(['ng test ui']);
+  });
+
+  it('runs every e2e suite, and names the projects when given one it does not know', () => {
+    expect(run('e2e').ran).toEqual([
+      'npm run e2e -w @test-ws/shop',
+      'npm run e2e -w @test-ws/site',
+    ]);
+
+    const unknown = run('build', 'shopp');
+    expect(unknown.status).toBe(1);
+    expect(unknown.stderr).toContain('There is no project "shopp". Projects: ui, shop, site.');
   });
 });

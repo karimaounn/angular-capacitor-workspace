@@ -317,7 +317,13 @@ function summary(directory: string, options: GenerateOptions, installed: boolean
         `  ${command('npm run build:libs'.padEnd(20))} ${note('# libraries are consumed from dist/')}`,
       );
     }
-    lines.push(`  ${command('npm start')}`);
+    // There is no default app, so the line names one: the first app, or the
+    // first site in a workspace without apps. A library on its own has
+    // nothing to serve.
+    const first = options.apps?.[0]?.name ?? options.marketing?.[0]?.name;
+    if (first) {
+      lines.push(`  ${command(`npm start ${first}`)}`);
+    }
   }
 
   lines.push(heading('The dependency policy is live in this workspace'));

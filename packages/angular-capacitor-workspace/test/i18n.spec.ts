@@ -37,6 +37,54 @@ async function workspaceWithSite(): Promise<UnitTestTree> {
 }
 
 /**
+ * Puts a project's scripts back where releases before per-project manifests
+ * wrote them: `<verb>:<project>` in the root manifest, with paths from the
+ * root. The shape `ng generate` still meets in a workspace from one of those.
+ */
+function withRootScripts(tree: UnitTestTree, project: string): UnitTestTree {
+  const manifest = `/projects/${project}/web/package.json`;
+  const own: Record<string, string> = JSON.parse(tree.readContent(manifest)).scripts;
+  const root = JSON.parse(tree.readContent('/package.json'));
+  const fromRoot = (command: string) =>
+    command
+      .replaceAll(' --prefix ../../..', '')
+      .replaceAll('../../../', '')
+      .replace(
+        new RegExp(`npm (?:run )?(\\w+) -w @test-ws/${project}`, 'g'),
+        `npm run $1:${project}`,
+      );
+
+  for (const [name, command] of Object.entries(own)) {
+    if (name !== 'watch') {
+      root.scripts[`${name}:${project}`] = fromRoot(command);
+    }
+  }
+  for (const [name, command] of Object.entries<string>(root.scripts)) {
+    root.scripts[name] = fromRoot(command);
+  }
+  // Those releases had no project runner: the root scripts named the project.
+  const named: Record<string, string> = {
+    start: `npm run start:${project}`,
+    watch: `ng build ${project} --watch --configuration development`,
+    build: `npm run build:${project}`,
+    test: 'ng test --no-watch',
+    e2e: `npm run e2e:${project}`,
+  };
+  for (const [verb, command] of Object.entries(named)) {
+    if (root.scripts[verb] === `node scripts/project.mjs ${verb}`) {
+      root.scripts[verb] = command;
+    }
+  }
+  tree.delete('/scripts/project.mjs');
+  root.workspaces = root.workspaces.filter(
+    (member: string) => member !== `projects/${project}/web`,
+  );
+  tree.overwrite('/package.json', JSON.stringify(root, null, 2));
+  tree.delete(manifest);
+  return tree;
+}
+
+/**
  * Every relative import in the generated TypeScript names a symbol the target
  * module actually exports.
  *
@@ -458,14 +506,18 @@ describe('i18n', () => {
       // second build would take the first one's output with it.
       expect(build.configurations['locale-en'].deleteOutputPath).toBe(false);
 
-      const scripts = JSON.parse(site.readContent('/package.json')).scripts;
-      expect(scripts['build:site']).toBe(
-        'node scripts/clean-dist.mjs site && ' +
+      // In the site's own manifest, which runs in projects/site/web.
+      const scripts = JSON.parse(site.readContent('/projects/site/web/package.json')).scripts;
+      expect(scripts['build']).toBe(
+        'node ../../../scripts/clean-dist.mjs site && ' +
           'ng build site --configuration locale-en && ' +
           'ng build site --configuration locale-fr',
       );
       expect(site.exists('/scripts/clean-dist.mjs')).toBe(true);
-      expect(scripts['postbuild:site']).toContain('--locales en,fr');
+      expect(scripts['postbuild']).toBe(
+        'node ../../../scripts/generate-sitemap.mjs site --locales en,fr && ' +
+          'node ../../../scripts/verify-prerender.mjs site --locales en,fr',
+      );
     });
 
     it('pins the locale rather than negotiating it', () => {
@@ -536,9 +588,7 @@ describe('i18n', () => {
     });
 
     it('tells the reader the npm command that serves the source locale', () => {
-      expect(site.readContent('/README.md')).toContain(
-        '`npm run start:site` serves the source locale',
-      );
+      expect(site.readContent('/README.md')).toContain('`npm start site` serves the source locale');
     });
 
     it('keeps the language links current after a client-side navigation', () => {
@@ -566,10 +616,10 @@ describe('i18n', () => {
 
     it('is idempotent, including the scripts it replaces', async () => {
       const twice = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, site);
-      const scripts = JSON.parse(twice.readContent('/package.json')).scripts;
+      const scripts = JSON.parse(twice.readContent('/projects/site/web/package.json')).scripts;
 
-      expect(scripts['build:site']).toBe(
-        'node scripts/clean-dist.mjs site && ' +
+      expect(scripts['build']).toBe(
+        'node ../../../scripts/clean-dist.mjs site && ' +
           'ng build site --configuration locale-en && ' +
           'ng build site --configuration locale-fr',
       );
@@ -579,6 +629,23 @@ describe('i18n', () => {
       expect(
         twice.readContent('/projects/site/web/src/app/site.ts').match(/export function localeUrl/g),
       ).toHaveLength(1);
+    });
+
+    it('rewrites the build of a site whose scripts are still in the root manifest', async () => {
+      // What `ng generate i18n` meets in a workspace from an earlier 22.x.
+      const legacy = withRootScripts(await workspaceWithSite(), 'site');
+      const localized = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, legacy);
+      const scripts = JSON.parse(localized.readContent('/package.json')).scripts;
+
+      expect(localized.exists('/projects/site/web/package.json')).toBe(false);
+      expect(scripts['build:site']).toBe(
+        'node scripts/clean-dist.mjs site && ' +
+          'ng build site --configuration locale-en && ' +
+          'ng build site --configuration locale-fr',
+      );
+      expect(scripts['postbuild:site']).toContain(
+        'node scripts/verify-prerender.mjs site --locales en,fr',
+      );
     });
   });
 
@@ -694,9 +761,9 @@ describe('i18n', () => {
         'locale-fr'
       ],
     ).toBeDefined();
-    expect(JSON.parse(site.readContent('/package.json')).scripts['build:site']).toContain(
-      '--configuration locale-fr',
-    );
+    expect(
+      JSON.parse(site.readContent('/projects/site/web/package.json')).scripts['build'],
+    ).toContain('--configuration locale-fr');
   });
 
   it('is idempotent', async () => {

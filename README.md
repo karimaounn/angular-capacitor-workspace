@@ -64,17 +64,22 @@ anything.
 
 ```bash
 cd acme
-npm start                         # serves storefront, the first app
+npm start storefront              # serves an app; there is no default, so name one
 npm test                          # every unit-test suite, once
 npm run build                     # every app; the site's build also checks its SEO
+npm run build site                # one project; so do test, e2e and watch
 npm run e2e                       # every Playwright suite
 npm run storybook                 # the ui library in isolation
 ```
 
-Scripts are named `<verb>:<app>[:<platform>]`: `start:admin`,
-`build:site`, `sync:storefront:android`. The generated README lists every script
-the workspace has. The native Android and iOS projects are added by hand, once
-per platform; see
+Each app, site and mobile shell keeps its own scripts in its own
+`package.json`, an npm workspace member, so the root manifest names no project
+and stays the same however many there are. `start`, `watch`, `build`, `test` and
+`e2e` take the project as an argument, through `scripts/project.mjs`; anything
+else a project has runs with `-w`, such as
+`npm run run:android -w @acme/storefront-mobile`. The generated README lists
+every script the workspace has. The native Android and iOS projects are added
+by hand, once per platform; see
 [Mobile](packages/angular-capacitor-workspace/README.md#mobile).
 
 ### Grow it
@@ -292,7 +297,7 @@ Two caveats worth stating plainly:
 - **`sync:android` is verified as far as the SDK-free path goes.** `cap add
 android` and `cap sync android` run and place the built bundle correctly.
   Compiling the APK needs a full Android SDK and is not exercised here; the
-  generated `preflight:<app>` script checks for one.
+  shell's generated `preflight` script checks for one.
 - **The `globalThis.global` polyfill entry is not emitted.** The plan called for
   it "only when a dependency needs it", and nothing in the generated dependency
   set does. A mechanism with no trigger would be dead code; add it alongside the

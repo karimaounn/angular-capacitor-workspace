@@ -15,16 +15,10 @@ import {
   type Tree,
 } from '@angular-devkit/schematics';
 import {
-  addScripts,
   addStyleIncludePath,
-  addToBuild,
   aggregateTests,
   addTsconfigReference,
-  appendToScript,
-  claimDefaultStart,
-  documentScripts,
   findDesignSystem,
-  hookLibraryBuild,
   importDesignSystemStyles,
   nextFreePort,
   readProject,
@@ -33,6 +27,15 @@ import {
   type AngularProject,
   type DesignSystem,
 } from '../../utils/workspace';
+import {
+  addProjectScripts,
+  addToBuild,
+  addToE2e,
+  claimDefaultStart,
+  documentProjectScripts,
+  ensureProjectManifest,
+  hookLibraryBuild,
+} from '../../utils/project-scripts';
 import type { MobilePlatform } from '../../api';
 import { installedI18n } from '../i18n';
 import { installedPackages } from '../packages';
@@ -219,20 +222,23 @@ function noop(): Rule {
 }
 
 /**
- * Scripts follow `<verb>:<app>`, so a workspace with four apps reads as a
- * table rather than as four inconsistent inventions.
+ * The app's own `start`, `build` and `test`, in its own `package.json`, so the
+ * root manifest does not grow by a block of scripts per app. Every app has the
+ * same verbs, run from the root as `npm run <verb> -w <package>`.
  */
 function appScripts(name: string): Rule {
   return (tree: Tree) => {
-    addScripts(tree, {
-      [`start:${name}`]: `ng serve ${name}`,
-      [`build:${name}`]: `ng build ${name}`,
-      [`test:${name}`]: `ng test ${name}`,
+    const scripts = ensureProjectManifest(tree, name);
+    addProjectScripts(tree, scripts, {
+      start: `ng serve ${name}`,
+      watch: `ng build ${name} --watch --configuration development`,
+      build: `ng build ${name}`,
+      test: `ng test ${name}`,
     });
-    documentScripts(tree, {
-      [`start:${name}`]: `serves \`${name}\``,
-      [`build:${name}`]: `production build of \`${name}\``,
-      [`test:${name}`]: `unit tests for \`${name}\`, Vitest via \`@angular/build:unit-test\``,
+    documentProjectScripts(tree, scripts, {
+      start: `serves \`${name}\``,
+      build: `production build of \`${name}\``,
+      test: `unit tests for \`${name}\`, Vitest via \`@angular/build:unit-test\``,
     });
 
     claimDefaultStart(tree, name);
@@ -292,16 +298,16 @@ function e2eConfig(name: string, port: number, prefix: string): Rule {
  */
 export function e2eScripts(name: string, root: string): Rule {
   return (tree: Tree) => {
-    addScripts(tree, {
-      [`e2e:${name}`]:
-        `tsc -p ${root}/e2e/tsconfig.json && ` +
-        `playwright test --config ${root}/playwright.config.ts`,
+    const scripts = ensureProjectManifest(tree, name);
+    addProjectScripts(tree, scripts, {
+      e2e:
+        `tsc -p ${scripts.projectPath('e2e/tsconfig.json')} && ` +
+        `playwright test --config ${scripts.projectPath('playwright.config.ts')}`,
     });
-    appendToScript(tree, 'e2e', `npm run e2e:${name}`);
+    addToE2e(tree, name);
     addTsconfigReference(tree, `./${root}/e2e/tsconfig.json`);
-    documentScripts(tree, {
-      [`e2e:${name}`]: `Playwright tests for \`${name}\`, against its own dev server`,
-      e2e: 'every Playwright suite in the workspace',
+    documentProjectScripts(tree, scripts, {
+      e2e: `Playwright tests for \`${name}\`, against its own dev server`,
     });
   };
 }
