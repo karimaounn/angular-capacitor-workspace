@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { LOCALES, LOCALE_LABELS, isLocale } from './i18n.tokens';
-import { TranslationService } from './translation';
+import { LOCALES, LOCALE_LABELS, TranslationService, isLocale } from './i18n';
 
 /**
  * The language picker.

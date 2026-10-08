@@ -80,6 +80,12 @@ export interface GenerateOptions {
    * this at a local tarball so it can test an unpublished build.
    */
   selfSpec?: string;
+  /**
+   * Dependency specs for the runtime packages the plugins install, by package
+   * name — `{ '@angular-capacitor-workspace/i18n': 'file:…' }`. Each defaults
+   * to `^` this version. For the same reason as `selfSpec`.
+   */
+  packageSpecs?: Readonly<Record<string, string>>;
   log?: (message: string) => void;
 }
 

@@ -6,11 +6,12 @@
  *   npm run bump -- minor
  *   npm run bump -- patch --dry-run
  *
- * There are five places, and a release needs all five: the version in each of
- * the three manifests, the exact `angular-capacitor-workspace` pin in
+ * There are seven places, and a release needs all seven: the version in each
+ * of the five manifests — the root, the generator, `create-*` and the two
+ * runtime packages — the exact `angular-capacitor-workspace` pin in
  * `create-*`, and the changelog's `## [Unreleased]` heading with the two link
  * definitions at the foot of the file. A release that ships an `ng update`
- * migration has a sixth: that migration's `version`.
+ * migration has an eighth: that migration's `version`.
  *
  * Every one of them is already checked, but late. `test/release-line.spec.ts`
  * catches a missed manifest on the next CI run; `check-release.mjs` catches an
@@ -31,6 +32,9 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const generator = 'packages/angular-capacitor-workspace/package.json';
 const create = 'packages/create-angular-capacitor-workspace/package.json';
+// Released with the generator at its version: a workspace depends on `^` the
+// generator's version of each, so the two cannot be told apart.
+const runtime = ['packages/i18n/package.json', 'packages/theming/package.json'];
 const migrations = 'packages/angular-capacitor-workspace/src/migrations.json';
 
 const { values, positionals } = parseArgs({
@@ -54,6 +58,9 @@ const summary = [];
 pin('package.json', /^( {2}"version": ")[^"]+(")/m, 'version');
 pin(generator, /^( {2}"version": ")[^"]+(")/m, 'version');
 pin(create, /^( {2}"version": ")[^"]+(")/m, 'version');
+for (const path of runtime) {
+  pin(path, /^( {2}"version": ")[^"]+(")/m, 'version');
+}
 pin(create, /^( {4}"angular-capacitor-workspace": ")[^"]+(")/m, 'angular-capacitor-workspace pin');
 versionMigrations();
 promoteChangelog();

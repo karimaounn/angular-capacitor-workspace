@@ -10,7 +10,7 @@
  * move the tag or finish the changelog, and the gate it precedes takes half an
  * hour to tell you the same thing.
  *
- * It deliberately does not check that the three manifests agree on a version,
+ * It deliberately does not check that the five manifests agree on a version,
  * or that `create-*` pins the generator at exactly it. That is
  * `test/release-line.spec.ts`, which runs on every commit rather than only on
  * a tag. The question here is narrower — whether the tag names the version the

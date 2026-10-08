@@ -110,17 +110,20 @@ function mentions(source: string, key: string): boolean {
  * In the order the plugins run, which is the registry's. A shell with no
  * `<header>` has been rewritten by someone, and is left alone rather than
  * having a control dropped somewhere it was not designed for.
+ *
+ * True when the shell has the control, whether it was added now or before, so
+ * a plugin knows whether the shell's spec now renders it.
  */
-export function addHeaderControl(tree: Tree, project: string, component: ShellComponent): void {
+export function addHeaderControl(tree: Tree, project: string, component: ShellComponent): boolean {
   const root = projectRoot(tree, project);
   const componentPath = `/${root}/src/app/app.ts`;
   const templatePath = `/${root}/src/app/app.html`;
   const template = read(tree, templatePath);
   if (template === undefined || !template.includes('</header>')) {
-    return;
+    return false;
   }
   if (!addToComponent(tree, componentPath, component, './')) {
-    return;
+    return mentions(read(tree, componentPath) ?? '', component.symbol);
   }
 
   // Indented like the header's other children, read off the closing tag's own
@@ -132,6 +135,7 @@ export function addHeaderControl(tree: Tree, project: string, component: ShellCo
     templatePath,
     `${template.slice(0, lineStart)}${indent}${component.markup}\n${template.slice(lineStart)}`,
   );
+  return true;
 }
 
 /**

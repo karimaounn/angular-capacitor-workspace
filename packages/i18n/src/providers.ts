@@ -4,11 +4,16 @@ import {
   provideAppInitializer,
   type EnvironmentProviders,
 } from '@angular/core';
-import type { Locale } from './i18n.tokens';
-import { FIXED_LOCALE, TRANSLATION_LOADER, type TranslationLoader } from './translation.loader';
+import type { I18nConfig, Locale } from './config';
+import { FIXED_LOCALE, I18N_SETUP, TRANSLATION_LOADER, type TranslationLoader } from './tokens';
 import { TranslationService } from './translation';
 
-export interface TranslationOptions {
+export interface I18nOptions {
+  /**
+   * The `localStorage` key the active locale is kept under. A script that
+   * applies the locale before the first paint has to read the same one.
+   */
+  readonly storageKey: string;
   /**
    * Pin the locale instead of negotiating one.
    *
@@ -25,10 +30,13 @@ export interface TranslationOptions {
 }
 
 /**
- * Wires the app's messages into the design system.
+ * Runtime translation for an application: the workspace's locales, the app's
+ * messages, and where the choice is stored.
  *
- *     provideTranslations(loadCatalog)
- *     provideTranslations(loadCatalog, { locale: BUILD_LOCALE })
+ *     provideI18n(I18N, loadCatalog, { storageKey: 'ui.locale' })
+ *
+ * A workspace's design system wraps this as `provideTranslations(loader)`, with
+ * its config and key filled in, so an app never repeats them.
  *
  * Also registers an app initializer that awaits the first catalog, so bootstrap
  * blocks just long enough to avoid a flash of raw message keys — and, because
@@ -36,11 +44,13 @@ export interface TranslationOptions {
  * before the first component renders. During a prerender that initializer is
  * what puts translated text in the static HTML rather than message keys.
  */
-export function provideTranslations(
+export function provideI18n(
+  config: I18nConfig,
   loader: TranslationLoader,
-  options: TranslationOptions = {},
+  options: I18nOptions,
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
+    { provide: I18N_SETUP, useValue: { config, storageKey: options.storageKey } },
     { provide: TRANSLATION_LOADER, useValue: loader },
     ...(options.locale ? [{ provide: FIXED_LOCALE, useValue: options.locale }] : []),
     provideAppInitializer(() => inject(TranslationService).ready()),

@@ -14,6 +14,10 @@
       "type": "string",
       "description": "The source locale: what untranslated keys fall back to. Defaults to the first entry of locales."
     },
+    "runtimeSpec": {
+      "type": "string",
+      "description": "What to install @angular-capacitor-workspace/i18n from instead of the range this release depends on, such as a file: path to a local build. Used by the integration matrix before a release is published."
+    },
     "apps": {
       "type": "array",
       "description": "Applications to wire. Defaults to every application; a prerendered site is built once per locale rather than switched at runtime.",

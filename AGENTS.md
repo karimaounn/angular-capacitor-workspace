@@ -32,8 +32,14 @@ years, against whatever version it has installed, and
 (`src/migrations.json`). The package's major is the Angular major it targets
 (`ANGULAR_LINE` in `src/policy/versions.ts`).
 
+A plugin whose code runs in the workspace's apps ships it as a **runtime
+package** of its own, `packages/<id>` (`@angular-capacitor-workspace/i18n`,
+`/theming`), which the plugin installs into the workspace at `^` the
+generator's version. The generator copies no runtime code; it writes the
+config, a binding file and the parts a workspace restyles.
+
 Paths below are relative to `packages/angular-capacitor-workspace/` unless they
-start with the package name or name a root file.
+start with `packages/`, with the package name, or name a root file.
 
 ### Hosts and plugins
 
@@ -54,6 +60,18 @@ start with the package name or name a root file.
   templates keep (the `<header>`, the `providers` array, `</head>`, a DI token),
   never on a line of a template. When a host template changes shape, the
   extension point changes with it and no plugin does.
+- **Runtime packages** (`packages/i18n`, `packages/theming`) are Angular
+  libraries built with ng-packagr and published from their `dist/`, in
+  lockstep with the generator. Each has no dependency but `tslib`, peers
+  `@angular/core` and `@angular/common` on the Angular line, and takes the
+  workspace's settings through a provider function (`provideI18n`,
+  `provideTheme`). The plugin installs it with `buildOn` (root dependency,
+  library peer) and writes a **binding** into the design system
+  (`lib/i18n/i18n.ts`, `lib/theme/theme.ts`): generator-owned, rewritten on
+  every run, it passes the config to the provider, augments the package's
+  `Register` interface so `Locale` and `PaletteId` are the config's unions,
+  and re-exports the package under the names apps import from the design
+  system.
 
 ## The question every change must answer
 
@@ -199,6 +217,41 @@ A feature that extends the projects a workspace has, rather than creating one.
 - Its own spec, as `test/i18n.spec.ts` and `test/theming.spec.ts` are: it
   reaches a project generated after it, it is idempotent, and it keeps edits to
   the files it handed over.
+- Runtime code goes in a runtime package, never in its templates (see
+  [A runtime package](#a-runtime-package)).
+
+### A runtime package
+
+Code that runs in a workspace's apps, owned by a plugin. To add one:
+
+- `packages/<id>/` with `package.json` (version in lockstep, `tslib` only,
+  peers `@angular/core`/`@angular/common` `^<line>.0.0`, `sideEffects: false`,
+  `build: ng-packagr …`), `ng-package.json`, `tsconfig.json` (Angular's
+  settings, which Vitest also reads), `tsconfig.lib.json` (partial
+  compilation), `src/public-api.ts`, `test/`, `README.md` (its npm page) and a
+  copy of the root `LICENSE`.
+- Its name in the five lists of runtime packages: `RUNTIME_PACKAGES` in
+  `src/utils/own-package.ts` and in `scripts/pack-self.mjs`, `runtime` in
+  `scripts/bump.mjs`, `RUNTIME` in `test/release-line.spec.ts`, and the
+  publish loop in `.github/workflows/release.yml`, ahead of the generator. Its
+  `tsc -p` in the root `typecheck` script.
+- On npmjs.com, a trusted publisher for it, the way the others have one: the
+  first publish fails without.
+- In the plugin: `buildOn(tree, design, RUNTIME_PACKAGES.<id>, runtimeSpec)`,
+  a hidden `runtimeSpec` option fed from `packageSpecs` by `requested()`, and a
+  binding template that augments `Register` and re-exports the package.
+
+To change one:
+
+- Its public API is semver: within a line, add, never rename or remove. A
+  workspace's binding re-exports it by name, and an earlier binding has to
+  keep compiling against a newer package.
+- A name the binding should export is a change to the binding template, which
+  reaches existing workspaces on their next `ng generate …:<plugin>`; an
+  `ng update` migration can rewrite it safely, since it is generator-owned.
+- Tests in `packages/<id>/test/`, through `TestBed` in jsdom (the `angular`
+  Vitest project, `vitest.angular-setup.ts`). Only the `full` matrix row
+  builds an app against it.
 
 ### A new host schematic
 
@@ -337,12 +390,22 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **The create README's options block** is a hand copy of `USAGE` in
   `create-angular-capacitor-workspace/src/args.ts`, catalog bullets included
   (_tested_).
-- **Theme storage keys** `<prefix>.theme-mode` and `<prefix>.theme-palette`
-  appear in two places: `plugins/theming/files/lib/src/lib/theme/theme.ts.template`
-  and the inline script in `applyBeforePaint` (`plugins/theming/index.ts`).
-- **The locale key and negotiation** live in two places: `<prefix>.locale` and
-  `initialLocale()` in `i18n/files/lib/src/lib/i18n/translation.ts.template`,
-  and the no-FOUC script in `noFoucScript` (`plugins/i18n/index.ts`).
+- **Theme storage keys** are `themeStorageKeys()` in
+  `packages/theming/src/config.ts`, and the generator writes them out in the
+  inline script in `applyBeforePaint` (`plugins/theming/index.ts`), since that
+  runs before any module loads (_tested_ in `theming.spec.ts`).
+- **A runtime package's name** is spelled in the plugin's binding template, in
+  its `declare module '<name>'` augmentation, and in the five lists under
+  [A runtime package](#a-runtime-package). The augmentation fails silently:
+  under another name it declares a new module, and `Locale` falls back to
+  `string`.
+- **A binding's exports** are the names the app and site templates import from
+  the design system (`TranslationService`, `LOCALES`, `provideTheme`, …).
+  Only the matrix compiles those imports.
+- **The locale key and negotiation** live in two places: `initialLocale()` in
+  `packages/i18n/src/translation.ts`, reading the key the binding passes, and
+  the no-FOUC script in `noFoucScript` (`plugins/i18n/index.ts`), which writes
+  the same `<prefix>.locale`.
 - **A design system's `src/config/` files** (`i18n.ts`, `palettes.ts`,
   `contrast.ts`) are read by `readConfigLiteral` (`src/utils/config-file.ts`),
   which evaluates the literal after `export const <NAME> =` and nothing else.
@@ -440,6 +503,10 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   a setting changes, so no one has a reason to edit it. A file derived from the
   config — an app's `catalog.loader.ts`, a boot script — is rewritten on every
   run, says so at its top, and never holds anything a person wrote.
+- **Ship code, never copy it.** Code a workspace's apps run is a runtime
+  package's (see [A runtime package](#a-runtime-package)), and what the
+  generator writes beside it is config, a binding it rewrites, and what a
+  workspace restyles.
 - **Ship tools, never copy them.** A script a generated workspace runs is a
   command of this package's CLI (`src/cli/`), named in the npm script through
   `cli()` (`src/utils/commands.ts`). A script templated into the workspace is
@@ -471,6 +538,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 | a plugin                                    | its own spec: `test/i18n.spec.ts`, `test/theming.spec.ts`; codegen and packages in `test/schematics.spec.ts` |
 | the registry, `src/extend/`                 | `test/plugins.spec.ts`                                                                                       |
 | a workspace command in `src/cli/`           | `test/cli.spec.ts`; the runner in `test/schematics.spec.ts`                                                  |
+| a runtime package                           | `packages/<id>/test/`, the `angular` Vitest project                                                          |
 | manifest versions, licence copies           | `test/release-line.spec.ts`                                                                                  |
 | a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts`                                      |
 | CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                                                                   |
@@ -523,6 +591,7 @@ change in a real workspace, run `npm run create -- ../ws <flags>`.
 npm ci --strict-allow-scripts     # how CI installs
 npm run build
 npm test                          # build, then every unit and schematic test
+npx vitest run --project angular  # the runtime packages' specs alone
 npm run typecheck
 npm run format:check              # npm run format fixes it
 npm run e2e:minimal               # generate, install, build and audit one workspace

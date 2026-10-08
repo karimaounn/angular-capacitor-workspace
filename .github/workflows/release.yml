@@ -17,9 +17,11 @@ concurrency:
 permissions:
   contents: read
 
-# Both packages name this repository, `release.yml` and the `npm` environment
-# as a trusted publisher on npmjs.com. That configuration and this file are one
-# mechanism in two places: a rename on either side is a failed publish.
+# Every package names this repository, `release.yml` and the `npm` environment
+# as a trusted publisher on npmjs.com — the generator, `create-*`, and the
+# runtime packages `@angular-capacitor-workspace/i18n` and `/theming`. That
+# configuration and this file are one mechanism in two places: a rename on
+# either side, or a new package nobody configured, is a failed publish.
 
 jobs:
   guard:
@@ -111,14 +113,26 @@ jobs:
           # three-minute wait that was never going to see anything change.
           on_registry() {
             curl -fsS -o /dev/null \
-              "https://registry.npmjs.org/$1/$VERSION?t=$(date +%s)-$RANDOM"
+              "https://registry.npmjs.org/${1//\//%2F}/$VERSION?t=$(date +%s)-$RANDOM"
           }
 
-          # Order is load-bearing: `create-*` depends on the generator at an
-          # exact version, so between these two publishes `npm create` resolves
-          # a dependency that does not exist yet. Generator first keeps that
-          # window to seconds and on the side that fails loudly.
-          for name in angular-capacitor-workspace create-angular-capacitor-workspace; do
+          # Each package, and the directory it publishes from. The runtime
+          # packages publish their ng-packagr output, `dist/`; the other two
+          # publish themselves.
+          #
+          # Order is load-bearing: the generator writes the runtime packages
+          # into every workspace it generates, at `^` its own version, and
+          # `create-*` depends on the generator at an exact version. Publishing
+          # each after what it depends on keeps the window in which `npm create`
+          # resolves something that does not exist to seconds, and on the side
+          # that fails loudly.
+          for entry in \
+            @angular-capacitor-workspace/i18n=packages/i18n/dist \
+            @angular-capacitor-workspace/theming=packages/theming/dist \
+            angular-capacitor-workspace=packages/angular-capacitor-workspace \
+            create-angular-capacitor-workspace=packages/create-angular-capacitor-workspace; do
+            name="${entry%%=*}"
+            directory="${entry#*=}"
             # A re-run after a failure finds the first package already out.
             # Skipping it is what makes the whole job safe to run again.
             if on_registry "$name"; then
@@ -127,7 +141,7 @@ jobs:
             fi
 
             echo "Publishing $name@$VERSION under $DIST_TAG"
-            npm publish --workspace "$name" --tag "$DIST_TAG"
+            npm publish "$directory" --tag "$DIST_TAG"
 
             # `npm publish` is the authoritative signal: it exits non-zero if
             # the registry refuses. This only catches the rarer case of a

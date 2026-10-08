@@ -14,16 +14,26 @@ import {
   type Tree,
 } from '@angular-devkit/schematics';
 import {
+  buildOn,
   exportFromLibrary,
   requireDesignSystem,
   type DesignSystem,
 } from '../../extend/design-system';
-import { addBootScript, addHeaderControl, addStarterSection } from '../../extend/shell';
+import {
+  addBootScript,
+  addHeaderControl,
+  addRootProvider,
+  addShellTestProvider,
+  addStarterSection,
+} from '../../extend/shell';
+import { RUNTIME_PACKAGES } from '../../utils/own-package';
 import { appendSection, readProjects, README_MD } from '../../utils/workspace';
 import { isPrerendered } from '../../utils/workspace-view';
 
 export interface ThemingOptions {
   apps?: string[];
+  /** What to install `@angular-capacitor-workspace/theming` from, for a build not yet published. */
+  runtimeSpec?: string;
 }
 
 /**
@@ -47,7 +57,7 @@ export function theming(options: ThemingOptions = {}): Rule {
     );
 
     return chain([
-      library(tree, design),
+      library(tree, design, options.runtimeSpec),
       ...targets(tree, options.apps).map((app) => application(app, design)),
       (host: Tree) => {
         documentTheming(host, design);
@@ -103,20 +113,39 @@ function onlyNew(tree: Tree): Rule {
 
 // ── The library half ─────────────────────────────────────────────────────────
 
-function library(tree: Tree, design: DesignSystem): Rule {
-  const templates = apply(url('./files/lib'), [
-    applyTemplates({ ...strings, prefix: design.prefix, importName: design.name }),
-    move(`/${design.root}`),
-    onlyNew(tree),
-  ]);
+function library(tree: Tree, design: DesignSystem, runtimeSpec: string | undefined): Rule {
+  // `ThemeService` is @angular-capacitor-workspace/theming, installed rather
+  // than copied. What lands in the library is the toggle, which is its to
+  // restyle and written once, and `lib/theme/theme.ts`, which binds the package
+  // to the palettes in `src/config/` and is rewritten on every run.
+  const context = { ...strings, prefix: design.prefix, importName: design.name };
+  const binding = (path: string) => path.endsWith('/lib/theme/theme.ts.template');
 
   return chain([
-    mergeWith(templates, MergeStrategy.Overwrite),
-    (host: Tree) =>
+    mergeWith(
+      apply(url('./files/lib'), [
+        filter((path) => !binding(path)),
+        applyTemplates(context),
+        move(`/${design.root}`),
+        onlyNew(tree),
+      ]),
+      MergeStrategy.Overwrite,
+    ),
+    mergeWith(
+      apply(url('./files/lib'), [
+        filter(binding),
+        applyTemplates(context),
+        move(`/${design.root}`),
+      ]),
+      MergeStrategy.Overwrite,
+    ),
+    (host: Tree) => {
+      buildOn(host, design, RUNTIME_PACKAGES.theming, runtimeSpec);
       exportFromLibrary(host, design, './lib/theme/theme', [
         "export * from './lib/theme/theme';",
         "export * from './lib/theme/theme-toggle';",
-      ]),
+      ]);
+    },
   ]);
 }
 
@@ -157,12 +186,26 @@ function application(name: string, design: DesignSystem): Rule {
           )
         : noop(),
       (host: Tree) => {
+        addRootProvider(host, name, {
+          symbol: 'provideTheme',
+          expression: 'provideTheme()',
+          imports: [`import { provideTheme } from '${design.name}';`],
+        });
         addBootScript(host, name, applyBeforePaint(design));
-        addHeaderControl(host, name, {
+        const toggle = addHeaderControl(host, name, {
           symbol: 'ThemeToggle',
           from: design.name,
           markup: `<${design.prefix}-theme-toggle />`,
         });
+        // Where the shell renders the toggle, so does its spec, which then
+        // needs the palettes too.
+        if (toggle) {
+          addShellTestProvider(host, name, {
+            symbol: 'provideTheme',
+            expression: 'provideTheme()',
+            imports: [`import { provideTheme } from '${design.name}';`],
+          });
+        }
         addStarterSection(host, name, {
           symbol: 'ThemeShowcase',
           from: './theme/theme-showcase',
@@ -187,9 +230,9 @@ function application(name: string, design: DesignSystem): Rule {
  * -Policy needs a hash or nonce for this tag, which is the trade being made and
  * the reason it is one small script rather than a convenience layer.
  *
- * Its storage keys are `THEME_MODE_KEY` and `THEME_PALETTE_KEY` in
- * `files/lib/src/lib/theme/theme.ts.template`, and nothing ties the two
- * together but the theme e2e suite. Change one, change the other.
+ * Its storage keys are `themeStorageKeys()` in @angular-capacitor-workspace/theming,
+ * written out here because the script runs before any module can load;
+ * `test/theming.spec.ts` holds the two to each other.
  */
 function applyBeforePaint(design: DesignSystem) {
   return {
@@ -227,16 +270,18 @@ function documentTheming(tree: Tree, design: DesignSystem): void {
     README_MD,
     'Theme switching',
     `Every app's header carries a theme toggle: a colour scheme — system, light or
-dark — and a palette. Behind it is \`ThemeService\` in \`${design.name}\`, which writes
-the choice onto \`<html>\` as \`data-theme\` and \`data-palette\` and remembers it in
-\`localStorage\`. The stylesheet already declares every combination, so a switch
+dark — and a palette. Behind it is \`ThemeService\`, from the
+\`@angular-capacitor-workspace/theming\` package and exported by \`${design.name}\`, which
+writes the choice onto \`<html>\` as \`data-theme\` and \`data-palette\` and remembers
+it in \`localStorage\`. Each app's \`app.config.ts\` has \`provideTheme()\` for it. The stylesheet already declares every combination, so a switch
 is an attribute write: nothing re-renders, and no component needs to know
 theming exists.
 
 A small inline script in each app's \`index.html\` applies the stored choice
-before the first paint, so you never see a flash of the wrong theme. Its keys,
-\`${design.prefix}.theme-mode\` and \`${design.prefix}.theme-palette\`, are
-\`ThemeService\`'s; change one and change the other.
+before the first paint, so you never see a flash of the wrong theme. It and
+\`${design.root}/src/lib/theme/theme.ts\` are the generator's, rewritten by
+\`ng generate angular-capacitor-workspace:theming\`; an update of the package changes
+how theming works, and nothing in either needs editing.
 
 Marketing sites have neither the toggle nor that script, on purpose: their
 pages are prerendered once and served to everyone, so nothing may bake one
@@ -268,14 +313,13 @@ Apps let the visitor choose a colour scheme and a palette. \`ThemeService\` in
 - **Never read \`ThemeService\` to pick a colour.** Use the token that already
   means what you want and let the attributes resolve it. Read it only to show
   the choice back to the visitor.
-- **The storage keys live in two places**: \`THEME_MODE_KEY\` and
-  \`THEME_PALETTE_KEY\` in \`theme.ts\`, and the inline script in every app's
-  \`index.html\` that applies them before the first paint. Change both, or the
-  theme arrives a moment late, as a flash.
-- **Configure, don't edit the service.** Palettes are
-  \`src/config/palettes.ts\` (with their colours in \`_ref.scss\`); \`ThemeService\`
-  and the toggle in \`src/lib/theme/\` read it. \`npm run check:contrast\` fails
-  until the config and the stylesheet agree.
+- **Configure; leave the machinery to the generator.** Palettes are
+  \`src/config/palettes.ts\` (with their colours in \`_ref.scss\`).
+  \`ThemeService\` comes from \`@angular-capacitor-workspace/theming\`, and
+  \`src/lib/theme/theme.ts\` and the script in each app's \`index.html\` are
+  rewritten by \`ng generate angular-capacitor-workspace:theming\`, so an edit to
+  them is lost. \`npm run check:contrast\` fails until the config and the
+  stylesheet agree.
 `,
   );
 }

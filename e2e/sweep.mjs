@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { ROWS } from './rows.mjs';
-import { packSelf } from '../scripts/pack-self.mjs';
+import { createArgs, packSelf } from '../scripts/pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
@@ -35,9 +35,9 @@ const { values } = parseArgs({
   },
 });
 
-// See matrix.mjs: a generated workspace depends on this package, which does not
-// exist on the registry until it is published.
-const selfSpec = `file:${packSelf(mkdtempSync(join(tmpdir(), 'acw-sweep-pack-'))).path}`;
+// See matrix.mjs: a generated workspace depends on packages from this
+// repository, which do not exist on the registry until they are published.
+const packedArgs = createArgs(packSelf(mkdtempSync(join(tmpdir(), 'acw-sweep-pack-'))));
 const findings = [];
 
 for (const [name, { args }] of Object.entries(ROWS)) {
@@ -54,8 +54,7 @@ for (const [name, { args }] of Object.entries(ROWS)) {
         createBin,
         target,
         ...args,
-        '--self-spec',
-        selfSpec,
+        ...packedArgs,
         '--no-install',
         '--audit-level',
         values['audit-level'],

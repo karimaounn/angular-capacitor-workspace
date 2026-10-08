@@ -18,7 +18,9 @@ npm test                # unit + schematic tests (builds first)
 
 `--strict-allow-scripts` is how CI installs, and it fails on any install script
 not in the root `allowScripts`. If a dependency you add needs one, add it there
-in the same change and say why.
+in the same change and say why. `@parcel/watcher` is there as `false`: Sass
+pulls it in for its file watcher, which ng-packagr's builds never use, and its
+script only compiles a native binary that the prebuilt ones already cover.
 
 To try a change in a real workspace, generate one from the checkout:
 
@@ -26,9 +28,16 @@ To try a change in a real workspace, generate one from the checkout:
 npm run create -- ../my-workspace    # same flags as npm create; asks when given none
 ```
 
-It builds, packs the schematics package into `.local/`, and points the
-workspace at that tarball, so nothing needs publishing. The workspace keeps
-working only while its tarball does: deleting `.local/` means regenerating.
+It builds, packs the schematics package and the runtime packages
+(`@angular-capacitor-workspace/i18n`, `/theming`) into `.local/`, and points the
+workspace at those tarballs, so nothing needs publishing. The workspace keeps
+working only while its tarballs do: deleting `.local/` means regenerating.
+
+The runtime packages are Angular libraries, built with ng-packagr from
+`packages/<id>` and tested with `TestBed` in jsdom
+(`npx vitest run --project angular`). They are what a change to how translation
+or theming behaves edits; the plugin that installs one only writes the config
+and the binding beside it.
 
 ## Before opening a pull request
 

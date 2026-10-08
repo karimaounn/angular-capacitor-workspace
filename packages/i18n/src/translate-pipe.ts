@@ -1,5 +1,5 @@
 import { Pipe, inject, type PipeTransform } from '@angular/core';
-import type { TranslationParams } from './i18n.tokens';
+import type { TranslationParams } from './config';
 import { TranslationService } from './translation';
 
 function sameParams(a: TranslationParams | undefined, b: TranslationParams | undefined): boolean {

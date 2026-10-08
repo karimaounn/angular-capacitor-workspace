@@ -16,6 +16,7 @@ import {
 } from '@angular-devkit/schematics';
 import { isLocaleTag, localeInfo } from '../../locales';
 import {
+  buildOn,
   exportFromLibrary,
   requireDesignSystem,
   useLibraryStyles,
@@ -32,6 +33,7 @@ import { addPageMetaExtension, replaceSiteBuild, siteBuild } from '../../extend/
 import { cli } from '../../utils/commands';
 import { ConfigError, readConfigLiteral } from '../../utils/config-file';
 import { updateJson } from '../../utils/json-file';
+import { RUNTIME_PACKAGES } from '../../utils/own-package';
 import { documentProjectScripts, projectScripts } from '../../utils/project-scripts';
 import {
   ANGULAR_JSON,
@@ -48,6 +50,8 @@ export interface I18nOptions {
   locales?: string[];
   defaultLocale?: string;
   apps?: string[];
+  /** What to install `@angular-capacitor-workspace/i18n` from, for a build not yet published. */
+  runtimeSpec?: string;
 }
 
 /**
@@ -93,7 +97,7 @@ export function i18n(options: I18nOptions = {}): Rule {
     }
 
     return chain([
-      library(tree, design, setup),
+      library(tree, design, setup, options.runtimeSpec),
       ...apps.map((app) => application(app, design, setup)),
       ...sites.map((site) => localizedSite(site, design, setup)),
       (host: Tree) => {
@@ -281,58 +285,56 @@ function onlyNew(tree: Tree): Rule {
 
 // ── The library half: the mechanism ──────────────────────────────────────────
 
-function library(tree: Tree, design: DesignSystem, setup: I18nSetup): Rule {
-  // Everything here, the config included, is written only where missing. The
-  // config is the workspace's once it exists, and the machinery derives every
-  // table from it, so nothing in the library is rewritten when it changes.
-  const templates = apply(url('./files/lib'), [
-    applyTemplates({
-      ...strings,
-      prefix: design.prefix,
-      defaultLocale: setup.defaultLocale,
-      localeEntries: setup.locales
-        .map((locale) => `    ${key(locale.tag)}: ${configEntry(locale.tag, locale.direction)},`)
-        .join('\n'),
-    }),
-    move(`/${design.root}`),
-    onlyNew(tree),
-  ]);
+function library(
+  tree: Tree,
+  design: DesignSystem,
+  setup: I18nSetup,
+  runtimeSpec: string | undefined,
+): Rule {
+  // The translation machinery is @angular-capacitor-workspace/i18n, installed
+  // rather than copied. What lands in the library is the config, which is the
+  // workspace's and written once; the picker, which is its to restyle and
+  // written once; and `lib/i18n/i18n.ts`, which binds the package to the
+  // config and is rewritten on every run.
+  const context = {
+    ...strings,
+    prefix: design.prefix,
+    importName: design.name,
+    defaultLocale: setup.defaultLocale,
+    localeEntries: setup.locales
+      .map((locale) => `    ${key(locale.tag)}: ${configEntry(locale.tag, locale.direction)},`)
+      .join('\n'),
+  };
+  const binding = (path: string) => path.endsWith('/lib/i18n/i18n.ts.template');
 
   return chain([
-    mergeWith(templates, MergeStrategy.Overwrite),
+    mergeWith(
+      apply(url('./files/lib'), [
+        filter((path) => !binding(path)),
+        applyTemplates(context),
+        move(`/${design.root}`),
+        onlyNew(tree),
+      ]),
+      MergeStrategy.Overwrite,
+    ),
+    mergeWith(
+      apply(url('./files/lib'), [
+        filter(binding),
+        applyTemplates(context),
+        move(`/${design.root}`),
+      ]),
+      MergeStrategy.Overwrite,
+    ),
     (host: Tree) => {
+      buildOn(host, design, RUNTIME_PACKAGES.i18n, runtimeSpec);
       // Mostly documentation — logical properties do the layout work — but it
       // has to be reachable from the entry point or the two rules it does
       // carry never ship.
       useLibraryStyles(host, design, 'direction');
-      // Everything an app needs and nothing it does not: the service, the
-      // pipe, the picker, the provider function and the loader token, plus the
-      // locale tables a language picker of someone's own would need. The
-      // internals — the placeholder regex, the plural cache — stay unexported.
-      exportFromLibrary(host, design, './lib/i18n/translation', [
-        "export { TranslationService, LOCALE_KEY } from './lib/i18n/translation';",
-        "export { TranslatePipe } from './lib/i18n/translate-pipe';",
+      // The package's surface, bound to the config, and the picker.
+      exportFromLibrary(host, design, './lib/i18n/i18n', [
+        "export * from './lib/i18n/i18n';",
         "export { LanguagePicker } from './lib/i18n/language-picker';",
-        "export { provideTranslations } from './lib/i18n/i18n-providers';",
-        "export { TRANSLATION_LOADER } from './lib/i18n/translation.loader';",
-        "export type { TranslationLoader } from './lib/i18n/translation.loader';",
-        'export {',
-        '  LOCALES,',
-        '  LOCALE_DIRECTION,',
-        '  LOCALE_LABELS,',
-        '  DEFAULT_LOCALE,',
-        '  directionOf,',
-        '  isLocale,',
-        '  matchLocale,',
-        '  negotiateLocale,',
-        "} from './lib/i18n/i18n.tokens';",
-        'export type {',
-        '  Direction,',
-        '  I18nConfig,',
-        '  Locale,',
-        '  TranslationCatalog,',
-        '  TranslationParams,',
-        "} from './lib/i18n/i18n.tokens';",
       ]);
     },
   ]);
@@ -390,7 +392,7 @@ function application(name: string, design: DesignSystem, setup: I18nSetup): Rule
           ],
         });
         addBootScript(host, name, noFoucScript(setup, design.prefix));
-        addHeaderControl(host, name, {
+        const picker = addHeaderControl(host, name, {
           symbol: 'LanguagePicker',
           from: design.name,
           markup: `<${design.prefix}-language-picker />`,
@@ -400,7 +402,9 @@ function application(name: string, design: DesignSystem, setup: I18nSetup): Rule
           from: './i18n/i18n-showcase',
           markup: `<${prefix}-i18n-showcase />`,
         });
-        addShellTestProvider(host, name, loaderForShellSpec(design));
+        if (picker) {
+          addShellTestProvider(host, name, loaderForShellSpec(design));
+        }
       },
     ]);
   };
@@ -692,19 +696,19 @@ function noFoucScript(setup: I18nSetup, prefix: string) {
 }
 
 /**
- * The provider the shell's spec needs once a language control is in its
+ * The providers the shell's spec needs once a language control is in its
  * header: that control translates its own label. An empty catalog is enough to
  * render it. Shared by an app, whose header gets a picker, and a site, whose
  * header gets links.
  */
 function loaderForShellSpec(design: DesignSystem) {
   return {
-    symbol: 'TRANSLATION_LOADER',
+    symbol: 'provideTranslations',
     expression:
       '// The header carries a language control, which translates its\n' +
       '// own label. An empty catalog is enough to render it.\n' +
-      '{ provide: TRANSLATION_LOADER, useValue: () => ({}) }',
-    imports: [`import { TRANSLATION_LOADER } from '${design.name}';`],
+      'provideTranslations(() => ({}))',
+    imports: [`import { provideTranslations } from '${design.name}';`],
   };
 }
 
@@ -778,12 +782,14 @@ function localizedSite(name: string, design: DesignSystem, setup: I18nSetup): Ru
             'language in its canonical, and writes its hreflang alternates.',
           ],
         });
-        addHeaderControl(host, name, {
+        const links = addHeaderControl(host, name, {
           symbol: 'LocaleLinks',
           from: './i18n/locale-links',
           markup: `<${prefix}-locale-links />`,
         });
-        addShellTestProvider(host, name, loaderForShellSpec(design));
+        if (links) {
+          addShellTestProvider(host, name, loaderForShellSpec(design));
+        }
         addLocaleConfigurations(host, name, tagsOf(setup));
         localizeSiteScripts(host, name, tagsOf(setup));
       },
@@ -904,11 +910,13 @@ without a reload. That is deliberate, and it is a Capacitor constraint —
 for exactly one \`index.html\`, so compile-time i18n would mean one binary per
 language.
 
-**The mechanism lives in \`${design.name}\`, the messages live in each app.** The
-design system ships \`TranslationService\`, the \`| t\` pipe and
-\`<${design.prefix}-language-picker>\`; it ships no strings of its own. Components take
-their copy as inputs. That is what lets one design system serve every locale its
-consumers ship without an extraction step — keep it that way.
+**The mechanism is a package, the messages live in each app.** \`TranslationService\`
+and the \`| t\` pipe come from \`@angular-capacitor-workspace/i18n\`, which
+\`${design.name}\` binds to its locales and exports along with
+\`<${design.prefix}-language-picker>\`, so an update of the package updates them. The
+design system ships no strings of its own: components take their copy as inputs.
+That is what lets one design system serve every locale its consumers ship without
+an extraction step — keep it that way.
 
 \`\`\`html
 {{ 'home.heading' | t }}

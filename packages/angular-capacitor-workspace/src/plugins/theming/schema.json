@@ -4,6 +4,10 @@
   "title": "Theme switching",
   "type": "object",
   "properties": {
+    "runtimeSpec": {
+      "type": "string",
+      "description": "What to install @angular-capacitor-workspace/theming from instead of the range this release depends on, such as a file: path to a local build. Used by the integration matrix before a release is published."
+    },
     "apps": {
       "type": "array",
       "description": "Applications to give the theme toggle. Defaults to every application except prerendered sites, which follow the system colour scheme only.",

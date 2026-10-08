@@ -1,0 +1,31 @@
+/*
+ * The package's own compiler settings: Angular's, rather than the Node ones the
+ * generator and the CLI compile with. `tsconfig.lib.json` builds it with
+ * ng-packagr; this one type-checks the sources and the specs together, and is
+ * what Vitest reads `experimentalDecorators` from.
+ */
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "lib": ["ES2023", "DOM"],
+    "types": [],
+    "noEmit": true
+  },
+  "angularCompilerOptions": {
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

@@ -17,6 +17,9 @@ function readManifest(...segments: string[]): PackageManifest {
 const manifest = readManifest('package.json');
 const createManifest = readManifest('..', 'create-angular-capacitor-workspace', 'package.json');
 
+/** The runtime packages the plugins install, by directory. */
+const RUNTIME = ['i18n', 'theming'] as const;
+
 /**
  * The package's major is the Angular major it generates for: 22.x generates
  * Angular 22 workspaces, 23.0.0 ships with Angular 23. Minor and patch are
@@ -49,6 +52,19 @@ describe('release line', () => {
     expect(createManifest.version).toBe(manifest.version);
     expect(createManifest.dependencies?.['angular-capacitor-workspace']).toBe(manifest.version);
   });
+
+  // A generated workspace depends on `^` the generator's version of each, so a
+  // runtime package that fell out of step would resolve to a release that
+  // does not exist, or one older than its generator expects.
+  it.each(RUNTIME)(
+    'versions @angular-capacitor-workspace/%s in lockstep, on the same Angular major',
+    (dir) => {
+      const runtime = readManifest('..', dir, 'package.json');
+      expect(runtime.version).toBe(manifest.version);
+      expect(runtime.peerDependencies?.['@angular/core']).toBe(`^${ANGULAR_LINE}.0.0`);
+      expect(runtime.peerDependencies?.['@angular/common']).toBe(`^${ANGULAR_LINE}.0.0`);
+    },
+  );
 });
 
 /**
@@ -100,7 +116,7 @@ describe('migrations', () => {
 describe('licence', () => {
   const root = readFileSync(join(__dirname, '..', '..', '..', 'LICENSE'), 'utf8');
 
-  it.each(['angular-capacitor-workspace', 'create-angular-capacitor-workspace'])(
+  it.each(['angular-capacitor-workspace', 'create-angular-capacitor-workspace', ...RUNTIME])(
     'ships the root LICENSE with %s',
     (name) => {
       expect(readFileSync(join(__dirname, '..', '..', name, 'LICENSE'), 'utf8')).toBe(root);

@@ -1,18 +1,24 @@
-import { DOCUMENT, Injectable, PLATFORM_ID, computed, effect, inject, isDevMode, signal, untracked } from '@angular/core';
+import {
+  DOCUMENT,
+  Injectable,
+  PLATFORM_ID,
+  computed,
+  effect,
+  inject,
+  isDevMode,
+  signal,
+  untracked,
+  type WritableSignal,
+} from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import {
-  DEFAULT_LOCALE,
-  LOCALE_DIRECTION,
-  matchLocale,
-  negotiateLocale,
+  localeTables,
   type Direction,
   type Locale,
   type TranslationCatalog,
   type TranslationParams,
-} from './i18n.tokens';
-import { FIXED_LOCALE, TRANSLATION_LOADER } from './translation.loader';
-
-export const LOCALE_KEY = '<%= prefix %>.locale';
+} from './config';
+import { FIXED_LOCALE, I18N_SETUP, TRANSLATION_LOADER } from './tokens';
 
 // `{name}` — deliberately not `{{name}}`, which would collide with Angular
 // interpolation the moment a message is ever pasted into a template.
@@ -20,9 +26,9 @@ const PLACEHOLDER = /\{(\w+)\}/g;
 
 // `Intl.*` constructors are expensive enough that rebuilding one per call shows
 // up in lists; there are only a handful of locales, so cache them forever.
-const pluralRules = new Map<Locale, Intl.PluralRules>();
+const pluralRules = new Map<string, Intl.PluralRules>();
 
-function pluralCategory(locale: Locale, count: number): Intl.LDMLPluralRule {
+function pluralCategory(locale: string, count: number): Intl.LDMLPluralRule {
   let rules = pluralRules.get(locale);
   if (!rules) {
     rules = new Intl.PluralRules(locale);
@@ -44,12 +50,20 @@ function pluralCategory(locale: Locale, count: number): Intl.LDMLPluralRule {
  * The shape mirrors `ThemeService` on purpose — signals in, one effect that
  * syncs the DOM and persists — so the two "global preference" services read the
  * same way.
+ *
+ * Its locales are the workspace's config, handed over by `provideI18n()`; the
+ * service itself knows none.
  */
 @Injectable({ providedIn: 'root' })
 export class TranslationService {
   private readonly document = inject(DOCUMENT);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  // The setup first: when nothing provided one, its error names the function
+  // to call, where the loader's would only say a token is missing.
+  private readonly setup = inject(I18N_SETUP);
   private readonly loader = inject(TRANSLATION_LOADER);
+  private readonly tables = localeTables(this.setup.config);
+  private readonly defaultLocale = this.tables.DEFAULT_LOCALE as Locale;
 
   /**
    * Set when the build itself is one locale — a prerendered site served from
@@ -67,9 +81,14 @@ export class TranslationService {
   /** Bumped once per resolved catalog. See `revision`. */
   private readonly version = signal(0);
 
-  readonly locale = signal<Locale>(DEFAULT_LOCALE);
+  /**
+   * The active locale. Annotated rather than inferred, so the published
+   * typings keep `Locale` — the workspace's union once it registers its config
+   * — instead of the `string` it is while this package compiles.
+   */
+  readonly locale: WritableSignal<Locale> = signal<Locale>(this.defaultLocale);
 
-  readonly direction = computed<Direction>(() => LOCALE_DIRECTION[this.locale()]);
+  readonly direction = computed<Direction>(() => this.tables.directionOf(this.locale()));
   readonly isRtl = computed(() => this.direction() === 'rtl');
 
   /** Messages for the active locale — empty until its catalog resolves. */
@@ -79,7 +98,7 @@ export class TranslationService {
   readonly loaded = computed(() => this.catalogs()[this.locale()] !== undefined);
 
   private readonly fallback = computed<TranslationCatalog>(
-    () => this.catalogs()[DEFAULT_LOCALE] ?? {},
+    () => this.catalogs()[this.defaultLocale] ?? {},
   );
 
   /**
@@ -110,10 +129,10 @@ export class TranslationService {
       // belong on <html>, not on a wrapper, or the UA stylesheet and the form
       // controls keep using the old direction.
       root.setAttribute('lang', locale);
-      root.setAttribute('dir', LOCALE_DIRECTION[locale]);
+      root.setAttribute('dir', this.tables.directionOf(locale));
 
       if (this.isBrowser && this.switchable) {
-        this.write(LOCALE_KEY, locale);
+        this.write(this.setup.storageKey, locale);
       }
 
       // untracked: ensureLoaded reads `catalogs`, and without this the effect
@@ -138,15 +157,15 @@ export class TranslationService {
 
   /**
    * Resolves once the active locale can render text, and the fallback locale is
-   * available to cover any key it is missing. `provideTranslations()` wires this
+   * available to cover any key it is missing. `provideI18n()` wires this
    * into an app initializer, so the first paint never shows raw message keys.
    */
   async ready(): Promise<void> {
     const locale = untracked(() => this.locale());
     await Promise.all(
-      locale === DEFAULT_LOCALE
+      locale === this.defaultLocale
         ? [this.ensureLoaded(locale)]
-        : [this.ensureLoaded(locale), this.ensureLoaded(DEFAULT_LOCALE)],
+        : [this.ensureLoaded(locale), this.ensureLoaded(this.defaultLocale)],
     );
   }
 
@@ -208,24 +227,25 @@ export class TranslationService {
    * Where the initial locale comes from, in order:
    *   1. an explicit past choice (localStorage)
    *   2. the browser's language preferences
-   *   3. DEFAULT_LOCALE
+   *   3. the config's default locale
    *
    * Mirrored by the no-FOUC script in the app's `index.html`, which has to make
    * the same decision before Angular boots so `dir` is right on the first paint.
-   * Change one, change the other.
+   * The generator writes that script from the same config and the same storage
+   * key, so the two cannot drift.
    */
   private initialLocale(): Locale {
     // Through `matchLocale` rather than a bare equality check, so a stored
     // value that is stale, hand-edited or differently cased — `pt-br`, `en-US`
     // — resolves to the locale it means instead of falling through to
     // negotiation.
-    const stored = matchLocale(this.read(LOCALE_KEY));
+    const stored = this.tables.matchLocale(this.read(this.setup.storageKey));
     if (stored) {
-      return stored;
+      return stored as Locale;
     }
     const view = this.document.defaultView;
     const preferred = view?.navigator.languages ?? (view ? [view.navigator.language] : undefined);
-    return negotiateLocale(preferred) ?? DEFAULT_LOCALE;
+    return (this.tables.negotiateLocale(preferred) ?? this.defaultLocale) as Locale;
   }
 
   private lookup(key: string, params?: TranslationParams): string | undefined {
@@ -247,7 +267,7 @@ export class TranslationService {
     // renders in the source language rather than leaking a dotted key into the UI.
     const fallback = this.fallback();
     if (plural) {
-      const match = this.selectPlural(fallback, key, DEFAULT_LOCALE, count);
+      const match = this.selectPlural(fallback, key, this.defaultLocale, count);
       if (match !== undefined) {
         return match;
       }

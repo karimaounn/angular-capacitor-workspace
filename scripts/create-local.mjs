@@ -2,10 +2,11 @@
 /**
  * Generates a workspace from this checkout, without publishing anything.
  *
- * Builds both packages, packs the schematics package into `.local/`, and runs
- * the local create bin with `--self-spec` pointing at that tarball, so the
- * workspace's `audit:policy`, `doctor` and `ng generate` run the code you have
- * here rather than whatever is on the registry.
+ * Builds every package, packs the schematics package and the runtime packages
+ * into `.local/`, and runs the local create bin pointing at those tarballs, so
+ * the workspace's `audit:policy`, `doctor`, `ng generate` and the plugins'
+ * runtime code are the code you have here rather than whatever is on the
+ * registry.
  *
  *   npm run create -- my-workspace                    # asks, like npm create
  *   npm run create -- my-workspace --app shop --ui-lib
@@ -20,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { packSelf } from './pack-self.mjs';
+import { createArgs, packSelf } from './pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
@@ -31,13 +32,20 @@ if (build.status !== 0) process.exit(build.status ?? 1);
 
 mkdirSync(localDir, { recursive: true });
 const packed = packSelf(localDir);
-const tarball = packed.path.replace(/\.tgz$/, `-${packed.shasum.slice(0, 8)}.tgz`);
-renameSync(packed.path, tarball);
-console.log(`packed ${tarball}`);
+// Renamed by content hash, generator and runtime packages alike: see above.
+for (const entry of [packed, ...packed.runtime]) {
+  const tarball = entry.path.replace(/\.tgz$/, `-${entry.shasum.slice(0, 8)}.tgz`);
+  renameSync(entry.path, tarball);
+  entry.path = tarball;
+  console.log(`packed ${tarball}`);
+}
 
 const create = spawnSync(
   process.execPath,
-  [createBin, ...process.argv.slice(2), '--self-spec', `file:${tarball}`],
-  { cwd: process.env.INIT_CWD ?? process.cwd(), stdio: 'inherit' },
+  [createBin, ...process.argv.slice(2), ...createArgs(packed)],
+  {
+    cwd: process.env.INIT_CWD ?? process.cwd(),
+    stdio: 'inherit',
+  },
 );
 process.exit(create.status ?? 1);

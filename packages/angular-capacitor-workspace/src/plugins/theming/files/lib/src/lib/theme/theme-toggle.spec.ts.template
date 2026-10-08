@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PALETTES } from '../../config/palettes';
-import { THEME_MODE_KEY, THEME_PALETTE_KEY, ThemeService } from './theme';
+import { provideTheme, THEME_MODE_KEY, THEME_PALETTE_KEY, ThemeService } from './theme';
 import { ThemeToggle } from './theme-toggle';
 
 describe('ThemeToggle', () => {
@@ -10,7 +10,10 @@ describe('ThemeToggle', () => {
   beforeEach(async () => {
     localStorage.removeItem(THEME_MODE_KEY);
     localStorage.removeItem(THEME_PALETTE_KEY);
-    await TestBed.configureTestingModule({ imports: [ThemeToggle] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [ThemeToggle],
+      providers: [provideTheme()],
+    }).compileComponents();
     fixture = TestBed.createComponent(ThemeToggle);
     fixture.detectChanges();
   });

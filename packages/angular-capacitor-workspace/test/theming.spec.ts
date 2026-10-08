@@ -1,7 +1,10 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SchematicTestRunner, type UnitTestTree } from '@angular-devkit/schematics/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
+// The runtime package's own source: no Angular in it, so a Node test can load
+// it, and the generator's script is held to the keys the package reads.
+import { themeStorageKeys } from '../../theming/src/config';
 
 const collection = join(__dirname, '..', 'dist', 'collection.json');
 
@@ -45,10 +48,16 @@ describe('theming', () => {
   });
 
   describe('in the design system', () => {
-    it('adds the theme service and the toggle, with their tests and story', () => {
+    it('installs the service as a package, and adds the toggle, with its test and story', () => {
+      const own = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
+      expect(JSON.parse(tree.readContent('/package.json')).dependencies).toMatchObject({
+        '@angular-capacitor-workspace/theming': `^${own}`,
+      });
+      expect(
+        JSON.parse(tree.readContent('/projects/ui/package.json')).peerDependencies,
+      ).toMatchObject({ '@angular-capacitor-workspace/theming': `^${own}` });
       for (const file of [
         'theme.ts',
-        'theme.spec.ts',
         'theme-toggle.ts',
         'theme-toggle.html',
         'theme-toggle.spec.ts',
@@ -56,6 +65,20 @@ describe('theming', () => {
       ]) {
         expect(tree.exists(`/projects/ui/src/lib/theme/${file}`), file).toBe(true);
       }
+      expect(tree.exists('/projects/ui/src/lib/theme/theme.spec.ts')).toBe(false);
+    });
+
+    it('binds the package to the palettes, and types PaletteId by them', () => {
+      const binding = tree.readContent('/projects/ui/src/lib/theme/theme.ts');
+      expect(binding).toContain('rewritten by every run');
+      expect(binding).toContain("import { PALETTES } from '../../config/palettes';");
+      expect(binding).toContain("declare module '@angular-capacitor-workspace/theming' {");
+      expect(binding).toContain(
+        "return provideThemeConfig({ palettes: PALETTES, storagePrefix: 'ui' });",
+      );
+      expect(tree.readContent('/projects/ui/src/lib/theme/theme-toggle.spec.ts')).toContain(
+        'providers: [provideTheme()]',
+      );
     });
 
     it('exports them from the public API', () => {
@@ -74,17 +97,23 @@ describe('theming', () => {
         ...tree.readContent('/projects/ui/src/config/palettes.ts').matchAll(/id: '([^']+)'/g),
       ].map(([, id]) => id);
       expect(offered).toEqual(declared);
-      expect(tree.readContent('/projects/ui/src/lib/theme/theme.ts')).toContain(
-        "import { PALETTES, type PaletteId } from '../../config/palettes';",
+      expect(tree.readContent('/projects/ui/src/lib/theme/theme-toggle.ts')).toContain(
+        "import { PALETTES } from '../../config/palettes';",
       );
       // `angular-capacitor-workspace check-contrast` compares the two in the
       // generated workspace, when there is a picker; see cli.spec.ts.
     });
 
-    it('namespaces the stored preference by the library prefix', () => {
-      const theme = tree.readContent('/projects/ui/src/lib/theme/theme.ts');
-      expect(theme).toContain("THEME_MODE_KEY = 'ui.theme-mode'");
-      expect(theme).toContain("THEME_PALETTE_KEY = 'ui.theme-palette'");
+    it('namespaces the stored preference by the library prefix, as the package spells it', () => {
+      // The script before the first paint is written by the generator, and the
+      // keys it reads are the package's: one function, held to the other here.
+      const keys = themeStorageKeys('ui');
+      const html = tree.readContent('/projects/shop/web/src/index.html');
+      expect(html).toContain(`localStorage.getItem('${keys.mode}')`);
+      expect(html).toContain(`localStorage.getItem('${keys.palette}')`);
+      expect(tree.readContent('/projects/ui/src/lib/theme/theme.ts')).toContain(
+        "const KEYS = themeStorageKeys('ui');",
+      );
     });
 
     it('draws the toggle focus ring in the step check:contrast holds to the page', () => {
@@ -151,7 +180,7 @@ describe('theming', () => {
 
   it('documents itself in the README and the house rules', () => {
     expect(tree.readContent('/README.md')).toContain('## Theme switching');
-    expect(tree.readContent('/README.md')).toContain('`ui.theme-mode`');
+    expect(tree.readContent('/README.md')).toContain('`@angular-capacitor-workspace/theming`');
     expect(tree.readContent('/AGENTS.md')).toContain('## Theme switching');
   });
 
@@ -176,11 +205,24 @@ describe('theming', () => {
     }
   });
 
-  it('keeps edits to what it wrote', async () => {
+  it('keeps edits to the toggle, and rewrites the binding, which is its own', async () => {
     const edited = await runner().runSchematic('theming', {}, tree);
+    edited.overwrite('/projects/ui/src/lib/theme/theme-toggle.ts', '// restyled\n');
     edited.overwrite('/projects/ui/src/lib/theme/theme.ts', '// edited\n');
     const again = await runner().runSchematic('theming', {}, edited);
-    expect(again.readContent('/projects/ui/src/lib/theme/theme.ts')).toBe('// edited\n');
+    expect(again.readContent('/projects/ui/src/lib/theme/theme-toggle.ts')).toBe('// restyled\n');
+    expect(again.readContent('/projects/ui/src/lib/theme/theme.ts')).toBe(
+      tree.readContent('/projects/ui/src/lib/theme/theme.ts'),
+    );
+  });
+
+  it('provides the palettes to each app, and to the shell spec that renders the toggle', () => {
+    expect(tree.readContent('/projects/shop/web/src/app/app.config.ts')).toContain(
+      'provideTheme(),',
+    );
+    const spec = tree.readContent('/projects/shop/web/src/app/app.spec.ts');
+    expect(spec).toContain("import { provideTheme } from 'ui';");
+    expect(spec).toContain('provideTheme(),');
   });
 
   it('reaches an app generated after it', async () => {

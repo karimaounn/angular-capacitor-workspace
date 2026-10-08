@@ -1,0 +1,37 @@
+{
+  "name": "@angular-capacitor-workspace/i18n",
+  "version": "22.5.0",
+  "description": "Runtime translation for an angular-capacitor-workspace: every locale in one build, switched without a reload, with writing direction and plurals from Intl.",
+  "keywords": [
+    "angular",
+    "i18n",
+    "translation",
+    "rtl",
+    "capacitor"
+  ],
+  "license": "MIT",
+  "author": "Karim Aoun",
+  "homepage": "https://github.com/karimaounn/angular-capacitor-workspace/tree/main/packages/i18n#readme",
+  "bugs": {
+    "url": "https://github.com/karimaounn/angular-capacitor-workspace/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karimaounn/angular-capacitor-workspace.git",
+    "directory": "packages/i18n"
+  },
+  "scripts": {
+    "build": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
+  },
+  "peerDependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/core": "^22.0.0"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}

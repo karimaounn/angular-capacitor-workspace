@@ -1,5 +1,6 @@
 import type { GenerateOptions } from '../../api';
 import { designSystemIn } from '../../extend/design-system';
+import { RUNTIME_PACKAGES, runtimeSpec } from '../../utils/own-package';
 import { isPrerendered, type WorkspaceView } from '../../utils/workspace-view';
 import type { WorkspacePlugin } from '../types';
 
@@ -27,7 +28,8 @@ function installed(workspace: WorkspaceView): boolean {
  */
 export const themingPlugin: WorkspacePlugin = {
   id: 'theming',
-  requested: (options) => (wanted(options) ? {} : undefined),
+  requested: (options) =>
+    wanted(options) ? { ...runtimeSpec(options, RUNTIME_PACKAGES.theming) } : undefined,
   features: (options) => (wanted(options) ? ['theming'] : []),
   detect: (workspace) => (installed(workspace) ? ['theming'] : []),
   forProject(workspace, project) {

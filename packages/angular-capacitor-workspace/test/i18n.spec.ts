@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SchematicTestRunner, type UnitTestTree } from '@angular-devkit/schematics/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -103,6 +103,13 @@ function expectImportedSymbolsExist(tree: UnitTestTree): void {
     )) {
       names.add(name!);
     }
+    // `export const { a, b } = …`, which is how the binding exports the tables.
+    for (const [, list] of source.matchAll(/export const \{([^}]*)\}\s*=/g)) {
+      for (const part of list!.split(',')) {
+        const name = part.trim();
+        if (name) names.add(name);
+      }
+    }
     // `export { a, b } from './x'` and `export { a, b }`.
     for (const [, list] of source.matchAll(/export\s+(?:type\s+)?\{([^}]*)\}/g)) {
       for (const part of list!.split(',')) {
@@ -172,17 +179,59 @@ describe('i18n', () => {
     );
   });
 
-  it('puts the mechanism in the design system', () => {
-    for (const file of [
-      'i18n.tokens.ts',
-      'translation.ts',
-      'translate-pipe.ts',
-      'translation.loader.ts',
-      'i18n-providers.ts',
+  it('installs the mechanism as a package rather than copying it', () => {
+    // At the version this generator was released with, at the root where the
+    // gate and doctor read it, and as a peer of the library that re-exports it.
+    const own = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
+    const root = JSON.parse(tree.readContent('/package.json'));
+    expect(root.dependencies['@angular-capacitor-workspace/i18n']).toBe(`^${own}`);
+    const library = JSON.parse(tree.readContent('/projects/ui/package.json'));
+    expect(library.peerDependencies['@angular-capacitor-workspace/i18n']).toBe(`^${own}`);
+
+    // What is left in the library: the binding, which is the generator's, and
+    // the picker, which is the workspace's to restyle.
+    const files = tree.files.filter((path) => path.startsWith('/projects/ui/src/lib/i18n/'));
+    expect(files.map((path) => path.split('/').pop()).sort()).toEqual([
+      'i18n.ts',
+      'language-picker.html',
+      'language-picker.scss',
       'language-picker.ts',
-    ]) {
-      expect(tree.exists(`/projects/ui/src/lib/i18n/${file}`)).toBe(true);
-    }
+    ]);
+  });
+
+  it('binds the package to the config, and types Locale by it', () => {
+    const binding = tree.readContent('/projects/ui/src/lib/i18n/i18n.ts');
+    expect(binding).toContain('rewritten by every run');
+    expect(binding).toContain("import { I18N } from '../../config/i18n';");
+    expect(binding).toContain("declare module '@angular-capacitor-workspace/i18n' {");
+    expect(binding).toContain('    i18n: typeof I18N;');
+    expect(binding).toContain('} = localeTables(I18N);');
+    expect(binding).toContain("export const LOCALE_KEY = 'ui.locale';");
+    expect(binding).toContain(
+      'return provideI18n(I18N, loader, { ...options, storageKey: LOCALE_KEY });',
+    );
+  });
+
+  it('rewrites the binding on every run, and leaves the picker to the workspace', async () => {
+    const binding = '/projects/ui/src/lib/i18n/i18n.ts';
+    const picker = '/projects/ui/src/lib/i18n/language-picker.ts';
+    const edited = await runner().runSchematic('i18n', {}, tree);
+    edited.overwrite(binding, '// edited\n');
+    edited.overwrite(picker, '// restyled\n');
+    const again = await runner().runSchematic('i18n', {}, edited);
+    expect(again.readContent(binding)).toBe(tree.readContent(binding));
+    expect(again.readContent(picker)).toBe('// restyled\n');
+  });
+
+  it('installs the package from a build it is given, for a release not yet out', async () => {
+    const local = await runner().runSchematic(
+      'i18n',
+      { locales: ['en'], runtimeSpec: 'file:/tmp/i18n.tgz' },
+      await workspaceWithApp(),
+    );
+    expect(JSON.parse(local.readContent('/package.json')).dependencies).toMatchObject({
+      '@angular-capacitor-workspace/i18n': 'file:/tmp/i18n.tgz',
+    });
   });
 
   it('ships no messages in the design system', () => {
@@ -209,11 +258,12 @@ describe('i18n', () => {
     expect(config).toContain('} as const satisfies I18nConfig;');
   });
 
-  it('derives every locale table from the config, so none needs editing', () => {
-    const tokens = tree.readContent('/projects/ui/src/lib/i18n/i18n.tokens.ts');
-    expect(tokens).toContain("import { I18N } from '../../config/i18n';");
-    expect(tokens).toContain('export type Locale = keyof typeof I18N.locales & string;');
-    expect(tokens).not.toMatch(/'(en|fr|ar)'/);
+  it('derives every locale table from the config, so nothing generated names a locale', () => {
+    const binding = tree.readContent('/projects/ui/src/lib/i18n/i18n.ts');
+    expect(binding).not.toMatch(/'(en|fr|ar)'/);
+    expect(tree.readContent('/projects/ui/src/config/i18n.ts')).toContain(
+      "import type { I18nConfig } from '@angular-capacitor-workspace/i18n';",
+    );
   });
 
   it('tags every untranslated value, so a placeholder is visible on screen', () => {
@@ -297,11 +347,15 @@ describe('i18n', () => {
   });
 
   it('exports the i18n surface from the library public API', () => {
+    // The package's, through the binding, so an app imports all of it from
+    // the design system under the names it always has.
     const api = tree.readContent('/projects/ui/src/public-api.ts');
-    expect(api).toContain('TranslationService');
-    expect(api).toContain('TranslatePipe');
-    expect(api).toContain('provideTranslations');
-    expect(api).toContain('LanguagePicker');
+    expect(api).toContain("export * from './lib/i18n/i18n';");
+    expect(api).toContain("export { LanguagePicker } from './lib/i18n/language-picker';");
+    const binding = tree.readContent('/projects/ui/src/lib/i18n/i18n.ts');
+    for (const name of ['TranslationService', 'TranslatePipe', 'TRANSLATION_LOADER', 'Locale']) {
+      expect(binding, name).toContain(`  ${name},`);
+    }
   });
 
   it('documents the RTL rule when an RTL locale ships', () => {
@@ -347,8 +401,8 @@ describe('i18n', () => {
     // through that picker. A generator that turns a green suite red is one
     // nobody trusts the next time it edits something.
     const spec = tree.readContent('/projects/shop/web/src/app/app.spec.ts');
-    expect(spec).toContain("import { TRANSLATION_LOADER } from 'ui'");
-    expect(spec).toContain('{ provide: TRANSLATION_LOADER, useValue: () => ({}) }');
+    expect(spec).toContain("import { provideTranslations } from 'ui'");
+    expect(spec).toContain('provideTranslations(() => ({})),');
 
     // In the header, through the shell's extension point rather than beside a
     // line of the template it would have to recognise.
@@ -461,8 +515,8 @@ describe('i18n', () => {
       // time it edits something. The shell's TestBed is the one whose subject
       // now reaches TranslationService, through the locale links in its header.
       const shell = site.readContent('/projects/site/web/src/app/app.spec.ts');
-      expect(shell).toContain("import { TRANSLATION_LOADER } from 'ui'");
-      expect(shell).toContain('{ provide: TRANSLATION_LOADER, useValue: () => ({}) }');
+      expect(shell).toContain("import { provideTranslations } from 'ui'");
+      expect(shell).toContain('provideTranslations(() => ({})),');
       expect(site.exists('/projects/site/web/src/app/i18n/locale-url.spec.ts')).toBe(true);
     });
 

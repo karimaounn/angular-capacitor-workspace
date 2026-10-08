@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { strings } from '@angular-devkit/core';
 import {
   apply,
@@ -17,6 +15,7 @@ import {
 import { ANGULAR_LINE, pins } from '../../policy/versions';
 import { cli, isProjectRunner, projectRunner } from '../../utils/commands';
 import { JsonFile, updateJson } from '../../utils/json-file';
+import { ownManifest, ownVersion } from '../../utils/own-package';
 import {
   addDependencies,
   addGitignoreSection,
@@ -260,31 +259,6 @@ function engines(): Rule {
     }
     setEngines(tree, declared);
   };
-}
-
-/**
- * This package's own manifest.
- *
- * Hard-coding anything out of it would mean a release that forgot to update a
- * string generates workspaces describing a package that does not exist.
- */
-function ownManifest(): { version?: string; engines?: Record<string, string> } {
-  // dist/schematics/workspace/index.js → the package root is three levels up,
-  // and the same is true of src/schematics/workspace/index.ts under ts-node.
-  return JSON.parse(readFileSync(join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
-}
-
-/** The version of this package, read from its own manifest. */
-function ownVersion(): string {
-  const { version } = ownManifest();
-
-  if (!version) {
-    throw new SchematicsException(
-      "Could not read this package's own version from its manifest. The " +
-        'generated workspace needs it to depend on the generator that made it.',
-    );
-  }
-  return version;
 }
 
 function gitignore(options: WorkspaceOverlayOptions): Rule {

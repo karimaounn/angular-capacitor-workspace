@@ -94,6 +94,24 @@ page, an extension of a site's `PageMetaStrategy` — and never by finding a lin
 of a template it expects to be there. A shell you have rewritten without a
 `<header>` gets no controls dropped into it.
 
+Translation and theme switching run in your apps, and that code is a package,
+not a copy: [`@angular-capacitor-workspace/i18n`](../i18n/README.md) and
+[`@angular-capacitor-workspace/theming`](../theming/README.md), released with
+this one at the same version. The plugin installs it and writes the three kinds
+of file a workspace keeps:
+
+- **config** in the design system's `src/config/` — the locales, the palettes —
+  which is yours to edit;
+- a **binding** in the design system (`lib/i18n/i18n.ts`, `lib/theme/theme.ts`)
+  that hands the config to the package and re-exports it, so apps import from
+  the design system as they always have. It is the generator's, rewritten on
+  every run;
+- what you restyle — the language picker, the theme toggle, the showcases —
+  which is yours.
+
+So `npm update` changes how translation and theming work in every workspace
+that has them, and nothing generated needs editing to configure them.
+
 ### Theming
 
 A workspace with a `ui-lib` gets light, dark and three palettes, and every app
@@ -108,10 +126,12 @@ toolbar drives them for the stories.
 The palettes are the design system's `src/config/palettes.ts` — an id and a
 label each, with their colours in `_ref.scss` — and the Storybook toolbar is
 built from it. The `theming` plugin lets visitors choose, and `create` adds it
-with the library unless you pass `--no-theming`. `ThemeService` owns the two attributes
-and the stored preference; `<ui-theme-toggle>` is the control, in every app's
-header; and each app's `index.html` carries a small inline script that applies
-the stored value before the first paint. Without it, apps follow the system
+with the library unless you pass `--no-theming`. `ThemeService`, from
+`@angular-capacitor-workspace/theming`, owns the two attributes and the stored
+preference, and each app's `app.config.ts` has `provideTheme()` for it;
+`<ui-theme-toggle>` is the control, in every app's header; and each app's
+`index.html` carries a small inline script that applies the stored value before
+the first paint. Without it, apps follow the system
 colour scheme and nothing is stored.
 
 The colour that travels with a palette is `--accent`, which is deliberately not
@@ -139,13 +159,14 @@ a single `index.html`, so there is nowhere for a second locale to live. One
 binary per language is the alternative, and it is not one. Here every locale is
 in one build and switches without a reload.
 
-**The mechanism goes in the library, the messages go in each app.**
-`TranslationService`, the `| t` pipe and `<ui-language-picker>` ship from the
-design system, which carries no strings of its own — components take their copy
-as inputs. That split is why this is worth generating rather than installing: a
-design system that carries its own copy can only serve apps that want that copy,
-and one that takes strings as inputs serves every locale its consumers ship
-without an extraction step.
+**The mechanism is a package, the messages go in each app.**
+`TranslationService` and the `| t` pipe come from
+`@angular-capacitor-workspace/i18n`, which the design system binds to its
+locales and exports along with `<ui-language-picker>`; the design system
+carries no strings of its own — components take their copy as inputs. A design
+system that carries its own copy can only serve apps that want that copy, and
+one that takes strings as inputs serves every locale its consumers ship without
+an extraction step.
 
 <!-- prettier-ignore -->
 ```html

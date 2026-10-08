@@ -98,7 +98,10 @@ ng generate angular-capacitor-workspace:packages cdk
 
 Theming, translation and the curated packages are plugins: they extend every
 project already there and every one generated after them, so a workspace grown
-one `ng generate` at a time matches one generated in a single run. Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
+one `ng generate` at a time matches one generated in a single run. The code
+translation and theming run in your apps is installed, not copied —
+`@angular-capacitor-workspace/i18n` and `/theming` — so `npm update` reaches it,
+and what you configure is in the design system's `src/config/`. Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
 [API client](packages/angular-capacitor-workspace/README.md#api-client). To bring
 an existing Angular workspace under the policy, run
 `ng add angular-capacitor-workspace`.
@@ -212,6 +215,10 @@ packages/
                                      generated npm scripts run
   create-angular-capacitor-workspace/
     src/                             argv, prompts, bootstrap
+  i18n/                              @angular-capacitor-workspace/i18n: the
+                                     translation runtime a workspace installs
+  theming/                           @angular-capacitor-workspace/theming: the
+                                     theme-switching runtime
 e2e/
   rows.mjs                           the matrix rows, shared by the two below
   matrix.mjs                         generate → install → build → test → audit

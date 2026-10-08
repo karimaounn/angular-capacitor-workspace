@@ -184,6 +184,7 @@ export function parseArguments(argv: string[]): ParsedArgs {
       install: { type: 'boolean', default: true },
       'dry-run': { type: 'boolean', default: false },
       'self-spec': { type: 'string' },
+      'package-spec': { type: 'string', multiple: true },
       report: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -289,15 +290,27 @@ export function parseArguments(argv: string[]): ParsedArgs {
   if (values['self-spec'] !== undefined) {
     options.selfSpec = values['self-spec'];
   }
+  // `<package>=<spec>`, once per runtime package a plugin installs, for the
+  // same reason as `--self-spec`: the build being tested is not on the
+  // registry yet.
+  for (const entry of values['package-spec'] ?? []) {
+    const at = entry.indexOf('=');
+    if (at <= 0) {
+      throw new ArgError(`--package-spec takes <package>=<spec> (got "${entry}").`);
+    }
+    options.packageSpecs = { ...options.packageSpecs, [entry.slice(0, at)]: entry.slice(at + 1) };
+  }
 
   // `--no-install` and `--dry-run` are how the tests and CI drive this, so they
   // must not count as "the user made choices" — but every other flag does.
-  // `--self-spec` and `--report` are harness plumbing and count for even less.
+  // `--self-spec`, `--package-spec` and `--report` are harness plumbing and
+  // count for even less.
   const nonInteractive = argv.some(
     (arg) =>
       arg.startsWith('--') &&
       !['--no-install', '--dry-run'].includes(arg) &&
       !arg.startsWith('--self-spec') &&
+      !arg.startsWith('--package-spec') &&
       !arg.startsWith('--report'),
   );
 

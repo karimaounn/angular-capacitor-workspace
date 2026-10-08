@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { classify, summarise } from './deprecations.mjs';
 import { ROWS } from './rows.mjs';
-import { packSelf } from '../scripts/pack-self.mjs';
+import { createArgs, packSelf } from '../scripts/pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
@@ -49,14 +49,14 @@ const { values } = parseArgs({
 const selected = values.row?.length ? values.row : Object.keys(ROWS);
 
 // A generated workspace depends on `angular-capacitor-workspace` so that
-// `audit:policy`, `doctor` and `ng generate` keep working after generation.
-// Before publication that version does not exist on the registry, so the matrix
-// packs the local build and points the generated workspace at the tarball. This
-// is the difference between testing what ships and testing something adjacent
-// to it.
+// `audit:policy`, `doctor` and `ng generate` keep working after generation, and
+// on the runtime package of each plugin it has. Before publication those
+// versions do not exist on the registry, so the matrix packs the local builds
+// and points the generated workspace at the tarballs. This is the difference
+// between testing what ships and testing something adjacent to it.
 const packed = packSelf(mkdtempSync(join(tmpdir(), 'acw-pack-')));
-console.log(`packed ${packed.filename}`);
-const selfSpec = `file:${packed.path}`;
+console.log(`packed ${[packed, ...packed.runtime].map((entry) => entry.filename).join(', ')}`);
+const packedArgs = createArgs(packed);
 const results = [];
 
 for (const rowName of selected) {
@@ -190,8 +190,7 @@ function runRow(name, row) {
             createBin,
             target,
             ...row.args,
-            '--self-spec',
-            selfSpec,
+            ...packedArgs,
             '--report',
             reportPath,
             ...(values['skip-install'] ? ['--no-install'] : []),

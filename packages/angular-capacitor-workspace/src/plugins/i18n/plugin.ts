@@ -1,6 +1,7 @@
 import { designSystemIn } from '../../extend/design-system';
 import { isLocaleTag } from '../../locales';
 import { ConfigError, readConfigLiteral } from '../../utils/config-file';
+import { RUNTIME_PACKAGES, runtimeSpec } from '../../utils/own-package';
 import type { WorkspaceView } from '../../utils/workspace-view';
 import type { WorkspacePlugin } from '../types';
 
@@ -97,6 +98,7 @@ export const i18nPlugin: WorkspacePlugin = {
       ? {
           locales: options.i18n,
           ...(options.defaultLocale ? { defaultLocale: options.defaultLocale } : {}),
+          ...runtimeSpec(options, RUNTIME_PACKAGES.i18n),
         }
       : undefined,
   features: (options) => ((options.i18n ?? []).length > 0 ? ['i18n'] : []),

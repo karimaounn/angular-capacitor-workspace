@@ -1,4 +1,7 @@
 import { SchematicsException, type Tree } from '@angular-devkit/schematics';
+import { updateJson } from '../utils/json-file';
+import { runtimeRange } from '../utils/own-package';
+import { addDependencies } from '../utils/workspace';
 import { treeView, type WorkspaceView } from '../utils/workspace-view';
 
 /**
@@ -114,4 +117,38 @@ export function useLibraryStyles(tree: Tree, design: DesignSystem, partial: stri
   const last = lines.reduce((found, text, index) => (/^@use '/.test(text) ? index : found), -1);
   lines.splice(last + 1, 0, statement);
   tree.overwrite(path, lines.join('\n'));
+}
+
+/**
+ * Makes the design system build on one of the runtime packages a plugin ships:
+ * a dependency of the workspace, and a peer of the library.
+ *
+ * A dependency at the root, which is where the audit gate and `doctor` read
+ * dependencies from and where every application resolves them. A peer of the
+ * library, because the library re-exports the package: the `package.json` it
+ * publishes has to ask its consumers for it, the way it asks for
+ * `@angular/core`.
+ *
+ * `spec` replaces the range at the root, for a workspace generated against a
+ * build of the package that is not on the registry yet; the peer is always the
+ * range. Neither replaces one that is already there.
+ */
+export function buildOn(tree: Tree, design: DesignSystem, name: string, spec?: string): void {
+  addDependencies(tree, { [name]: spec ?? runtimeRange() }, 'dependencies');
+
+  const manifest = `/${design.root}/package.json`;
+  if (!tree.exists(manifest)) {
+    return;
+  }
+  updateJson(tree, manifest, (file) => {
+    file.mustGet(
+      ['peerDependencies'],
+      `the peerDependencies block of library "${design.name}", which the Angular ` +
+        `library schematic creates`,
+    );
+    if (!file.has(['peerDependencies', name])) {
+      file.modify(['peerDependencies', name], runtimeRange());
+      file.sortKeys(['peerDependencies']);
+    }
+  });
 }

@@ -42,6 +42,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Translation and theme switching are installed packages, not copied code.**
+  `TranslationService`, the `t` pipe, `ThemeService` and what drives them are
+  now `@angular-capacitor-workspace/i18n` and
+  `@angular-capacitor-workspace/theming`, released with the generator at the
+  same version, and the `i18n` and `theming` schematics add them to a
+  workspace's dependencies and as peers of its design system. What the
+  schematics write beside them is the config, a binding in the design system
+  (`lib/i18n/i18n.ts`, `lib/theme/theme.ts`) that hands the config to the
+  package and re-exports it under the names apps already import, and the
+  picker, the toggle and the showcases. Before, the services were generated
+  into every workspace, and a fix to them reached only the workspaces generated
+  after it; now `npm update` delivers it. Apps import from the design system as
+  before. Each app's `app.config.ts` gains `provideTheme()`, and a shell spec
+  whose header has a language control provides `provideTranslations(() => ({}))`
+  rather than a bare `TRANSLATION_LOADER`.
+
+  `Locale` and `PaletteId` stay the config's unions: each binding augments its
+  package's `Register` interface with the config's type.
+
+  Existing workspaces are left as they are, with their generated services. To
+  move one over, run `ng generate angular-capacitor-workspace:i18n` and
+  `:theming` after writing `src/config/` as above, then delete the files under
+  `lib/i18n/` and `lib/theme/` that a new workspace no longer has.
+
 - **What a design system is configured with is in its `src/config/`, and
   nothing generated needs editing to change it.** The locales are
   `src/config/i18n.ts` (the default, and each language's label and direction),
