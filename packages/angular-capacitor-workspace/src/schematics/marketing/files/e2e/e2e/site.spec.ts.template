@@ -36,8 +36,11 @@ test('updates the head on client-side navigation', async ({ page }) => {
   await expect(page).toHaveURL('/');
   await expect(page).not.toHaveTitle(/not found/i);
   await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+  // Back, and the home page's own: the 404 had none. Its path ends at the
+  // root of whatever the build serves the site under — `/`, or `/en/` on a
+  // site built once per language.
   const canonical = await page.locator('link[rel="canonical"]').getAttribute('href');
-  expect(new URL(canonical!).pathname).toBe('/');
+  expect(new URL(canonical!).pathname).toMatch(/\/$/);
 });
 
 test('the skip link moves focus to the content without leaving the page', async ({ page }) => {

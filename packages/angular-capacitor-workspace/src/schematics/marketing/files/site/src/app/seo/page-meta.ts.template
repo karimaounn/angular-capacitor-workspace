@@ -1,4 +1,4 @@
-import { DOCUMENT, inject, Injectable } from '@angular/core';
+import { DOCUMENT, inject, Injectable, InjectionToken } from '@angular/core';
 import { Meta, Title } from '@angular/platform-browser';
 import { ActivatedRouteSnapshot, RouterStateSnapshot, TitleStrategy } from '@angular/router';
 
@@ -23,6 +23,37 @@ export interface PageSeo {
 export const PAGE_LD_ID = 'page-ld';
 
 /**
+ * Something that adds to what `PageMetaStrategy` writes, without editing it.
+ *
+ * Every member is optional, and an extension implements the ones it needs. A
+ * site translated with `ng generate angular-capacitor-workspace:i18n` has one:
+ * it translates each route's title and description, puts the language in the
+ * canonical, and writes the hreflang alternates. Register yours in
+ * `app.config.ts`:
+ *
+ * ```ts
+ * { provide: PAGE_META_EXTENSIONS, useExisting: MyExtension, multi: true }
+ * ```
+ */
+export interface PageMetaExtension {
+  /** The text the head carries for a route's `seo.title` or `seo.description`. */
+  text?(value: string): string;
+  /**
+   * The path a page is served at, which its canonical names. `/about` for a
+   * route at `/about`, unless the build puts something in front of it.
+   */
+  servedPath?(path: string): string;
+  /** Called once a page's tags are written. `indexable` is false for a noindex page. */
+  written?(path: string, indexable: boolean): void;
+}
+
+/** The extensions `PageMetaStrategy` applies, in the order they were provided. */
+export const PAGE_META_EXTENSIONS = new InjectionToken<readonly PageMetaExtension[]>(
+  'PAGE_META_EXTENSIONS',
+  { factory: () => [] },
+);
+
+/**
  * Writes every per-page tag from the deepest route's `seo` data: title,
  * description, canonical, robots, Open Graph and JSON-LD.
  *
@@ -41,19 +72,22 @@ export class PageMetaStrategy extends TitleStrategy {
   private readonly title = inject(Title);
   private readonly meta = inject(Meta);
   private readonly document = inject(DOCUMENT);
+  private readonly extensions = inject(PAGE_META_EXTENSIONS);
 
   override updateTitle(state: RouterStateSnapshot): void {
     const seo = deepest(state.root).data['seo'] as PageSeo | undefined;
     if (!seo) return;
 
     const path = state.url.split(/[?#]/)[0] || '/';
-    const title = path === '/' ? seo.title : `${seo.title} | ${SITE_NAME}`;
-    const canonical = seo.noindex ? null : siteUrl(path);
+    const heading = this.text(seo.title);
+    const description = this.text(seo.description);
+    const title = path === '/' ? heading : `${heading} | ${SITE_NAME}`;
+    const canonical = seo.noindex ? null : siteUrl(this.servedPath(path));
 
     this.title.setTitle(title);
-    this.meta.updateTag({ name: 'description', content: seo.description });
-    this.meta.updateTag({ property: 'og:title', content: seo.title });
-    this.meta.updateTag({ property: 'og:description', content: seo.description });
+    this.meta.updateTag({ name: 'description', content: description });
+    this.meta.updateTag({ property: 'og:title', content: heading });
+    this.meta.updateTag({ property: 'og:description', content: description });
 
     if (canonical) {
       this.meta.updateTag({ property: 'og:url', content: canonical });
@@ -65,6 +99,21 @@ export class PageMetaStrategy extends TitleStrategy {
 
     this.setCanonical(canonical);
     this.setJsonLd([...SITE_JSON_LD, ...(seo.jsonLd ?? [])]);
+
+    for (const extension of this.extensions) {
+      extension.written?.(path, canonical !== null);
+    }
+  }
+
+  private text(value: string): string {
+    return this.extensions.reduce((text, extension) => extension.text?.(text) ?? text, value);
+  }
+
+  private servedPath(path: string): string {
+    return this.extensions.reduce(
+      (served, extension) => extension.servedPath?.(served) ?? served,
+      path,
+    );
   }
 
   private setCanonical(href: string | null): void {

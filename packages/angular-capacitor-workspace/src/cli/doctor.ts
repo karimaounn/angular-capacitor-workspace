@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { installedCatalogIds, packageFeature } from '../catalog';
+import { detectedFeatures } from '../plugins/registry';
 import { POLICY } from '../policy/advisories';
 import { applyPolicy, type Manifest } from '../policy/apply';
 import { anySatisfied } from '../policy/guards';
 import type { Policy, PolicyContext, Tier } from '../policy/types';
 import { bold, cyan, dim, green, MARK, red, yellow } from '../style';
+import { diskView } from '../utils/workspace-view';
 
 export interface Drift {
   tier: Tier | 'allowScripts';
@@ -33,20 +34,24 @@ export interface Diagnosis {
  * old by the time `doctor` matters, and by then the file records what someone
  * once asked for rather than what the project became — a Storybook that was
  * removed, a mobile target that was added by hand. The tree is the truth.
+ *
+ * The hosts' tokens are read here; each plugin reads its own, in its `detect`
+ * (src/plugins/), next to the `features` that sets it at generation.
  */
 export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
-  const features = new Set<string>();
   const deps = {
     ...manifest.dependencies,
     ...manifest.devDependencies,
     ...manifest.optionalDependencies,
   };
+  // The manifest given rather than the one on disk, which `ng add` has not
+  // written yet when it asks.
+  const features = detectedFeatures({ ...diskView(cwd), dependencies: deps });
 
   if ('storybook' in deps || '@storybook/angular' in deps || '@storybook/angular-vite' in deps) {
     features.add('storybook');
     features.add('ui-lib');
   }
-  if ('orval' in deps) features.add('codegen');
   if ('@playwright/test' in deps) features.add('e2e:playwright');
 
   // `ssr:server` is deliberately NOT inferred from express being installed.
@@ -61,15 +66,6 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
   // package — the false positive errs towards leaving a build working.
   if (importsAnimations(cwd)) features.add('animations');
 
-  // Catalog packages, read straight from the manifest. That is circular for a
-  // guard whose job is to decide whether a package should be there — see
-  // animations above — and it is not circular here: nothing prunes a package
-  // the user asked for by name. The token exists so a remedy can be scoped to
-  // the workspaces that carry it, and the entry is the only evidence there is.
-  for (const id of installedCatalogIds(deps)) {
-    features.add(packageFeature(id));
-  }
-
   if ('@capacitor/cli' in deps || '@capacitor/core' in deps) features.add('mobile');
   if ('@capacitor/android' in deps) features.add('mobile:android');
   if ('@capacitor/ios' in deps) features.add('mobile:ios');
@@ -77,7 +73,7 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
   const angularJson = readJsonIfPresent(join(cwd, 'angular.json')) as
     { projects?: Record<string, AngularProjectShape> } | undefined;
 
-  for (const [projectName, project] of Object.entries(angularJson?.projects ?? {})) {
+  for (const project of Object.values(angularJson?.projects ?? {})) {
     if (project.projectType === 'library') features.add('ui-lib');
     if (project.projectType === 'application') features.add('app');
 
@@ -102,20 +98,6 @@ export function inferFeatures(cwd: string, manifest: Manifest): Set<string> {
     if (root && existsSync(join(cwd, dirname(root), 'mobile', 'capacitor.config.ts'))) {
       features.add('mobile');
     }
-
-    // Runtime translation lives in the design system, and its locale table is
-    // the file the i18n schematic itself reads back to decide a workspace is
-    // translated (`readInstalledLocales`). The same witness, so `doctor` agrees
-    // with a later `ng generate` — and with `featuresFor`, which sets the token
-    // at generation from `--i18n`.
-    if (
-      project.projectType === 'library' &&
-      root &&
-      existsSync(join(cwd, root, 'src', 'lib', 'i18n', 'i18n.tokens.ts'))
-    ) {
-      features.add('i18n');
-    }
-    void projectName;
   }
 
   return features;

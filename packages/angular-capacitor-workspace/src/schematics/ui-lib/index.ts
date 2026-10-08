@@ -29,7 +29,7 @@ import {
   readProjects,
 } from '../../utils/workspace';
 import { hookLibraryBuild, syncRootHooks } from '../../utils/project-scripts';
-import { installedPackages } from '../packages';
+import { extendWithPlugins } from '../../plugins/registry';
 
 export interface UiLibOptions {
   name?: string;
@@ -38,12 +38,19 @@ export interface UiLibOptions {
 }
 
 /**
- * The design-system library: wiring and theme architecture, not components.
+ * The design-system library: wiring and token architecture, not components.
  *
  * What ships is the machinery — the SCSS layering, the Storybook setup,
  * browser-mode component tests, the contrast checker, and the
  * `ng-package.json` asset mapping that lets an app consume the styles the same
  * way it consumes the code.
+ *
+ * The tokens are declared for every palette in light and dark, keyed off two
+ * attributes on `<html>`, `data-theme` and `data-palette`. That is the
+ * library's contract with whatever sets them: the Storybook toolbar here, a
+ * static attribute in an app's `index.html`, or the runtime switcher the
+ * `theming` plugin adds. With nothing setting them, the default palette follows
+ * the system colour scheme.
  *
  * What also ships is two real components. A skeleton whose test suite is empty
  * is a skeleton whose test suite is untested: without something to render, the
@@ -100,7 +107,7 @@ export function uiLib(options: UiLibOptions = {}): Rule {
 
           // A catalog package already in the workspace declares itself a peer
           // of every library, and this one did not exist when it was added.
-          installedPackages(),
+          extendWithPlugins(name),
         ]);
       },
     ]);
@@ -141,8 +148,6 @@ function publicApi(name: string, root: string): Rule {
 
 export * from './lib/button/button';
 export * from './lib/field/field';
-export * from './lib/theme/theme';
-export * from './lib/theme/theme-toggle';
 `,
     );
   };

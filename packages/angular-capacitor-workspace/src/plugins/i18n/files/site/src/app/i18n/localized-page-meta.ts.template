@@ -1,0 +1,70 @@
+import { DOCUMENT, inject, Injectable } from '@angular/core';
+import { DEFAULT_LOCALE, LOCALES, TranslationService } from '<%= importName %>';
+
+import type { PageMetaExtension } from '../seo/page-meta';
+import { SITE_LOCALE } from './build-locale';
+import { localePath, localeUrl } from './locale-url';
+
+/**
+ * What a translated site adds to each page's head.
+ *
+ * An extension of `PageMetaStrategy`, registered in `app.config.ts` through
+ * `PAGE_META_EXTENSIONS`, so the strategy is the same file it is on a site in
+ * one language. Three things:
+ *
+ *   • A route's `data.seo` holds message keys, and the head carries their
+ *     translation. A French page with an English `<title>` is the most visible
+ *     thing a search result can get wrong.
+ *   • The canonical names the page in this build's language: the route at
+ *     `/about` is served at `/fr/about` by the French build.
+ *   • The `hreflang` alternates: this page, in every language it exists in.
+ *
+ * Every locale's page names every locale, itself included — that is the rule
+ * search engines actually check, and a page that lists only the others is
+ * treated as having no alternates at all. `x-default` points at the source
+ * locale, which is where a visitor whose language the site does not have should
+ * land.
+ *
+ * Applied per navigation, as the rest of the head is: during prerender the
+ * router runs once per route in Node, so the tags end up in the static HTML.
+ */
+@Injectable({ providedIn: 'root' })
+export class LocalizedPageMeta implements PageMetaExtension {
+  private readonly document = inject(DOCUMENT);
+  private readonly i18n = inject(TranslationService);
+
+  text(key: string): string {
+    return this.i18n.translate(key);
+  }
+
+  servedPath(path: string): string {
+    return localePath(SITE_LOCALE, path);
+  }
+
+  /**
+   * `indexable` is false for a noindex page such as the 404. Alternates on a
+   * page nobody should index are noise at best, and at worst they invite a
+   * crawler to index the other languages' copies of it.
+   */
+  written(path: string, indexable: boolean): void {
+    for (const link of this.document.head.querySelectorAll('link[rel="alternate"][hreflang]')) {
+      link.remove();
+    }
+    if (!indexable) {
+      return;
+    }
+
+    for (const locale of LOCALES) {
+      this.append(locale, localeUrl(locale, path));
+    }
+    this.append('x-default', localeUrl(DEFAULT_LOCALE, path));
+  }
+
+  private append(hreflang: string, href: string): void {
+    const link = this.document.createElement('link');
+    link.setAttribute('rel', 'alternate');
+    link.setAttribute('hreflang', hreflang);
+    link.setAttribute('href', href);
+    this.document.head.appendChild(link);
+  }
+}

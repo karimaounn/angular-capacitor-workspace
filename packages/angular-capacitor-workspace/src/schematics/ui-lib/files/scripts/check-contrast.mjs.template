@@ -11,7 +11,7 @@
  *
  * Run: `npm run check:contrast`
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as sass from 'sass';
@@ -103,7 +103,7 @@ function paletteNames() {
 
 /**
  * The palette list `ThemeService` offers must be the palette list the styles
- * emit.
+ * emit, in a library that has one.
  *
  * Two sources of truth, one of them Sass and one of them TypeScript, and
  * nothing in the type system connects them. The failure is quiet in the worst
@@ -111,9 +111,16 @@ function paletteNames() {
  * like a toggle that does nothing, and a palette in the styles that the picker
  * never offers is a theme nobody can reach. This is the cheapest place to
  * notice, because this script already has to parse the map.
+ *
+ * A library without theme switching has no picker to disagree with: the
+ * palettes are still there, chosen by a `data-palette` someone writes on
+ * `<html>` by hand, and every one of them is still checked below.
  */
 function assertPickerAgrees(names) {
   const path = join(libRoot, 'src', 'lib', 'theme', 'theme.ts');
+  if (!existsSync(path)) {
+    return;
+  }
   const source = readFileSync(path, 'utf8');
   const block = source.match(/PALETTES\s*=\s*\[([\s\S]*?)\]\s*as const;/);
   if (!block) {

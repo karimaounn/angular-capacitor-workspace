@@ -14,6 +14,11 @@
     "uiLib": {
       "type": "string",
       "description": "Also generate a design-system library with this name."
+    },
+    "theming": {
+      "type": "boolean",
+      "description": "With --ui-lib, add theme switching too.",
+      "default": true
     }
   },
   "additionalProperties": false

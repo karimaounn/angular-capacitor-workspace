@@ -10,6 +10,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Theme switching is optional: `--no-theming` leaves it out.** The theme
+  toggle, `ThemeService` and the script that applies a stored theme before the
+  first paint are now the `theming` schematic, which `create` adds with the
+  design system unless you pass `--no-theming` (or `theming: false` to
+  `generateWorkspace()`), and the interactive run asks. Without it the design
+  system still declares every palette in light and dark, keyed off
+  `data-theme` and `data-palette` on `<html>`, and the apps follow the system
+  colour scheme. `ng generate angular-capacitor-workspace:theming` adds it
+  later, and `ng add` adds it with `--ui-lib` unless `--theming=false`.
+  Existing workspaces are left as they are: their theme files work as before,
+  and an app generated into one still gets the toggle.
+
 - **`ng update angular-capacitor-workspace@22` is now the upgrade within the
   line**, followed by `npx angular-capacitor-workspace doctor --fix` as before.
   The package now declares an `ng update` migrations collection, so a fix to a
@@ -29,6 +41,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are on.
 
 ### Changed
+
+- **Theming, translation, codegen and the curated packages are plugins.** Each
+  extends every project already in the workspace and every project generated
+  after it, through extension points the app and site templates declare,
+  instead of finding and replacing lines of those templates. A workspace grown
+  one `ng generate` at a time now comes out the same as one generated in a
+  single run, and a shell without a `<header>` gets no controls dropped into
+  it. What changes in a new workspace:
+
+  - The `ui-lib` schematic no longer writes `src/lib/theme/`; the `theming`
+    schematic does (see Added). `ng generate …:ui-lib` alone gives a design
+    system without the toggle.
+  - A marketing site's `PageMetaStrategy` takes extensions through a new
+    `PAGE_META_EXTENSIONS` token, and its spec covers one. A translated site
+    registers `LocalizedPageMeta` (`src/app/i18n/localized-page-meta.ts`) there
+    instead of having `page-meta.ts`, `site.ts`, `page-meta.spec.ts` and
+    `site.spec.ts` rewritten. `localePath` and `localeUrl` move from `site.ts`
+    to `src/app/i18n/locale-url.ts`, and `LocaleAlternates` is folded into
+    `LocalizedPageMeta`.
+  - The site's e2e suite checks that the home page's canonical ends at a root
+    (`/` or `/en/`) rather than that it is `/`, so translation no longer edits
+    it.
+  - A plugin's section on the app's starter page lands above "Next" rather
+    than after it, and the starter page's theme readout is the theming
+    plugin's `ThemeShowcase`.
+
+  Existing workspaces are left as they are. `ng generate i18n` over a site
+  translated by an earlier 22.x stops with the change to make by hand, since
+  its `page-meta.ts` has no extension point to register with.
+
+  `GenerateOptions` gains `theming?: boolean`, and `create` gains
+  `--no-theming`. Nothing else in the package's exports or `create`'s flags
+  changes.
 
 - **The root `package.json` no longer names any project, and nothing is the
   default app.** `npm start shop` serves `shop`, and `npm start` without a name

@@ -16,7 +16,9 @@ is the list of what a change has to touch so nothing is missed.
 in `packages/angular-capacitor-workspace/src/api.ts`, which runs, in this order:
 
 1. `ng new` (Angular owns the skeleton)
-2. our schematics overlay Angular's output (`src/schematics/*`)
+2. our schematics overlay Angular's output: the hosts (`src/schematics/*`)
+   create the workspace and its projects, then the requested plugins
+   (`src/plugins/*`) extend them, in the registry's order
 3. the dependency policy patches `package.json` (`src/policy/`)
 4. the audit gate resolves a lockfile and fails on anything the policy does not
    cover (`src/gate/`)
@@ -32,6 +34,26 @@ years, against whatever version it has installed, and
 
 Paths below are relative to `packages/angular-capacitor-workspace/` unless they
 start with the package name or name a root file.
+
+### Hosts and plugins
+
+- **Hosts** create projects: `workspace`, `app`, `marketing`, `ui-lib`,
+  `mobile`. They never import a plugin. `app`, `marketing` and `ui-lib` end
+  with `extendWithPlugins(name)`, which gives the new project the per-project
+  half of every plugin the workspace already has.
+- **Plugins** extend projects: `theming`, `codegen`, `i18n`, `packages`. Each
+  is a directory in `src/plugins/` with its schematic (`index.ts`, `schema.json`,
+  `files/`) and its definition (`plugin.ts`, a `WorkspacePlugin` from
+  `src/plugins/types.ts`): what a `create` request turns into, its feature
+  tokens at generation and on disk, and `forProject` for a project generated
+  later. `PLUGINS` in `src/plugins/registry.ts` lists them in the one order
+  they run in, during `create` and at the end of every host.
+- **Extension points** (`src/extend/`) are the only way a plugin edits a host's
+  files: `shell.ts` for an app's or site's frame, `site.ts` for a prerendered
+  site, `design-system.ts` for the library. Each anchors on structure the host
+  templates keep (the `<header>`, the `providers` array, `</head>`, a DI token),
+  never on a line of a template. When a host template changes shape, the
+  extension point changes with it and no plugin does.
 
 ## The question every change must answer
 
@@ -129,8 +151,9 @@ A user-facing option usually touches all of these:
   factory's options interface. Schema `default`s are filled in before the
   factory runs, so derive a default that depends on another option in the
   factory (see `prefix` in `ui-lib`).
-- `GenerateOptions` and its step in `runOverlay()` in `src/api.ts`, plus
-  `featuresFor()` if a policy rule could care about it.
+- `GenerateOptions` in `src/api.ts`. A host's option goes into its step in
+  `runOverlay()`, and into `featuresFor()` if a policy rule could care about
+  it; a plugin's goes into `requested()` and `features()` in its `plugin.ts`.
 - `create-angular-capacitor-workspace/src/args.ts`: the flag, validation that
   fails before `ng new` starts, and `USAGE`.
 - `create-angular-capacitor-workspace/src/index.ts` `ask()`, if interactive
@@ -140,19 +163,50 @@ A user-facing option usually touches all of these:
 - Tests in `create-angular-capacitor-workspace/test/args.spec.ts` and
   `test/schematics.spec.ts`.
 
-### A new schematic
+### A new plugin
+
+A feature that extends the projects a workspace has, rather than creating one.
+
+- `src/plugins/<id>/` with `index.ts`, `schema.json`, `files/` and `plugin.ts`,
+  and an entry in `src/collection.json` whose name is the plugin's `id`
+  (`test/plugins.spec.ts` checks it).
+- Its place in `PLUGINS` (`src/plugins/registry.ts`). The order is the order its
+  edits land in shared places — header controls, root providers, boot scripts —
+  so say why in the comment there.
+- `requested`, `features` and `detect` side by side in `plugin.ts`. `detect`
+  reads a `WorkspaceView`, so the same function answers the schematics and
+  `doctor`. Add the plugin to `EVERYTHING` in `test/plugins.spec.ts`, which
+  checks the two agree.
+- `forProject` if a project generated later needs the per-project half. Return
+  options for the plugin's own schematic; the registry runs it through
+  `schematic()`. Make the schematic idempotent, because it re-runs for every
+  project generated after it.
+- Edit host files only through `src/extend/`. If no extension point fits, add
+  one there, keep its anchor in the host templates, and assert the anchor in
+  the host's "keeps the anchors the plugins extend it through" test in
+  `test/schematics.spec.ts`.
+- A flag in `create` (see [Options and CLI flags](#options-and-cli-flags)).
+- Rows in the package README's schematic table and "Hosts and plugins", in the
+  generated README's "Adding to this workspace" block
+  (`schematics/workspace/files/README.md.template`) and in the root README's
+  "Grow it".
+- Its README section and its house rules from its own schematic, through
+  `appendSection(tree, README_MD, …)` and `appendSection(tree, '/AGENTS.md', …)`.
+- Its own spec, as `test/i18n.spec.ts` and `test/theming.spec.ts` are: it
+  reaches a project generated after it, it is idempotent, and it keeps edits to
+  the files it handed over.
+
+### A new host schematic
 
 - An entry in `src/collection.json`, plus `schema.json`, `index.ts` and `files/`.
-- A step in `runOverlay()`. The order is workspace, ui-lib, app, marketing,
-  codegen, i18n, packages, and the comments there say why.
+- A step in `runOverlay()`. The hosts run first (workspace, ui-lib, app,
+  marketing), then the plugins, and the comments there say why.
+- End it with `extendWithPlugins(name)` if it creates a project.
+- Keep the anchors in `src/extend/` that apply to it, or the plugins skip it.
 - Rows in the package README's schematic table, in the generated README's
-  "Adding to this workspace" block (`schematics/workspace/files/README.md.template`)
-  and in the root README's "Grow it".
-- Per-project wiring has to reach two other groups of projects:
-  - projects generated after it: see `installedPackages()` and `installedI18n()`,
-    called at the end of `app`, `marketing` and `ui-lib`
-  - projects that existed before it: see `adoptExistingApps` and
-    `hookLibraryBuild` in `ui-lib`
+  "Adding to this workspace" block and in the root README's "Grow it".
+- Per-project wiring has to reach the projects that existed before it: see
+  `adoptExistingApps` and `hookLibraryBuild` in `ui-lib`.
 - A rule that compiles but quietly breaks the feature belongs in the generated
   AGENTS.md: `appendSection(tree, '/AGENTS.md', …)` from the schematic that owns
   the feature.
@@ -162,7 +216,8 @@ A user-facing option usually touches all of these:
 Follow the steps in the header of `src/catalog.ts`. Also:
 
 - `appSetup` needs a member in its type and a branch in `wire()` in
-  `schematics/packages`.
+  `plugins/packages`. Per-app edits go through `src/extend/shell.ts`, as the
+  service worker's provider does.
 - Use `requires` when the package's peer names another entry at an exact version.
 - The `summary` has to fit the 80-column `--help` (tested).
 - Update the package README's "Curated packages" table and the create README's
@@ -172,16 +227,21 @@ Follow the steps in the header of `src/catalog.ts`. Also:
 
 ### Feature tokens (policy guards)
 
-Two functions produce them, and they must agree:
+Two sides produce them, and they must agree:
 
-- `featuresFor()` in `src/api.ts` reads the options, at generation.
-- `inferFeatures()` in `src/cli/doctor.ts` reads the tree, for `doctor`,
-  `audit` and `ng add`.
+- At generation, from the options: `featuresFor()` in `src/api.ts` for the
+  hosts, and each plugin's `features()`.
+- From a workspace, for `doctor`, `audit` and `ng add`: `inferFeatures()` in
+  `src/cli/doctor.ts` for the hosts, and each plugin's `detect()`.
+
+A plugin's two are side by side in its `plugin.ts`, and `test/plugins.spec.ts`
+checks them against a generated tree.
 
 Tokens today:
 
-- From both: `app`, `marketing`, `ui-lib`, `storybook`, `codegen`, `i18n`,
-  `e2e:playwright`, `mobile`, `mobile:<platform>`, `pkg:<id>`.
+- Hosts, from both: `app`, `marketing`, `ui-lib`, `storybook`,
+  `e2e:playwright`, `mobile`, `mobile:<platform>`.
+- Plugins, from both: `theming`, `codegen`, `i18n`, `pkg:<id>`.
 - From `inferFeatures()` only: `ssr:server`, `animations`. Generation never
   produces either.
 
@@ -274,28 +334,38 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   `create-angular-capacitor-workspace/src/args.ts`, catalog bullets included
   (_tested_).
 - **Theme storage keys** `<prefix>.theme-mode` and `<prefix>.theme-palette`
-  appear in two places: `ui-lib/files/src/lib/theme/theme.ts.template` and the
-  inline script in `applyThemeBeforePaint` (`schematics/app/index.ts`).
+  appear in two places: `plugins/theming/files/lib/src/lib/theme/theme.ts.template`
+  and the inline script in `applyBeforePaint` (`plugins/theming/index.ts`).
 - **The locale key and negotiation** live in two places: `<prefix>.locale` and
   `initialLocale()` in `i18n/files/lib/src/lib/i18n/translation.ts.template`,
-  and the no-FOUC script in `addNoFoucScript` (`schematics/i18n/index.ts`).
+  and the no-FOUC script in `noFoucScript` (`plugins/i18n/index.ts`).
 - **The shape of the `LOCALES` and `DEFAULT_LOCALE` declarations** in
-  `i18n.tokens.ts.template` is parsed by regex in `readInstalledLocales`. If the
-  shape changes, projects generated later silently get no i18n.
-- **Marketing templates and the app shell** hold exact strings that the i18n
-  schematic finds and replaces: `siteUrl` in `site.ts`, lines in `page-meta.ts`,
-  the TestBed providers lines in the specs, `<a routerLink="/">{{ siteName }}</a>`,
-  `<prefix-theme-toggle />`, and the site's `build`/`postbuild` commands. _Tested_ by
-  `i18n.spec.ts`, since the patches throw by name.
+  `i18n.tokens.ts.template` is parsed by regex in `installedLocales`
+  (`plugins/i18n/plugin.ts`). If the shape changes, projects generated later
+  silently get no i18n.
+- **The anchors of the extension points** live in the host templates:
+  `</header>` in each shell's `app.html`, `providers: [` in its `app.spec.ts`,
+  `</head>` in `index.html`, the app starter page as `<section>`s at column 0
+  ending in "Next", `PAGE_META_EXTENSIONS` in the site's `seo/page-meta.ts` and
+  the `PageMetaStrategy` import beside it in `app.config.ts`, and `siteBuild()`
+  as the site's `build`/`postbuild`. A plugin skips a header or starter page it
+  cannot find, so a lost anchor is silent there. _Tested_ by the "keeps the
+  anchors the plugins extend it through" tests in `schematics.spec.ts`.
+- **The order of `PLUGINS`** is the order of the controls in an app's header,
+  the providers in its `app.config.ts` and the scripts in its `<head>`
+  (_tested_ in `plugins.spec.ts`, against a workspace grown in another order).
 - **`EXPECTED_PROVIDERS`** in `schematics/marketing/index.ts` must match
   `marketing/files/site/src/app/app.config.ts.template` and Angular's SSR output
   (_tested_).
 - **The postbuild scripts exist twice**: single-locale in
-  `marketing/files/scripts/` and locale-aware in `i18n/files/scripts/`. A check
-  added to one belongs in the other.
-- **`PALETTES` in `theme.ts` and `$palettes` in `_ref.scss`** must list the same
-  palettes. Only `check:contrast` in a generated workspace enforces it.
-- **The `ngsw-config.json` content** in `schematics/packages/index.ts` must match
+  `marketing/files/scripts/` and locale-aware in `plugins/i18n/files/scripts/`.
+  A check added to one belongs in the other.
+- **The palettes are listed three times**: `$palettes` in the `ui-lib`
+  template's `_ref.scss`, the palette toolbar in its `.storybook/preview.ts`,
+  and `PALETTES` in the theming plugin's `theme.ts`. `check:contrast` in a
+  generated workspace compares the first and last when the plugin is there
+  (_tested_ in `theming.spec.ts`); the toolbar is checked by eye.
+- **The `ngsw-config.json` content** in `plugins/packages/index.ts` must match
   Angular's own default (_tested_).
 - **A migration's `version`** must be the release whose CHANGELOG section first
   names it in backticks (_tested_). `npm run bump` sets it.
@@ -336,12 +406,15 @@ None of these is caught by the compiler. The ones marked _tested_ fail
     `!tree.exists(path)` filter)
   - a shared file that gains an entry per project adds the missing entry and
     leaves the rest alone (`addOrvalEntries`, `appendToScript`)
+- **Plugins go through `src/extend/`.** A plugin never reads or rewrites a line
+  of a host template it expects to be there, and a host never imports a plugin.
+  See [Hosts and plugins](#hosts-and-plugins).
 - **Install once, after the gate.** Never queue a `NodePackageInstallTask`, and
   never delegate to a schematic that calls `addDependency`; both install an
   unaudited tree.
 - **`url()` resolves against the executing schematic.** Reuse another
   schematic's templates through `schematic('<name>', …)`, not by calling its
-  rules (see `installedI18n`).
+  rules (see `extendWithPlugins`).
 - **Templates** are `files/**/*.template` (EJS). `__dot__` becomes `.`, and
   `__name__` path segments are template variables. They are excluded from `tsc`
   and from prettier (`requirePragma`), so only the e2e matrix ever compiles them.
@@ -372,27 +445,29 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 `dist/collection.json` and run against real `@schematics/angular` output
 (`baseWorkspace()`), never a hand-built tree.
 
-| Changed                                     | Test in                                                                 |
-| ------------------------------------------- | ----------------------------------------------------------------------- |
-| policy entries, `applyPolicy`, version pins | `test/policy.spec.ts`                                                   |
-| `doctor`, `inferFeatures`                   | `test/doctor.spec.ts`                                                   |
-| gate, acceptances in `audit`                | `test/gate.spec.ts`                                                     |
-| catalog                                     | `test/catalog.spec.ts`, plus `test/schematics.spec.ts` for the wiring   |
-| a schematic                                 | `test/schematics.spec.ts`; i18n in `test/i18n.spec.ts`                  |
-| manifest versions, licence copies           | `test/release-line.spec.ts`                                             |
-| a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts` |
-| CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                              |
-| the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                   |
+| Changed                                     | Test in                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| policy entries, `applyPolicy`, version pins | `test/policy.spec.ts`                                                                                        |
+| `doctor`, `inferFeatures`                   | `test/doctor.spec.ts`                                                                                        |
+| gate, acceptances in `audit`                | `test/gate.spec.ts`                                                                                          |
+| catalog                                     | `test/catalog.spec.ts`, plus `test/schematics.spec.ts` for the wiring                                        |
+| a host schematic, its extension anchors     | `test/schematics.spec.ts`                                                                                    |
+| a plugin                                    | its own spec: `test/i18n.spec.ts`, `test/theming.spec.ts`; codegen and packages in `test/schematics.spec.ts` |
+| the registry, `src/extend/`                 | `test/plugins.spec.ts`                                                                                       |
+| manifest versions, licence copies           | `test/release-line.spec.ts`                                                                                  |
+| a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts`                                      |
+| CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                                                                   |
+| the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                                                        |
 
 Templates are compiled only by the matrix, which uses the live registry and
 takes minutes per row:
 
-| Row         | Compiles                                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------ |
-| `minimal`   | one app (runs on every PR)                                                                       |
-| `full`      | mobile, marketing, ui-lib, codegen, i18n (en, fr, ar), `--with aria`, Storybook, every e2e suite |
-| `multi-app` | two apps, two sites, ports, per-project scripts                                                  |
-| `lib-only`  | the library on its own, which is what `ng add` produces                                          |
+| Row         | Compiles                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------- |
+| `minimal`   | one app (runs on every PR)                                                                                |
+| `full`      | mobile, marketing, ui-lib, theming, codegen, i18n (en, fr, ar), `--with aria`, Storybook, every e2e suite |
+| `multi-app` | two apps, two sites, ports, per-project scripts, a design system without theming                          |
+| `lib-only`  | the library on its own, with theming, which is what `ng add` produces                                     |
 
 Run `node e2e/matrix.mjs --row <row>` for the rows your change touches. To see a
 change in a real workspace, run `npm run create -- ../ws <flags>`.
@@ -403,6 +478,7 @@ change in a real workspace, run `npm run create -- ../ws <flags>`.
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | a flag or a question                   | `USAGE`, `ask()`, the create README's options, examples in the root README                                                                                   |
 | a schematic or its options             | the package README, the generated README's "Adding to this workspace", the root README's "Grow it"                                                           |
+| the plugins or how they extend hosts   | the package README's "Hosts and plugins", the root README's "Grow it" and "Layout", the generated README's "Adding to this workspace"                        |
 | the catalog                            | the package README's "Curated packages", the create README's `--with` bullets                                                                                |
 | a policy entry the docs cite           | the root README's remedy ladder and "What pruning cannot fix"                                                                                                |
 | the upgrade path                       | the root README's "Keep it audit-clean", the package README's `doctor`, the generated README's "Dependency policy", the generated AGENTS.md's "Dependencies" |

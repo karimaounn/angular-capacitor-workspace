@@ -58,6 +58,22 @@ describe('--ui-lib', () => {
   });
 });
 
+describe('--no-theming', () => {
+  it('turns theme switching off for the design system', () => {
+    expect(parseArguments(['ws', '--ui-lib', '--no-theming']).options.theming).toBe(false);
+  });
+
+  it('leaves the default to the generator when not given', () => {
+    expect(parseArguments(['ws', '--ui-lib']).options).not.toHaveProperty('theming');
+    expect(parseArguments(['ws', '--ui-lib', '--theming']).options).not.toHaveProperty('theming');
+  });
+
+  it('refuses it without a design system, where there is nothing to theme', () => {
+    expect(() => parseArguments(['ws', '--app', 'shop', '--no-theming'])).toThrow(ArgError);
+    expect(() => parseArguments(['ws', '--app', 'shop', '--no-theming'])).toThrow(/--ui-lib/);
+  });
+});
+
 describe('--marketing', () => {
   it('takes the flag repeated, one site per name', () => {
     expect(

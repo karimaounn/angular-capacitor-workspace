@@ -4,7 +4,13 @@ import { provideRouter, Routes, TitleStrategy } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { SITE_JSON_LD, SITE_NAME, siteUrl } from '../site';
-import { PAGE_LD_ID, PageMetaStrategy, PageSeo } from './page-meta';
+import {
+  PAGE_LD_ID,
+  PAGE_META_EXTENSIONS,
+  PageMetaExtension,
+  PageMetaStrategy,
+  PageSeo,
+} from './page-meta';
 
 @Component({ template: '' })
 class Blank {}
@@ -99,5 +105,43 @@ describe('PageMetaStrategy', () => {
 
     await harness.navigateByUrl('/about');
     expect(graph()).toEqual(SITE_JSON_LD);
+  });
+});
+
+describe('PageMetaStrategy with an extension', () => {
+  afterEach(() => {
+    TestBed.inject(DOCUMENT)
+      .head.querySelectorAll('meta, link, script')
+      .forEach((el) => el.remove());
+  });
+
+  it('lets it change the text and the canonical path, and tells it each page', async () => {
+    const written: string[] = [];
+    const extension: PageMetaExtension = {
+      text: (value) => value.toUpperCase(),
+      servedPath: (path) => `/v2${path}`,
+      written: (path, indexable) => written.push(`${path} ${indexable}`),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        { provide: TitleStrategy, useClass: PageMetaStrategy },
+        { provide: PAGE_META_EXTENSIONS, useValue: extension, multi: true },
+      ],
+    });
+    const doc = TestBed.inject(DOCUMENT);
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/about');
+    expect(doc.title).toBe(`ABOUT | ${SITE_NAME}`);
+    expect(doc.head.querySelector('meta[name="description"]')?.getAttribute('content')).toBe(
+      'ABOUT US.',
+    );
+    expect(doc.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(
+      siteUrl('/v2/about'),
+    );
+
+    await harness.navigateByUrl('/missing');
+    expect(written).toEqual(['/about true', '/missing false']);
   });
 });

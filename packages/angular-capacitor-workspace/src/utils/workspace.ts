@@ -243,37 +243,6 @@ export function titleFromName(name: string): string {
     .join(' ');
 }
 
-/** A design-system library in this workspace: its import name and selector prefix. */
-export interface DesignSystem {
-  name: string;
-  prefix: string;
-}
-
-/**
- * Finds the design-system library, if the workspace has one.
- *
- * Identified by the file that makes it one — `src/styles/index.scss`, the
- * entry point applications `@use` — rather than by name or by position in the
- * project map. A workspace can hold several libraries, and only this one has a
- * token sheet to wire into an application.
- *
- * Detection rather than an option, because both callers need the same answer
- * from different directions: during a full generation the library was created
- * moments ago, and for a bare `ng generate app` it was created months ago by
- * someone who will not think to pass its name.
- */
-export function findDesignSystem(tree: Tree): DesignSystem | undefined {
-  for (const [name, project] of Object.entries(readProjects(tree))) {
-    if (project.projectType !== 'library' || !project.root) {
-      continue;
-    }
-    if (tree.exists(`/${project.root}/src/styles/index.scss`)) {
-      return { name, prefix: project.prefix ?? name.split('/').pop()! };
-    }
-  }
-  return undefined;
-}
-
 /**
  * Points an application's global stylesheet at the design system.
  *

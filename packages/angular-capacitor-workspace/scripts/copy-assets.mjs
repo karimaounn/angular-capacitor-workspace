@@ -2,7 +2,7 @@
 // tsc only emits .js/.d.ts. The schematics runtime also needs collection.json,
 // every schema.json and every template tree under src/**/files/ to sit beside
 // the compiled factories, at the same relative paths.
-import { cp, mkdir, readdir, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +22,25 @@ async function* walk(dir) {
     if (entry.isDirectory()) yield* walk(full);
     else yield full;
   }
+}
+
+// An asset that has left src/ has to leave dist/ too. The schematics read
+// their templates by directory, so a template moved to another schematic would
+// otherwise still be found where it used to be, and a test of the move would
+// pass against the copy left behind.
+let removed = 0;
+try {
+  for await (const file of walk(out)) {
+    if (!isAsset(join(src, relative(out, file)))) continue;
+    try {
+      await stat(join(src, relative(out, file)));
+    } catch {
+      await rm(file);
+      removed++;
+    }
+  }
+} catch {
+  // No dist/ yet: nothing to remove.
 }
 
 let copied = 0;
@@ -44,4 +63,6 @@ try {
   // CLI not built yet (partial build) — not fatal for asset copying.
 }
 
-console.log(`copy-assets: ${copied} file(s) -> dist/`);
+console.log(
+  `copy-assets: ${copied} file(s) -> dist/${removed ? `, ${removed} stale removed` : ''}`,
+);

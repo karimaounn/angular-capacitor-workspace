@@ -30,7 +30,9 @@
  * `multi-app` proves per-project ports and script naming survive more than one
  * app *and* more than one marketing site — two sites are two sets of canonical
  * URLs, a shared postbuild script and two entries in `npm run build` — and that
- * a site generated without an origin still builds; `lib-only`
+ * a site generated without an origin still builds — with `--no-theming`, so
+ * it is also the row that compiles a design system's starter shell with no
+ * theme toggle in it; `lib-only`
  * proves the library stands alone, which is what `ng add` into an existing
  * workspace produces.
  */
@@ -87,6 +89,7 @@ export const ROWS = {
       'https://docs.example',
       '--ui-lib',
       'ui',
+      '--no-theming',
       '--e2e',
       'playwright',
     ],

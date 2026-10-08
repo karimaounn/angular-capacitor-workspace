@@ -3,10 +3,11 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { NodeWorkflow } from '@angular-devkit/schematics/tools';
-import { packageFeature, resolveCatalog, withRequired } from './catalog';
+import { resolveCatalog } from './catalog';
 import { runGate, type GateResult, type Severity } from './gate';
 import { collectDeprecations, type Deprecation } from './gate/deprecations';
 import { formatDecisions } from './gate/report';
+import { requestedFeatures, requestedPlugins } from './plugins/registry';
 import { applyPolicy, type Manifest } from './policy/apply';
 import { POLICY } from './policy/advisories';
 import type { Policy, PolicyContext, PolicyDecision } from './policy/types';
@@ -45,6 +46,13 @@ export interface GenerateOptions {
   uiLib?: string | false;
   /** Selector prefix for the design-system components. Defaults to `uiLib`. */
   uiLibPrefix?: string;
+  /**
+   * Theme switching — a colour-scheme and palette toggle in every app's header,
+   * remembered and applied before the first paint. On by default whenever there
+   * is a design system; `false` leaves the apps following the system colour
+   * scheme. Ignored without one.
+   */
+  theming?: boolean;
   codegen?: 'orval' | false;
   e2e?: 'playwright' | false;
   /**
@@ -108,9 +116,12 @@ export class GenerateError extends Error {
  * has to answer "is this package legitimate here" before the package is
  * installed. The builder half of a guard is checked against angular.json
  * separately, once there is one.
+ *
+ * The hosts' tokens are here; each plugin's come from its own definition in
+ * `src/plugins/`, beside the `detect` that `doctor` reads them back with.
  */
 export function featuresFor(options: GenerateOptions): Set<string> {
-  const features = new Set<string>();
+  const features = requestedFeatures(options);
   const apps = options.apps ?? [];
 
   if (apps.length > 0) features.add('app');
@@ -121,18 +132,7 @@ export function featuresFor(options: GenerateOptions): Set<string> {
     // devkit's core and architect packages.
     features.add('storybook');
   }
-  if (options.codegen) features.add('codegen');
-  if ((options.i18n ?? []).length > 0) features.add('i18n');
   if (options.e2e) features.add(`e2e:${options.e2e}`);
-
-  // One token per catalog package the request expands to, so a policy remedy can
-  // be scoped to the workspaces that carry it — the way `onlyWhen: ['codegen']`
-  // scopes the undici override to the workspaces that have orval. Expanded
-  // rather than taken literally: `--with aria` installs the CDK too, and a
-  // remedy scoped to `pkg:cdk` has to reach it.
-  for (const id of withRequired(options.packages ?? [])) {
-    features.add(packageFeature(id));
-  }
 
   for (const app of apps) {
     for (const platform of app.mobile ?? []) {
@@ -379,30 +379,9 @@ async function runOverlay(
     });
   }
 
-  if (options.codegen) {
-    steps.push({
-      schematic: 'codegen',
-      options: { apps: apps.map((app) => app.name) },
-    });
-  }
-
-  // After the apps and the library it wires into, and before `packages`, which
-  // re-applies per-app wiring of its own.
-  if ((options.i18n ?? []).length > 0) {
-    steps.push({
-      schematic: 'i18n',
-      options: {
-        locales: options.i18n,
-        ...(options.defaultLocale ? { defaultLocale: options.defaultLocale } : {}),
-      },
-    });
-  }
-
-  // Last, so the libraries a catalog package declares itself a peer of already
-  // exist. Nothing else depends on it having run.
-  if ((options.packages ?? []).length > 0) {
-    steps.push({ schematic: 'packages', options: { packages: options.packages } });
-  }
+  // Then the plugins, after every project they extend exists, in the
+  // registry's order. See src/plugins/registry.ts.
+  steps.push(...requestedPlugins(options));
 
   for (const step of steps) {
     await withSpinnerAsync(log, `Running ${step.schematic}…`, () =>

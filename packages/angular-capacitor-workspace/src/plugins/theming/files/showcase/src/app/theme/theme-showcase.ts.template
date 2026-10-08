@@ -1,0 +1,25 @@
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { PALETTES, ThemeService } from '<%= importName %>';
+
+/**
+ * The theme showcase, a section of the starter screen.
+ *
+ * Here to be deleted, like the page it sits on. It reads back what the toggle
+ * in the header has chosen. The toggle writes two attributes on `<html>`, every
+ * colour on the page is a custom property keyed off them, and so the whole page
+ * restyles without a component re-rendering — this one re-renders only because
+ * its text names the choice.
+ */
+@Component({
+  selector: '<%= prefix %>-theme-showcase',
+  templateUrl: './theme-showcase.html',
+  styleUrl: './theme-showcase.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class ThemeShowcase {
+  protected readonly theme = inject(ThemeService);
+
+  protected readonly paletteLabel = computed(
+    () => PALETTES.find((option) => option.id === this.theme.palette())?.label ?? '',
+  );
+}

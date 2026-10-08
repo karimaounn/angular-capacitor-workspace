@@ -142,6 +142,13 @@ async function ask(
       uiLibPrefix = answer === uiLib ? undefined : answer;
     }
 
+    // On by default, as it is for the flag: the toggle is the most visible
+    // thing the design system does. Off leaves the tokens following the
+    // system's light or dark, with nothing in the header.
+    const theming = uiLib
+      ? await prompter.confirm('Let visitors switch theme (light, dark and palettes)?', true)
+      : false;
+
     // Asked the way the applications are, and for the same reason: a product
     // site and a docs site are one workspace's worth of pages sharing a design
     // system, and a question that only ever takes one answer sends the second
@@ -225,6 +232,7 @@ async function ask(
       codegen,
       packages,
       auditLevel,
+      ...(uiLib && !theming ? { theming: false } : {}),
       ...(i18n && i18n.length > 0 ? { i18n } : {}),
     };
   } finally {

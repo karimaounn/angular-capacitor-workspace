@@ -52,6 +52,7 @@ whether or not this invocation knows about it.
 ng generate angular-capacitor-workspace:app shop --mobile android
 ng generate angular-capacitor-workspace:marketing site --origin https://example.org
 ng generate angular-capacitor-workspace:ui-lib ui --prefix acme
+ng generate angular-capacitor-workspace:theming
 ng generate angular-capacitor-workspace:mobile shop --platforms ios
 ng generate angular-capacitor-workspace:codegen
 ng generate angular-capacitor-workspace:i18n --locales en,fr,ar
@@ -63,7 +64,8 @@ ng generate angular-capacitor-workspace:packages cdk
 | `workspace` | tsconfig paths, Playwright base, house rules, README, CI workflow                                        |
 | `app`       | a client-rendered app at `projects/<name>/web`, a starter shell, room for a `mobile/` sibling            |
 | `marketing` | a prerendered static site with per-page SEO tags, a 404 page and postbuild checks                        |
-| `ui-lib`    | ng-packagr, Storybook (Vite), browser-mode Vitest, SCSS layering, themes, contrast checker               |
+| `ui-lib`    | ng-packagr, Storybook (Vite), browser-mode Vitest, SCSS layering, palettes in light and dark, contrast   |
+| `theming`   | `ThemeService`, a colour-scheme and palette toggle in every app's header, applied before the first paint |
 | `mobile`    | a Capacitor sibling registered as its own npm workspace member                                           |
 | `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point                         |
 | `i18n`      | runtime translation in the design system, catalogs per app, one prerendered build per locale per site    |
@@ -77,6 +79,21 @@ option, including ones not shown above: `--prefix` and `--port` on `app` and
 Each schematic adds a row to the scripts table in the workspace README for
 every script it creates, so that table lists what the workspace can run.
 
+### Hosts and plugins
+
+`app`, `marketing` and `ui-lib` are hosts: they create projects. `theming`,
+`codegen`, `i18n` and `packages` are plugins: they extend the projects that
+exist, and every project generated after them. Add translation to a workspace
+with three apps and all three are translated; generate a fourth afterwards and
+it comes up translated too, the same as if it had been there first.
+
+A plugin edits a host's files only through the extension points the host
+declares — a control at the end of the shell's `<header>`, a provider in
+`app.config.ts`, a script before the first paint, a section on the starter
+page, an extension of a site's `PageMetaStrategy` — and never by finding a line
+of a template it expects to be there. A shell you have rewritten without a
+`<header>` gets no controls dropped into it.
+
 ### Theming
 
 A workspace with a `ui-lib` gets light, dark and three palettes, and every app
@@ -85,10 +102,15 @@ generated after it opens on a starter screen that demonstrates them.
 The mechanism is two attributes on `<html>` — `data-theme` (`light`, `dark`, or
 absent for "follow the OS") and `data-palette`. Every combination is declared in
 the stylesheet up front, so switching either is an attribute write: no
-re-render, and no component that has to know a theme exists. `ThemeService`
-owns those attributes and the stored preference; `<ui-theme-toggle>` is the
-control, and each app's `index.html` carries a small inline script that applies
-the stored value before the first paint.
+re-render, and no component that has to know a theme exists. Storybook's
+toolbar drives them for the stories.
+
+The `theming` plugin lets visitors choose, and `create` adds it with the
+library unless you pass `--no-theming`. `ThemeService` owns the two attributes
+and the stored preference; `<ui-theme-toggle>` is the control, in every app's
+header; and each app's `index.html` carries a small inline script that applies
+the stored value before the first paint. Without it, apps follow the system
+colour scheme and nothing is stored.
 
 The colour that travels with a palette is `--accent`, which is deliberately not
 `--info`: a theme should change the brand, not restyle informational messages.
@@ -186,7 +208,10 @@ renegotiates in the browser.
 `<html lang>`, their own canonical, and hreflang alternates naming each other
 plus `x-default`. Each route's `data.seo` holds message keys rather than
 literals, so the `<title>` and description a crawler reads are in that page's
-language too — the most visible thing a search result can get wrong. The header's language links are real `<a href>`s for the same
+language too — the most visible thing a search result can get wrong. All of
+that reaches the head through `PAGE_META_EXTENSIONS`, the extension point the
+marketing template's `PageMetaStrategy` reads, so the strategy, `siteUrl` and
+their specs stay the files a site in one language has. The header's language links are real `<a href>`s for the same
 reason: a crawler follows them, and a visitor can share the page in the language
 they read it in. One `sitemap.xml` at the output root covers every language,
 each URL carrying `xhtml:link` alternates.
@@ -211,11 +236,11 @@ every build until one exists.
 ### The translation showcase
 
 Every app generated with `--i18n` opens on a starter screen that demonstrates
-the whole layer beside the theming: a plain key, a `{placeholder}`, a plural you
-can step through zero, one and many, numbers, currency, dates and relative time,
-and a live readout of the writing direction. The language picker sits in the
-header next to the theme toggle. The prerendered site carries the same section,
-with its language links in place of the picker.
+the whole layer: a plain key, a `{placeholder}`, a plural you can step through
+zero, one and many, numbers, currency, dates and relative time, and a live
+readout of the writing direction. The language picker sits at the end of the
+header, after the theme toggle when there is one. The prerendered site carries
+the same section, with its language links in place of the picker.
 
 Both are in `src/app/i18n/i18n-showcase.*`, and both are there to be deleted —
 together with everything under `showcase.` in the catalogs.

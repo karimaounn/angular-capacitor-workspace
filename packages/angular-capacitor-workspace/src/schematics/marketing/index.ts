@@ -21,13 +21,14 @@ import {
   aggregateTests,
   ANGULAR_JSON,
   appendSection,
-  findDesignSystem,
   importDesignSystemStyles,
   nextFreePort,
   PACKAGE_JSON,
   readProject,
   setDevServerPort,
 } from '../../utils/workspace';
+import { findDesignSystem } from '../../extend/design-system';
+import { siteBuild } from '../../extend/site';
 import {
   addProjectScripts,
   addToBuild,
@@ -37,9 +38,8 @@ import {
   hookLibraryBuild,
   projectScripts,
 } from '../../utils/project-scripts';
+import { extendWithPlugins } from '../../plugins/registry';
 import { e2eScripts } from '../app';
-import { installedI18n } from '../i18n';
-import { installedPackages } from '../packages';
 
 export interface MarketingOptions {
   name: string;
@@ -121,12 +121,10 @@ export function marketing(options: MarketingOptions): Rule {
       // after them.
       (host: Tree) => hookLibraryBuild(host, name),
 
-      // See the app schematic: a site generated after `--i18n`, or after a
-      // catalog package was added, still needs their per-project halves. i18n
-      // first, so the providers land in the order a full generation produces —
-      // and because for a site it is also the per-locale build configurations.
-      installedI18n(name),
-      installedPackages(),
+      // Last, as in the app schematic: a site generated after `--i18n`, or
+      // after a catalog package was added, still needs their per-project
+      // halves — for translation, that is the per-locale build configurations.
+      extendWithPlugins(name),
     ]);
   };
 }
@@ -365,11 +363,7 @@ function postbuildChecks(name: string): Rule {
       mergeWith(scripts),
       (host: Tree) => {
         const own = projectScripts(host, name);
-        addProjectScripts(host, own, {
-          postbuild:
-            `node ${own.rootPath('scripts/generate-sitemap.mjs')} ${name} && ` +
-            `node ${own.rootPath('scripts/verify-prerender.mjs')} ${name}`,
-        });
+        addProjectScripts(host, own, { postbuild: siteBuild(own, name).postbuild });
       },
     ]);
   };
@@ -382,7 +376,7 @@ function marketingScripts(name: string): Rule {
     addProjectScripts(tree, scripts, {
       start: `ng serve ${name}`,
       watch: `ng build ${name} --watch --configuration development`,
-      build: `ng build ${name}`,
+      build: siteBuild(scripts, name).build,
       test: `ng test ${name}`,
     });
     documentProjectScripts(tree, scripts, {

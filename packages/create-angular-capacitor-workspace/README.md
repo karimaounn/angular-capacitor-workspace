@@ -48,6 +48,8 @@ npm create angular-capacitor-workspace@latest <directory> -- [options]
                           https://example.com, which its build warns about)
   --ui-lib [name]         design-system library skeleton (default: ui)
   --ui-lib-prefix <p>     selector prefix for its components (default: its name)
+  --no-theming            leave out the theme toggle; apps follow the system's
+                          light or dark (theme switching is on with --ui-lib)
   --codegen orval         OpenAPI client generation
   --e2e playwright        end-to-end test wiring
   --i18n <locales>        runtime translation for these BCP-47 tags

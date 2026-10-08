@@ -1,27 +1,16 @@
 import { chain, SchematicsException, type Rule, type Tree } from '@angular-devkit/schematics';
-import {
-  installedCatalogIds,
-  resolveCatalog,
-  type CatalogEntry,
-  type DependencyBlock,
-} from '../../catalog';
-import {
-  addFrameworkImport,
-  addNamedImport,
-  appendProvider,
-  declareBeforeConfig,
-} from '../../utils/ts-edit';
-import { JsonFile, updateJson } from '../../utils/json-file';
+import { resolveCatalog, type CatalogEntry, type DependencyBlock } from '../../catalog';
+import { addRootProvider } from '../../extend/shell';
+import { updateJson } from '../../utils/json-file';
 import {
   addDependencies,
   appendSection,
   ANGULAR_JSON,
-  PACKAGE_JSON,
   prependStyles,
   README_MD,
   readProjects,
-  type AngularProject,
 } from '../../utils/workspace';
+import { isPrerendered } from '../../utils/workspace-view';
 
 export interface PackagesOptions {
   /** Catalog ids — see src/catalog.ts. */
@@ -31,7 +20,10 @@ export interface PackagesOptions {
 /**
  * Wires curated packages into the workspace.
  *
- * Invoked by the generator for `--with`, and by hand afterwards:
+ * A plugin (see `plugin.ts`): every project generated later gets the
+ * per-project half of each package the workspace carries — an app's
+ * stylesheets and service worker, a library's peers. Invoked by the generator
+ * for `--with`, and by hand afterwards:
  *
  *     ng generate angular-capacitor-workspace:packages cdk
  *
@@ -52,40 +44,6 @@ export function packages(options: PackagesOptions = {}): Rule {
     }
 
     return chain(entries.map((entry) => wire(entry)));
-  };
-}
-
-/**
- * Re-applies every catalog package the workspace already carries.
- *
- * `packages` is a one-shot over the projects that exist when it runs, so a
- * project generated afterwards comes up without the per-project half of an
- * entry — an app missing the stylesheet every other app has, a library missing
- * a peer it needs before it can publish. Nothing reports either; the app just
- * renders wrong and the library just resolves by accident of hoisting.
- *
- * So the app, marketing and library schematics end by asking what the manifest
- * already carries and re-running it. This is the same reasoning as
- * `addStyleIncludePath`, which is applied to every app whether or not a library
- * exists yet: the cheap unconditional pass is what keeps the order in which
- * someone generated their projects from mattering.
- *
- * Idempotent, because `wire` is — re-running it over projects that already have
- * everything is a no-op, and during initial generation the manifest is still
- * bare when the apps are created, so this does nothing until `packages` itself
- * runs last.
- */
-export function installedPackages(): Rule {
-  return (tree: Tree) => {
-    if (!tree.exists(PACKAGE_JSON)) {
-      return;
-    }
-    const manifest = new JsonFile(tree, PACKAGE_JSON);
-    const deps = {
-      ...manifest.get<Record<string, unknown>>(['dependencies']),
-      ...manifest.get<Record<string, unknown>>(['devDependencies']),
-    };
-    return packages({ packages: installedCatalogIds(deps) });
   };
 }
 
@@ -263,9 +221,8 @@ const SERVICE_WORKER_PROVIDER = `provideServiceWorker('ngsw-worker.js', {
  * workflow runs before the gate has resolved and audited a lockfile — the one
  * ordering this generator exists to enforce. Its schema has no `skipInstall`.
  *
- * Idempotent at each of the three steps, so the re-application in
- * `installedPackages` reaches an app generated later without disturbing one
- * that was already wired.
+ * Idempotent at each of the three steps, so the plugin's `forProject` reaches
+ * an app generated later without disturbing one that was already wired.
  */
 function wireServiceWorker(tree: Tree): void {
   if (!tree.exists(ANGULAR_JSON)) {
@@ -273,40 +230,38 @@ function wireServiceWorker(tree: Tree): void {
   }
 
   for (const [name, project] of Object.entries(readProjects(tree))) {
+    // A prerendered site does not get one by default. Not a technical
+    // limitation — it works there — but the wrong default for what a marketing
+    // site is for. Its value is being current and being crawlable, and a
+    // worker helps with neither: crawlers do not run one, and a returning
+    // visitor keeps getting the previous deploy until the worker has fetched
+    // the new version and they navigate again. A price, a launch date or a
+    // correction is the worst thing to serve a week late. It also only half
+    // works: the default asset group prefetches `/index.html` and the hashed
+    // bundles, not the per-route HTML a prerender writes, so a cached
+    // navigation loses the prerendered document that was the point of
+    // prerendering. And the site is usually behind a CDN already doing the
+    // caching, without the staleness.
+    //
+    // A docs site is the case where it does pay — offline reading, instant
+    // repeat navigation — so the README section says how to add it to one
+    // site. Off is the safer default of the two: it fails as an optimisation
+    // nobody turned on, where on fails as stale copy nobody noticed.
     if (project.projectType !== 'application' || !project.root || isPrerendered(project)) {
       continue;
     }
     writeNgswConfig(tree, project.root);
     enableServiceWorkerBuild(tree, name, project.root);
-    registerServiceWorker(tree, name, project.root);
+    addRootProvider(tree, name, {
+      // Keyed on the symbol, so an app someone has already wired by hand — or
+      // by `ng add @angular/pwa` — is left exactly as it is.
+      symbol: 'provideServiceWorker',
+      expression: SERVICE_WORKER_PROVIDER,
+      named: [{ symbol: 'isDevMode', from: '@angular/core' }],
+      imports: ["import { provideServiceWorker } from '@angular/service-worker';"],
+      declaration: NATIVE_SHELL_CONST,
+    });
   }
-}
-
-/**
- * A prerendered site, which does not get a service worker by default.
- *
- * Not a technical limitation — it works there — but the wrong default for what a
- * marketing site is for. Its value is being current and being crawlable, and a
- * worker helps with neither: crawlers do not run one, and a returning visitor
- * keeps getting the previous deploy until the worker has fetched the new version
- * and they navigate again. A price, a launch date or a correction is the worst
- * thing to serve a week late. It also only half works: the default asset group
- * prefetches `/index.html` and the hashed bundles, not the per-route HTML a
- * prerender writes, so a cached navigation loses the prerendered document that
- * was the point of prerendering. And the site is usually behind a CDN already
- * doing the caching, without the staleness.
- *
- * A docs site is the case where it does pay — offline reading, instant repeat
- * navigation — so the README section says how to add it to one site. Off is the
- * safer default of the two: it fails as an optimisation nobody turned on, where
- * on fails as stale copy nobody noticed.
- *
- * `outputMode: 'static'` is the same signal `inferFeatures` reads to recognise a
- * marketing site, rather than a name or a path this schematic would have to be
- * told about.
- */
-function isPrerendered(project: AngularProject): boolean {
-  return project.architect?.['build']?.options?.['outputMode'] === 'static';
 }
 
 /**
@@ -389,40 +344,4 @@ function enableServiceWorkerBuild(tree: Tree, name: string, root: string): void 
       file.modify(option, `${root}/${NGSW_CONFIG}`);
     }
   });
-}
-
-/**
- * Adds `provideServiceWorker` to the application's root providers.
- *
- * String surgery rather than the TypeScript AST: `typescript` is not a
- * dependency of this package, and reaching for the copy that
- * `@schematics/angular` happens to hoist is the accident this workspace refuses
- * everywhere else. The shapes it has to handle are the two `app.config.ts`
- * files this collection produces — Angular's, and the marketing template's —
- * and it fails by name rather than guessing when it meets a third.
- */
-function registerServiceWorker(tree: Tree, name: string, root: string): void {
-  const path = `/${root}/src/app/app.config.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(
-      `Expected application "${name}" to have ${path}, which the Angular ` +
-        `application schematic writes for a standalone app.`,
-    );
-  }
-
-  // The whole rule is keyed off this one symbol, so an app someone has already
-  // wired by hand — or by `ng add @angular/pwa` — is left exactly as it is.
-  if (source.includes('provideServiceWorker')) {
-    return;
-  }
-
-  let next = addNamedImport(source, path, '@angular/core', 'isDevMode');
-  next = addFrameworkImport(
-    next,
-    "import { provideServiceWorker } from '@angular/service-worker';",
-  );
-  next = declareBeforeConfig(next, path, NATIVE_SHELL_CONST);
-  next = appendProvider(next, path, SERVICE_WORKER_PROVIDER);
-  tree.overwrite(path, next);
 }

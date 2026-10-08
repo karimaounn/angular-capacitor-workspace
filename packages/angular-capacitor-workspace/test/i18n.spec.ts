@@ -349,12 +349,14 @@ describe('i18n', () => {
     expect(spec).toContain("import { TRANSLATION_LOADER } from 'ui'");
     expect(spec).toContain('{ provide: TRANSLATION_LOADER, useValue: () => ({}) }');
 
-    const shell = tree.readContent('/projects/shop/web/src/app/app.html');
-    expect(shell).toContain('<ui-language-picker />');
-    // Beside the theme toggle, the other control that restyles the whole page.
-    expect(shell.indexOf('<ui-language-picker />')).toBeGreaterThan(
-      shell.indexOf('<ui-theme-toggle />'),
+    // In the header, through the shell's extension point rather than beside a
+    // line of the template it would have to recognise.
+    expect(tree.readContent('/projects/shop/web/src/app/app.html')).toMatch(
+      /<header>[\s\S]*<ui-language-picker \/>\n<\/header>/,
     );
+    // Above the page's closing section, which says what to do next.
+    const html = tree.readContent('/projects/shop/web/src/app/pages/home.page.html');
+    expect(html.indexOf('<app-i18n-showcase />')).toBeLessThan(html.indexOf('next-heading'));
   });
 
   it('showcases every kind of lookup the layer does', () => {
@@ -391,8 +393,7 @@ describe('i18n', () => {
       withE2e = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, site);
     });
 
-    it('covers the app, beside the theme suite that was already there', () => {
-      expect(withE2e.exists('/projects/shop/web/e2e/theme.spec.ts')).toBe(true);
+    it('covers the app', () => {
       expect(withE2e.exists('/projects/shop/web/e2e/translation.spec.ts')).toBe(true);
 
       const spec = withE2e.readContent('/projects/shop/web/e2e/translation.spec.ts');
@@ -401,12 +402,13 @@ describe('i18n', () => {
       expect(spec).toContain("page.route('**/main*.js', (route) => route.abort())");
     });
 
-    it('retargets the site suite that predates it', () => {
-      // `site.spec.ts` asserts the home page's canonical is `/`. Once the site
-      // is built once per language it is `/en/`, under `ng serve` too.
+    it('leaves the site suite alone, which holds in every language', () => {
+      // Its canonical check asks for the root of whatever the site is served
+      // under, which is `/en/` once it is built per language, under `ng serve`
+      // too. Nothing to rewrite.
       const spec = withE2e.readContent('/projects/site/web/e2e/site.spec.ts');
-      expect(spec).toContain("expect(new URL(canonical!).pathname).toBe('/en/')");
-      expect(spec).not.toContain("expect(new URL(canonical!).pathname).toBe('/')");
+      expect(spec).toContain('expect(new URL(canonical!).pathname).toMatch(/\\/$/);');
+      expect(spec).not.toContain("toBe('/en/')");
     });
 
     it('covers the site, including that the tokens reach it', () => {
@@ -451,24 +453,34 @@ describe('i18n', () => {
       expectImportedSymbolsExist(site);
     });
 
-    it('keeps the unit specs it breaks green', () => {
+    it('keeps the unit specs green', () => {
       // A generator that turns a green suite red is one nobody trusts the next
-      // time it edits something. Each of these asserted on behaviour this
-      // schematic changes.
+      // time it edits something. The shell's TestBed is the one whose subject
+      // now reaches TranslationService, through the locale links in its header.
+      const shell = site.readContent('/projects/site/web/src/app/app.spec.ts');
+      expect(shell).toContain("import { TRANSLATION_LOADER } from 'ui'");
+      expect(shell).toContain('{ provide: TRANSLATION_LOADER, useValue: () => ({}) }');
+      expect(site.exists('/projects/site/web/src/app/i18n/locale-url.spec.ts')).toBe(true);
+    });
 
-      // Two TestBeds whose subjects now reach TranslationService: the strategy
-      // to translate each route's title, the shell through its locale links.
-      for (const spec of ['seo/page-meta.spec.ts', 'app.spec.ts']) {
-        const source = site.readContent(`/projects/site/web/src/app/${spec}`);
-        expect(source, spec).toContain("import { TRANSLATION_LOADER } from 'ui'");
-        expect(source, spec).toContain('{ provide: TRANSLATION_LOADER, useValue: () => ({}) }');
+    it('extends the head through PAGE_META_EXTENSIONS instead of editing the site', async () => {
+      // The strategy, `siteUrl` and their specs are the files the marketing
+      // schematic wrote, byte for byte: everything translation changes about
+      // the head comes in through the strategy's own extension point.
+      const plain = await workspaceWithSite();
+      for (const file of ['seo/page-meta.ts', 'seo/page-meta.spec.ts', 'site.ts', 'site.spec.ts']) {
+        const path = `/projects/site/web/src/app/${file}`;
+        expect(site.readContent(path), file).toBe(plain.readContent(path));
       }
 
-      // And the one that asserts the shape of siteUrl, which now carries the
-      // locale.
-      const urls = site.readContent('/projects/site/web/src/app/site.spec.ts');
-      expect(urls).toContain('`${SITE_ORIGIN}/${SITE_LOCALE}/`');
-      expect(urls).toContain("localePath('en', '/about')");
+      const config = site.readContent('/projects/site/web/src/app/app.config.ts');
+      expect(config).toContain(
+        '{ provide: PAGE_META_EXTENSIONS, useExisting: LocalizedPageMeta, multi: true }',
+      );
+      expect(config).toContain(
+        "import { PageMetaStrategy, PAGE_META_EXTENSIONS } from './seo/page-meta';",
+      );
+      expect(config).toContain("import { LocalizedPageMeta } from './i18n/localized-page-meta';");
     });
 
     it('translates what a crawler reads, not just the body', () => {
@@ -478,9 +490,9 @@ describe('i18n', () => {
       expect(routes).toContain("title: 'seo.home.title'");
       expect(routes).toContain("description: 'seo.notFound.description'");
 
-      const meta = site.readContent('/projects/site/web/src/app/seo/page-meta.ts');
-      expect(meta).toContain('this.i18n.translate(seo.title)');
-      expect(meta).toContain('this.i18n.translate(seo.description)');
+      const meta = site.readContent('/projects/site/web/src/app/i18n/localized-page-meta.ts');
+      expect(meta).toContain('implements PageMetaExtension');
+      expect(meta).toContain('return this.i18n.translate(key);');
 
       for (const locale of ['en', 'fr']) {
         expect(site.readContent(`/projects/site/web/src/app/i18n/${locale}.ts`), locale).toContain(
@@ -534,11 +546,17 @@ describe('i18n', () => {
     });
 
     it('puts the locale in every URL it states about itself', () => {
-      const urls = site.readContent('/projects/site/web/src/app/site.ts');
-      expect(urls).toContain('return localeUrl(SITE_LOCALE, path)');
-      expect(urls).toContain('export function localePath');
-      // Everything downstream — canonical, sitemap, JSON-LD — goes through
-      // siteUrl, so rewriting the one function keeps them all in agreement.
+      // The canonical names the path this build serves the page at, and the
+      // sitemap is derived from the canonicals.
+      const meta = site.readContent('/projects/site/web/src/app/i18n/localized-page-meta.ts');
+      expect(meta).toContain('return localePath(SITE_LOCALE, path);');
+      // One module builds every locale URL, on top of `siteUrl`, so the
+      // canonical, the alternates and the header's links cannot disagree.
+      const urls = site.readContent('/projects/site/web/src/app/i18n/locale-url.ts');
+      expect(urls).toContain('return siteUrl(localePath(locale, path));');
+      expect(site.readContent('/projects/site/web/src/app/i18n/locale-links.ts')).toContain(
+        "import { localePath } from './locale-url';",
+      );
     });
 
     it('links between languages with real hrefs, not routerLink', () => {
@@ -554,15 +572,14 @@ describe('i18n', () => {
     });
 
     it('writes hreflang alternates into the head, including its own locale', () => {
-      const alternates = site.readContent('/projects/site/web/src/app/i18n/locale-alternates.ts');
+      const meta = site.readContent('/projects/site/web/src/app/i18n/localized-page-meta.ts');
       // A page that lists only the OTHER languages is treated as having no
       // alternates at all, so the loop covers LOCALES entire.
-      expect(alternates).toContain('for (const locale of LOCALES)');
-      expect(alternates).toContain('x-default');
-
-      const meta = site.readContent('/projects/site/web/src/app/seo/page-meta.ts');
-      expect(meta).toContain('LocaleAlternates');
-      expect(meta).toContain('this.alternates.update(path, canonical !== null)');
+      expect(meta).toContain('for (const locale of LOCALES)');
+      expect(meta).toContain('x-default');
+      // Called by the strategy once a page's tags are written, with whether it
+      // is indexable: a noindex page gets none.
+      expect(meta).toContain('written(path: string, indexable: boolean): void {');
     });
 
     it('warns that nothing serves the bare domain', () => {
@@ -627,8 +644,22 @@ describe('i18n', () => {
         twice.readContent('/projects/site/web/src/app/app.html').match(/<site-locale-links \/>/g),
       ).toHaveLength(1);
       expect(
-        twice.readContent('/projects/site/web/src/app/site.ts').match(/export function localeUrl/g),
+        twice
+          .readContent('/projects/site/web/src/app/app.config.ts')
+          .match(/useExisting: LocalizedPageMeta/g),
       ).toHaveLength(1);
+    });
+
+    it('stops, with the change to make, on a site whose head has no extension point', async () => {
+      // A site from an earlier 22.x: registering the extension would import a
+      // token its page-meta.ts does not export, and its strategy already
+      // translates the head itself.
+      const older = await workspaceWithSite();
+      const path = '/projects/site/web/src/app/seo/page-meta.ts';
+      older.overwrite(path, older.readContent(path).replaceAll('PAGE_META_EXTENSIONS', 'GONE'));
+      await expect(runner().runSchematic('i18n', { locales: ['en', 'fr'] }, older)).rejects.toThrow(
+        /has no PAGE_META_EXTENSIONS/,
+      );
     });
 
     it('rewrites the build of a site whose scripts are still in the root manifest', async () => {

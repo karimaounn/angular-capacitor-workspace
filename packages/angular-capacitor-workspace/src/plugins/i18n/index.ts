@@ -8,26 +8,38 @@ import {
   mergeWith,
   move,
   noop,
-  schematic,
   url,
   SchematicsException,
   type Rule,
   type Tree,
 } from '@angular-devkit/schematics';
 import { isLocaleTag, localeInfo } from '../../locales';
-import { addFrameworkImport, appendProvider } from '../../utils/ts-edit';
+import {
+  exportFromLibrary,
+  requireDesignSystem,
+  useLibraryStyles,
+  type DesignSystem,
+} from '../../extend/design-system';
+import {
+  addBootScript,
+  addHeaderControl,
+  addRootProvider,
+  addShellTestProvider,
+  addStarterSection,
+} from '../../extend/shell';
+import { addPageMetaExtension, replaceSiteBuild } from '../../extend/site';
 import { updateJson } from '../../utils/json-file';
+import { documentProjectScripts, projectScripts } from '../../utils/project-scripts';
 import {
   ANGULAR_JSON,
   appendSection,
-  findDesignSystem,
   readProjects,
   README_MD,
   titleFromName,
   type AngularProject,
-  type DesignSystem,
 } from '../../utils/workspace';
-import { documentProjectScripts, projectScripts } from '../../utils/project-scripts';
+import { isPrerendered, treeView } from '../../utils/workspace-view';
+import { installedLocales } from './plugin';
 
 export interface I18nOptions {
   locales?: string[];
@@ -52,21 +64,19 @@ export interface I18nOptions {
  * a design system that carries its own copy can only ever be used by apps that
  * want that copy, and one that takes strings as inputs serves every locale its
  * consumers ship without an extraction step.
+ *
+ * A plugin (see `plugin.ts`): a project generated later is wired into the same
+ * locales, and every edit to a host's files goes through `src/extend/`.
  */
 export function i18n(options: I18nOptions = {}): Rule {
   return (tree: Tree) => {
     const locales = normalizeLocales(options.locales ?? ['en']);
     const defaultLocale = resolveDefault(locales, options.defaultLocale);
 
-    const design = findDesignSystem(tree);
-    if (!design) {
-      throw new SchematicsException(
-        'The i18n schematic wires the translation machinery into the ' +
-          'design-system library, and this workspace has none. Generate one ' +
-          'first (`ng generate angular-capacitor-workspace:ui-lib`), or pass ' +
-          '--ui-lib when creating the workspace.',
-      );
-    }
+    const design = requireDesignSystem(
+      tree,
+      'The i18n schematic wires the translation machinery into the design-system library',
+    );
 
     const { apps, sites } = targets(tree, options.apps);
     if (apps.length === 0 && sites.length === 0) {
@@ -86,77 +96,6 @@ export function i18n(options: I18nOptions = {}): Rule {
       },
     ]);
   };
-}
-
-/**
- * Wires an app generated later into the translation the workspace already has.
- *
- * The counterpart to `installedPackages`, and for the same reason: a workspace
- * is generated once and grown for years, so `ng generate app` — or
- * `ng generate marketing` — has to produce a project that matches the ones
- * beside it rather than one missing a layer everything else has.
- *
- * The locales are read back out of the design system's `i18n.tokens.ts` rather
- * than passed in, because that file says it is the only place a locale name
- * lives and this is the code that has to believe it. A workspace with no
- * translation returns a no-op, so the app schematic can call this
- * unconditionally.
- */
-export function installedI18n(name: string): Rule {
-  return (tree: Tree) => {
-    const design = findDesignSystem(tree);
-    if (!design) {
-      return;
-    }
-
-    const installed = readInstalledLocales(tree, design);
-    if (!installed) {
-      return;
-    }
-
-    // Through `schematic()` rather than by calling the rules directly, and this
-    // is not a style choice: `url()` resolves against the schematic that is
-    // EXECUTING, not the one whose module the call is written in. Called
-    // straight from the app schematic's chain, every `url('./files/…')` in here
-    // would resolve under `schematics/app/` instead, find nothing, and wire the
-    // project up with no files in it — silently, because an empty source tree
-    // is not an error.
-    //
-    // Naming the project re-runs the library half too. That half writes only
-    // files that are not there yet, so the library's own — edited or not — are
-    // left as they are, and the alternative is a second entry point that exists
-    // only to skip it.
-    return schematic('i18n', {
-      locales: installed.locales,
-      defaultLocale: installed.defaultLocale,
-      apps: [name],
-    });
-  };
-}
-
-/** Parses `LOCALES` and `DEFAULT_LOCALE` back out of the generated tokens file. */
-function readInstalledLocales(
-  tree: Tree,
-  design: DesignSystem,
-): { locales: string[]; defaultLocale: string } | undefined {
-  const root = readProjects(tree)[design.name]?.root;
-  if (root === undefined) {
-    return undefined;
-  }
-
-  const source = tree.read(`/${root}/src/lib/i18n/i18n.tokens.ts`)?.toString('utf8');
-  if (source === undefined) {
-    return undefined;
-  }
-
-  const list = source.match(/export const LOCALES = \[([^\]]*)\] as const;/)?.[1];
-  const fallback = source.match(/export const DEFAULT_LOCALE: Locale = '([^']+)';/)?.[1];
-  if (list === undefined || fallback === undefined) {
-    return undefined;
-  }
-
-  const locales = [...list.matchAll(/'([^']+)'/g)].map((match) => match[1]!);
-  return locales.length > 0 ? { locales, defaultLocale: fallback } : undefined;
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -209,19 +148,6 @@ function resolveDefault(locales: readonly string[], requested: string | undefine
     );
   }
   return tag;
-}
-
-/**
- * A prerendered site, recognised by the build option that makes it one.
- *
- * Which is the whole reason a site is wired differently from an app. A
- * crawler wants `/en/` and `/fr/` — separate documents with their own canonical
- * URLs and hreflang alternates — not one document that rewrites itself after a
- * script runs. So a site is built once per language, and the language lives in
- * the URL rather than in a signal.
- */
-function isPrerendered(project: AngularProject): boolean {
-  return project.architect?.['build']?.options?.['outputMode'] === 'static';
 }
 
 /**
@@ -289,8 +215,7 @@ function library(
   locales: readonly string[],
   defaultLocale: string,
 ): Rule {
-  const root = requireRoot(readProjects(tree), design.name);
-  assertSameLocales(tree, design, locales, defaultLocale);
+  assertSameLocales(tree, locales, defaultLocale, design);
 
   const templates = apply(url('./files/lib'), [
     applyTemplates({
@@ -302,15 +227,45 @@ function library(
       directionEntries: mapEntries(locales, (tag) => `'${localeInfo(tag).direction}'`),
       labelEntries: mapEntries(locales, (tag) => labelLiteral(tag)),
     }),
-    move(`/${root}`),
+    move(`/${design.root}`),
     onlyNew(tree),
   ]);
 
   return chain([
     mergeWith(templates, MergeStrategy.Overwrite),
     (host: Tree) => {
-      useDirectionStyles(host, root);
-      exportFromPublicApi(host, root);
+      // Mostly documentation — logical properties do the layout work — but it
+      // has to be reachable from the entry point or the two rules it does
+      // carry never ship.
+      useLibraryStyles(host, design, 'direction');
+      // Everything an app needs and nothing it does not: the service, the
+      // pipe, the picker, the provider function and the loader token, plus the
+      // locale tables a language picker of someone's own would need. The
+      // internals — the placeholder regex, the plural cache — stay unexported.
+      exportFromLibrary(host, design, './lib/i18n/translation', [
+        "export { TranslationService, LOCALE_KEY } from './lib/i18n/translation';",
+        "export { TranslatePipe } from './lib/i18n/translate-pipe';",
+        "export { LanguagePicker } from './lib/i18n/language-picker';",
+        "export { provideTranslations } from './lib/i18n/i18n-providers';",
+        "export { TRANSLATION_LOADER } from './lib/i18n/translation.loader';",
+        "export type { TranslationLoader } from './lib/i18n/translation.loader';",
+        'export {',
+        '  LOCALES,',
+        '  LOCALE_DIRECTION,',
+        '  LOCALE_LABELS,',
+        '  DEFAULT_LOCALE,',
+        '  directionOf,',
+        '  isLocale,',
+        '  matchLocale,',
+        '  negotiateLocale,',
+        "} from './lib/i18n/i18n.tokens';",
+        'export type {',
+        '  Direction,',
+        '  Locale,',
+        '  TranslationCatalog,',
+        '  TranslationParams,',
+        "} from './lib/i18n/i18n.tokens';",
+      ]);
     },
   ]);
 }
@@ -325,11 +280,11 @@ function library(
  */
 function assertSameLocales(
   tree: Tree,
-  design: DesignSystem,
   locales: readonly string[],
   defaultLocale: string,
+  design: DesignSystem,
 ): void {
-  const installed = readInstalledLocales(tree, design);
+  const installed = installedLocales(treeView(tree));
   if (!installed) {
     return;
   }
@@ -378,83 +333,6 @@ function labelLiteral(tag: string): string {
     : `'${info.label}', // TODO: replace with the endonym — the language's name in that language`;
 }
 
-/**
- * Adds `@use 'direction';` to the design system's stylesheet entry point.
- *
- * After the other partials, so it lands in the same group. The file it adds is
- * mostly documentation — logical properties do the layout work — but it has to
- * be reachable from the entry point or the two rules it does carry never ship.
- */
-function useDirectionStyles(tree: Tree, root: string): void {
-  const path = `/${root}/src/styles/index.scss`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(
-      `Expected the design system to have ${path}, which is the file that ` +
-        `identifies it as one.`,
-    );
-  }
-  if (source.includes("@use 'direction'")) {
-    return;
-  }
-
-  const lines = source.split('\n');
-  const last = lines.reduce((found, text, index) => (/^@use '/.test(text) ? index : found), -1);
-  lines.splice(last + 1, 0, "@use 'direction';");
-  tree.overwrite(path, lines.join('\n'));
-}
-
-/**
- * Re-exports the i18n surface from the library's public API.
- *
- * Everything an app needs and nothing it does not: the service, the pipe, the
- * picker, the provider function and the loader token, plus the locale tables a
- * language picker of someone's own would need. The internals — the placeholder
- * regex, the plural cache — stay unexported.
- */
-function exportFromPublicApi(tree: Tree, root: string): void {
-  const path = `/${root}/src/public-api.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(
-      `Expected the design system to have ${path}, which is what \`ng-packagr\` ` +
-        `builds its entry point from.`,
-    );
-  }
-  if (source.includes('./lib/i18n/translation')) {
-    return;
-  }
-
-  const block = [
-    '',
-    "export { TranslationService, LOCALE_KEY } from './lib/i18n/translation';",
-    "export { TranslatePipe } from './lib/i18n/translate-pipe';",
-    "export { LanguagePicker } from './lib/i18n/language-picker';",
-    "export { provideTranslations } from './lib/i18n/i18n-providers';",
-    "export { TRANSLATION_LOADER } from './lib/i18n/translation.loader';",
-    "export type { TranslationLoader } from './lib/i18n/translation.loader';",
-    'export {',
-    '  LOCALES,',
-    '  LOCALE_DIRECTION,',
-    '  LOCALE_LABELS,',
-    '  DEFAULT_LOCALE,',
-    '  directionOf,',
-    '  isLocale,',
-    '  matchLocale,',
-    '  negotiateLocale,',
-    "} from './lib/i18n/i18n.tokens';",
-    'export type {',
-    '  Direction,',
-    '  Locale,',
-    '  TranslationCatalog,',
-    '  TranslationParams,',
-    "} from './lib/i18n/i18n.tokens';",
-    '',
-  ].join('\n');
-
-  tree.overwrite(path, `${source.replace(/\n*$/, '\n')}${block}`);
-}
-
 // ── The application half: the messages ───────────────────────────────────────
 
 function application(
@@ -466,15 +344,33 @@ function application(
   return (tree: Tree) => {
     const root = requireRoot(readProjects(tree), name);
     const prefix = prefixOf(tree, name);
+    const starterPage = tree.exists(`/${root}/src/app/pages/home.page.html`);
 
     return chain([
       messages(tree, name, root, design, locales, defaultLocale, false),
-      showcase(tree, root, prefix, design),
+      starterPage ? showcase(tree, root, prefix, design) : noop(),
       e2eSuite(tree, root, './files/app-e2e', locales, defaultLocale, name),
       (host: Tree) => {
-        registerTranslations(host, name, root, design.name);
-        addNoFoucScript(host, root, locales, defaultLocale, design.prefix);
-        addToStarterShell(host, root, prefix, design);
+        addRootProvider(host, name, {
+          symbol: 'provideTranslations',
+          expression: 'provideTranslations(loadCatalog)',
+          imports: [
+            `import { provideTranslations } from '${design.name}';`,
+            "import { loadCatalog } from './i18n/catalog.loader';",
+          ],
+        });
+        addBootScript(host, name, noFoucScript(locales, defaultLocale, design.prefix));
+        addHeaderControl(host, name, {
+          symbol: 'LanguagePicker',
+          from: design.name,
+          markup: `<${design.prefix}-language-picker />`,
+        });
+        addStarterSection(host, name, {
+          symbol: 'I18nShowcase',
+          from: './i18n/i18n-showcase',
+          markup: `<${prefix}-i18n-showcase />`,
+        });
+        addShellTestProvider(host, name, loaderForShellSpec(design));
       },
     ]);
   };
@@ -618,33 +514,6 @@ function constName(tag: string): string {
 }
 
 /**
- * Adds `provideTranslations(loadCatalog)` to the application's root providers.
- *
- * Keyed off the symbol, so an app someone has already wired by hand is left
- * exactly as it is.
- */
-function registerTranslations(tree: Tree, name: string, root: string, library: string): void {
-  const path = `/${root}/src/app/app.config.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(
-      `Expected application "${name}" to have ${path}, which the Angular ` +
-        `application schematic writes for a standalone app.`,
-    );
-  }
-  if (source.includes('provideTranslations')) {
-    return;
-  }
-
-  // The relative import first: both land directly after the last `@angular/*`
-  // line, so the one inserted second ends up above the one inserted first.
-  let next = addFrameworkImport(source, "import { loadCatalog } from './i18n/catalog.loader';");
-  next = addFrameworkImport(next, `import { provideTranslations } from '${library}';`);
-  next = appendProvider(next, path, 'provideTranslations(loadCatalog)');
-  tree.overwrite(path, next);
-}
-
-/**
  * The no-FOUC script: `lang` and `dir` before Angular boots.
  *
  * It exists because `dir` is a layout property. `TranslationService` sets it in
@@ -656,170 +525,16 @@ function registerTranslations(tree: Tree, name: string, root: string, library: s
  * says so. The alternative is shipping the negotiation in a module the document
  * head can load, which costs a request on every cold start to save eight lines
  * that change about once a year.
- */
-/**
- * Puts the language picker in the app's header and the showcase on its starter
- * screen.
  *
- * Both are insertions into files the app schematic wrote, not replacements of
- * them: the starter screen demonstrates the theme as well, and a translation
- * schematic that shipped its own copy of that page would be a second copy to
- * keep in step. A workspace generated without a design system has no starter
- * shell — and no i18n either, since the mechanism lives in the library — so the
- * files are simply absent and this does nothing.
+ * `<html lang dir>` carry the default locale's values too, for a visitor with
+ * scripting off; the script replaces them.
  */
-function addToStarterShell(tree: Tree, root: string, prefix: string, design: DesignSystem): void {
-  addComponent(tree, `/${root}/src/app/app.ts`, `/${root}/src/app/app.html`, {
-    symbol: 'LanguagePicker',
-    from: design.name,
-    // Beside the theme toggle, which is the other control that restyles the
-    // whole page from the header.
-    anchor: `<${design.prefix}-theme-toggle />`,
-    markup: `<${design.prefix}-language-picker />`,
-  });
-
-  addComponent(
-    tree,
-    `/${root}/src/app/pages/home.page.ts`,
-    `/${root}/src/app/pages/home.page.html`,
-    {
-      symbol: 'I18nShowcase',
-      from: '../i18n/i18n-showcase',
-      markup: `<${prefix}-i18n-showcase />`,
-    },
-  );
-
-  // The shell's own spec builds a TestBed with just a router, and the shell now
-  // reaches TranslationService through the picker in its header.
-  provideLoaderToShellSpec(tree, root, design.name);
-}
-
-/**
- * Gives a shell's `app.spec.ts` the translation loader its subject now needs.
- *
- * Shared by an app and a prerendered site: both put a language control in the
- * header — a picker in one, links in the other — and both specs open with the
- * same `providers: [provideRouter([])]`.
- */
-function provideLoaderToShellSpec(tree: Tree, root: string, library: string): void {
-  provideLoader(tree, `/${root}/src/app/app.spec.ts`, library, [
-    {
-      find: '      providers: [provideRouter([])],',
-      replace:
-        '      providers: [\n' +
-        '        provideRouter([]),\n' +
-        '        // The header carries a language control, which translates its\n' +
-        '        // own label. An empty catalog is enough to render it.\n' +
-        '        { provide: TRANSLATION_LOADER, useValue: () => ({}) },\n' +
-        '      ],',
-    },
-  ]);
-}
-
-interface ComponentInsertion {
-  /** The exported class to import and add to the component's `imports`. */
-  readonly symbol: string;
-  /** Module specifier for it. */
-  readonly from: string;
-  /** Markup to add to the template. */
-  readonly markup: string;
-  /** Put the markup straight after this line; appended at the end without one. */
-  readonly anchor?: string;
-}
-
-/**
- * Adds one standalone component to another's imports and template.
- *
- * Idempotent on the symbol, so a re-run — or an `ng generate app` in a
- * workspace that already has i18n — leaves a file that already has it alone.
- * Silent when either file is missing: not every app has a starter shell.
- */
-function addComponent(
-  tree: Tree,
-  componentPath: string,
-  templatePath: string,
-  insertion: ComponentInsertion,
-): void {
-  const component = tree.read(componentPath)?.toString('utf8');
-  const template = tree.read(templatePath)?.toString('utf8');
-  if (component === undefined || template === undefined) {
-    return;
-  }
-  if (component.includes(insertion.symbol)) {
-    return;
-  }
-
-  tree.overwrite(
-    componentPath,
-    addToImportsArray(
-      addFrameworkImport(component, `import { ${insertion.symbol} } from '${insertion.from}';`),
-      componentPath,
-      insertion.symbol,
-    ),
-  );
-
-  const at = insertion.anchor ? template.indexOf(insertion.anchor) : -1;
-  if (at === -1) {
-    tree.overwrite(templatePath, `${template.replace(/\n*$/, '\n')}\n${insertion.markup}\n`);
-    return;
-  }
-
-  // Matched on the line, so the inserted element inherits its indentation
-  // rather than landing at column zero inside a header.
-  const lineStart = template.lastIndexOf('\n', at) + 1;
-  const indent = template.slice(lineStart, at);
-  const lineEnd = at + insertion.anchor!.length;
-  tree.overwrite(
-    templatePath,
-    `${template.slice(0, lineEnd)}\n${indent}${insertion.markup}${template.slice(lineEnd)}`,
-  );
-}
-
-/**
- * Adds a symbol to a standalone component's `imports: [...]`.
- *
- * A component with no `imports` at all gets one, after its `selector`, which
- * every component this collection generates has.
- */
-function addToImportsArray(source: string, path: string, symbol: string): string {
-  const match = source.match(/imports:\s*\[([^\]]*)\]/);
-  if (match) {
-    const existing = match[1]!.trim().replace(/,$/, '');
-    const names = existing === '' ? [] : existing.split(',').map((part) => part.trim());
-    if (names.includes(symbol)) {
-      return source;
-    }
-    return source.replace(match[0], `imports: [${[...names, symbol].join(', ')}]`);
-  }
-
-  const selector = source.match(/(\n\s*)selector:\s*'[^']*',/);
-  if (!selector) {
-    throw new SchematicsException(
-      `Could not find \`imports\` or \`selector\` in ${path}, which is where ` +
-        `\`${symbol}\` has to be declared.`,
-    );
-  }
-  return source.replace(selector[0], `${selector[0]}${selector[1]}imports: [${symbol}],`);
-}
-
-function addNoFoucScript(
-  tree: Tree,
-  root: string,
-  locales: readonly string[],
-  defaultLocale: string,
-  prefix: string,
-): void {
-  const path = `/${root}/src/index.html`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(`Expected ${path} to exist.`);
-  }
-  if (source.includes('i18n:no-fouc')) {
-    return;
-  }
-
+function noFoucScript(locales: readonly string[], defaultLocale: string, prefix: string) {
   const directions = locales.map((tag) => `${key(tag)}: '${localeInfo(tag).direction}'`).join(', ');
-  const script = `  <!-- i18n:no-fouc — set lang/dir before first paint. Mirrors
+  return {
+    id: 'i18n:no-fouc',
+    attributes: { lang: defaultLocale, dir: localeInfo(defaultLocale).direction },
+    html: `  <!-- i18n:no-fouc — set lang/dir before first paint. Mirrors
        TranslationService.initialLocale(): a stored choice wins, else the
        browser's languages, else the default. Change one, change the other. -->
   <script>
@@ -858,32 +573,25 @@ function addNoFoucScript(
       document.documentElement.setAttribute('dir', dirs[locale]);
     })();
   </script>
-`;
+`,
+  };
+}
 
-  // Into <head>, before </head>: the attributes have to be on <html> before the
-  // first stylesheet resolves a logical property against them.
-  const anchor = '</head>';
-  const at = source.indexOf(anchor);
-  if (at === -1) {
-    throw new SchematicsException(`Could not find </head> in ${path}.`);
-  }
-
-  // The static values on <html> are the default-locale fallback for a visitor
-  // with scripting off; the script replaces them.
-  const withAttributes = source.replace(/<html([^>]*)>/, (match, attrs: string) =>
-    /\blang=/.test(attrs)
-      ? match.replace(/lang="[^"]*"/, `lang="${defaultLocale}"`)
-      : `<html${attrs} lang="${defaultLocale}">`,
-  );
-  const withDir = /\bdir=/.test(withAttributes.match(/<html[^>]*>/)?.[0] ?? '')
-    ? withAttributes
-    : withAttributes.replace(
-        /<html([^>]*)>/,
-        `<html$1 dir="${localeInfo(defaultLocale).direction}">`,
-      );
-
-  const head = withDir.indexOf(anchor);
-  tree.overwrite(path, `${withDir.slice(0, head)}${script}${withDir.slice(head)}`);
+/**
+ * The provider the shell's spec needs once a language control is in its
+ * header: that control translates its own label. An empty catalog is enough to
+ * render it. Shared by an app, whose header gets a picker, and a site, whose
+ * header gets links.
+ */
+function loaderForShellSpec(design: DesignSystem) {
+  return {
+    symbol: 'TRANSLATION_LOADER',
+    expression:
+      '// The header carries a language control, which translates its\n' +
+      '// own label. An empty catalog is enough to render it.\n' +
+      '{ provide: TRANSLATION_LOADER, useValue: () => ({}) }',
+    imports: [`import { TRANSLATION_LOADER } from '${design.name}';`],
+  };
 }
 
 // ── The site half: one build per language ────────────────────────────────────
@@ -936,17 +644,38 @@ function localizedSite(
       e2eSuite(tree, root, './files/site-e2e', locales, defaultLocale, name),
       localizedPostbuild(tree),
       (host: Tree) => {
-        localizeSiteUrls(host, root, design.name);
-        writeAlternates(host, root, design.name);
-        registerSiteTranslations(host, name, root, design.name);
-        addComponent(host, `/${root}/src/app/app.ts`, `/${root}/src/app/app.html`, {
+        addRootProvider(host, name, {
+          symbol: 'provideTranslations',
+          expression:
+            '// Pinned, not negotiated: this build IS one language, and the prerendered\n' +
+            '    // HTML is already in it. Negotiating would swap the text under a visitor\n' +
+            '    // whose browser prefers another — and the other language has its own URL.\n' +
+            '    provideTranslations(loadCatalog, { locale: SITE_LOCALE })',
+          imports: [
+            `import { provideTranslations } from '${design.name}';`,
+            "import { loadCatalog } from './i18n/catalog.loader';",
+            "import { SITE_LOCALE } from './i18n/build-locale';",
+          ],
+        });
+        // What the site says about each page in its head — the translated
+        // title and description, the language in the canonical, the hreflang
+        // alternates — through the strategy's own extension point rather than
+        // by rewriting it. The strategy, `siteUrl` and their specs are the
+        // same files they are on a site in one language.
+        addPageMetaExtension(host, name, {
+          symbol: 'LocalizedPageMeta',
+          from: './i18n/localized-page-meta',
+          comment: [
+            "Translates each page's title and description, puts this build's",
+            'language in its canonical, and writes its hreflang alternates.',
+          ],
+        });
+        addHeaderControl(host, name, {
           symbol: 'LocaleLinks',
           from: './i18n/locale-links',
-          anchor: `<a routerLink="/">{{ siteName }}</a>`,
           markup: `<${prefix}-locale-links />`,
         });
-        retargetSiteSpec(host, root, defaultLocale);
-        fixSiteSpecs(host, root, design.name, defaultLocale);
+        addShellTestProvider(host, name, loaderForShellSpec(design));
         addLocaleConfigurations(host, name, locales);
         localizeSiteScripts(host, name, locales);
       },
@@ -977,296 +706,6 @@ function localizedPostbuild(tree: Tree): Rule {
     ]),
     MergeStrategy.Overwrite,
   );
-}
-
-/**
- * Puts the locale in every URL the site states about itself.
- *
- * `siteUrl` is rewritten rather than left alone and worked around, because
- * everything downstream already goes through it — the canonical, the JSON-LD,
- * and the sitemap that is derived from the canonical. Change the one function
- * and they cannot disagree.
- */
-function localizeSiteUrls(tree: Tree, root: string, library: string): void {
-  const path = `/${root}/src/app/site.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(
-      `Expected the site to have ${path}, which is where its origin and its ` +
-        `canonical URLs come from.`,
-    );
-  }
-  if (source.includes('localeUrl')) {
-    return;
-  }
-
-  const original = `export function siteUrl(path: string): string {
-  return path === '/' ? \`\${SITE_ORIGIN}/\` : \`\${SITE_ORIGIN}\${path}\`;
-}`;
-  if (!source.includes(original)) {
-    throw new SchematicsException(
-      `Could not find \`siteUrl\` in ${path} in the form this schematic rewrites. ` +
-        `It has been edited by hand; add the locale prefix to it yourself, the ` +
-        `way \`localeUrl\` below would have.`,
-    );
-  }
-
-  const replacement = `export function siteUrl(path: string): string {
-  return localeUrl(SITE_LOCALE, path);
-}
-
-/** \`/about\` in \`fr\` → \`/fr/about\`. What a link between languages points at. */
-export function localePath(locale: Locale, path: string): string {
-  return path === '/' ? \`/\${locale}/\` : \`/\${locale}\${path}\`;
-}
-
-/**
- * \`/about\` in \`fr\` → the absolute URL of the French copy of that page.
- *
- * The site is built once per language into its own directory, so the language
- * is part of every path. The canonical, the sitemap, the JSON-LD and the
- * hreflang alternates all come through here, which is why none of them has to
- * know a locale exists.
- */
-export function localeUrl(locale: Locale, path: string): string {
-  return \`\${SITE_ORIGIN}\${localePath(locale, path)}\`;
-}`;
-
-  let next = source.replace(original, replacement);
-  next = `import type { Locale } from '${library}';\n\nimport { SITE_LOCALE } from './i18n/build-locale';\n\n${next}`;
-  tree.overwrite(path, next);
-}
-
-/**
- * Hooks the hreflang alternates into the strategy that already writes the head.
- *
- * Three insertions rather than a replacement of `page-meta.ts`: the rest of that
- * file is the same whether the site is translated or not, and a second copy of
- * it here would be a second copy to keep in step.
- */
-function writeAlternates(tree: Tree, root: string, library: string): void {
-  const path = `/${root}/src/app/seo/page-meta.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(
-      `Expected the site to have ${path}, which is what writes each page's head.`,
-    );
-  }
-  if (source.includes('LocaleAlternates')) {
-    return;
-  }
-
-  let next = source.replace(
-    "import { SITE_JSON_LD, SITE_NAME, siteUrl } from '../site';",
-    `import { TranslationService } from '${library}';\n\n` +
-      "import { LocaleAlternates } from '../i18n/locale-alternates';\n" +
-      "import { SITE_JSON_LD, SITE_NAME, siteUrl } from '../site';",
-  );
-  next = next.replace(
-    '  private readonly document = inject(DOCUMENT);',
-    '  private readonly document = inject(DOCUMENT);\n' +
-      '  private readonly alternates = inject(LocaleAlternates);\n' +
-      '  private readonly i18n = inject(TranslationService);',
-  );
-
-  // `data.seo` holds message keys on a localized site, so what goes in the head
-  // is their translation. A French page with an English <title> is the most
-  // visible thing a search result can get wrong.
-  next = next.replace(
-    "    const path = state.url.split(/[?#]/)[0] || '/';\n" +
-      "    const title = path === '/' ? seo.title : `${seo.title} | ${SITE_NAME}`;",
-    "    const path = state.url.split(/[?#]/)[0] || '/';\n" +
-      '    const heading = this.i18n.translate(seo.title);\n' +
-      "    const title = path === '/' ? heading : `${heading} | ${SITE_NAME}`;",
-  );
-  next = next.replace(
-    "    this.meta.updateTag({ name: 'description', content: seo.description });\n" +
-      "    this.meta.updateTag({ property: 'og:title', content: seo.title });\n" +
-      "    this.meta.updateTag({ property: 'og:description', content: seo.description });",
-    '    const description = this.i18n.translate(seo.description);\n' +
-      "    this.meta.updateTag({ name: 'description', content: description });\n" +
-      "    this.meta.updateTag({ property: 'og:title', content: heading });\n" +
-      "    this.meta.updateTag({ property: 'og:description', content: description });",
-  );
-  next = next.replace(
-    '    this.setCanonical(canonical);',
-    '    this.setCanonical(canonical);\n    // This page in every language, including this one. A noindex page gets\n    // none: inviting a crawler to index its translations is worse than silence.\n    this.alternates.update(path, canonical !== null);',
-  );
-
-  if (next === source) {
-    throw new SchematicsException(
-      `Could not hook the hreflang alternates into ${path}; it has been edited ` +
-        `by hand. Call \`LocaleAlternates.update(path, indexable)\` from ` +
-        `\`updateTitle\` yourself.`,
-    );
-  }
-  tree.overwrite(path, next);
-}
-
-/** `provideTranslations(loadCatalog, { locale: SITE_LOCALE })` in the site's config. */
-function registerSiteTranslations(tree: Tree, name: string, root: string, library: string): void {
-  const path = `/${root}/src/app/app.config.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    throw new SchematicsException(`Expected site "${name}" to have ${path}.`);
-  }
-  if (source.includes('provideTranslations')) {
-    return;
-  }
-
-  let next = addFrameworkImport(source, "import { SITE_LOCALE } from './i18n/build-locale';");
-  next = addFrameworkImport(next, "import { loadCatalog } from './i18n/catalog.loader';");
-  next = addFrameworkImport(next, `import { provideTranslations } from '${library}';`);
-  next = appendProvider(
-    next,
-    path,
-    `// Pinned, not negotiated: this build IS one language, and the prerendered
-    // HTML is already in it. Negotiating would swap the text under a visitor
-    // whose browser prefers another — and the other language has its own URL.
-    provideTranslations(loadCatalog, { locale: SITE_LOCALE })`,
-  );
-  tree.overwrite(path, next);
-}
-
-/**
- * Points the marketing site's own e2e suite at the localized canonical.
- *
- * `site.spec.ts` asserts that the home page's canonical is `/`. Once the site is
- * built once per language it is `/en/` — including under `ng serve`, which
- * applies no `define` and so renders the source locale rather than no locale.
- * One assertion, written before this schematic existed, and left wrong it would
- * fail every run.
- */
-function retargetSiteSpec(tree: Tree, root: string, defaultLocale: string): void {
-  const path = `/${root}/e2e/site.spec.ts`;
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined) {
-    return;
-  }
-
-  const original = "  expect(new URL(canonical!).pathname).toBe('/');";
-  if (!source.includes(original)) {
-    return;
-  }
-
-  tree.overwrite(
-    path,
-    source.replace(
-      original,
-      '  // The locale is in the path: the site is built once per language, and\n' +
-        '  // `ng serve` renders the source one rather than none.\n' +
-        `  expect(new URL(canonical!).pathname).toBe('/${defaultLocale}/');`,
-    ),
-  );
-}
-
-/**
- * Keeps the site's own unit specs green.
- *
- * Three of them were written before this schematic existed and assert on things
- * it changes:
- *
- *   • `page-meta.spec.ts` and `app.spec.ts` build their own TestBeds, and their
- *     subjects now reach a `TranslationService` — `PageMetaStrategy` to translate
- *     each route's title, `App` through the locale links in its header. That
- *     service needs a `TRANSLATION_LOADER`, and without one every test in those
- *     files fails on a null injector. An app's shell spec has the same problem
- *     and the same fix; see `provideLoaderToShellSpec`.
- *   • `site.spec.ts` asserts the shape of `siteUrl`, which now carries the
- *     locale.
- *
- * Patched rather than left to fail: a generator that turns a green suite red is
- * a generator nobody trusts the next time it edits something. An empty catalog
- * is enough for the first two — a key with no translation renders as itself, so
- * the plain titles they already assert on keep working.
- */
-function fixSiteSpecs(tree: Tree, root: string, library: string, defaultLocale: string): void {
-  provideLoader(tree, `/${root}/src/app/seo/page-meta.spec.ts`, library, [
-    {
-      find: '      providers: [provideRouter(routes), { provide: TitleStrategy, useClass: PageMetaStrategy }],',
-      replace:
-        '      providers: [\n' +
-        '        provideRouter(routes),\n' +
-        '        { provide: TitleStrategy, useClass: PageMetaStrategy },\n' +
-        "        // The strategy translates each route's title, and an empty\n" +
-        '        // catalog renders every key as itself — which is what the plain\n' +
-        '        // titles below assert on.\n' +
-        '        { provide: TRANSLATION_LOADER, useValue: () => ({}) },\n' +
-        '      ],',
-    },
-  ]);
-
-  provideLoaderToShellSpec(tree, root, library);
-
-  localizeSiteUrlSpec(tree, `/${root}/src/app/site.spec.ts`, defaultLocale);
-}
-
-/** Adds a `TRANSLATION_LOADER` provider to a spec's TestBed, and imports it. */
-function provideLoader(
-  tree: Tree,
-  path: string,
-  library: string,
-  edits: readonly { find: string; replace: string }[],
-): void {
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined || source.includes('TRANSLATION_LOADER')) {
-    return;
-  }
-
-  let next = source;
-  for (const edit of edits) {
-    if (!next.includes(edit.find)) {
-      throw new SchematicsException(
-        `Could not find the TestBed providers in ${path}. Add ` +
-          `\`{ provide: TRANSLATION_LOADER, useValue: () => ({}) }\` to them by ` +
-          `hand: its subject now reaches TranslationService.`,
-      );
-    }
-    next = next.replace(edit.find, edit.replace);
-  }
-
-  // After the last framework import, which is where the other library imports
-  // in these files sit.
-  next = addFrameworkImport(next, `import { TRANSLATION_LOADER } from '${library}';`);
-  tree.overwrite(path, next);
-}
-
-/** Points `site.spec.ts` at the locale-prefixed URLs `siteUrl` now builds. */
-function localizeSiteUrlSpec(tree: Tree, path: string, defaultLocale: string): void {
-  const source = tree.read(path)?.toString('utf8');
-  if (source === undefined || source.includes('SITE_LOCALE')) {
-    return;
-  }
-
-  const original = `    expect(siteUrl('/')).toBe(\`\${SITE_ORIGIN}/\`);
-    expect(siteUrl('/about')).toBe(\`\${SITE_ORIGIN}/about\`);`;
-  if (!source.includes(original)) {
-    throw new SchematicsException(
-      `Could not find the \`siteUrl\` assertions in ${path}. They now have to ` +
-        `expect the locale in the path, because the site is built once per language.`,
-    );
-  }
-
-  let next = source.replace(
-    original,
-    `    // The locale is in every path: the site is built once per language, and
-    // \`siteUrl\` builds this build's own URLs.
-    expect(siteUrl('/')).toBe(\`\${SITE_ORIGIN}/\${SITE_LOCALE}/\`);
-    expect(siteUrl('/about')).toBe(\`\${SITE_ORIGIN}/\${SITE_LOCALE}/about\`);
-  });
-
-  it('builds the URL of the same page in another language', () => {
-    // What the hreflang alternates and the header's language links are made of,
-    // so they cannot point at different places.
-    expect(localePath('${defaultLocale}', '/about')).toBe('/${defaultLocale}/about');
-    expect(localeUrl('${defaultLocale}', '/')).toBe(\`\${SITE_ORIGIN}/${defaultLocale}/\`);`,
-  );
-  next = next.replace(
-    "import { SITE_JSON_LD, SITE_ORIGIN, siteUrl } from './site';",
-    "import { SITE_LOCALE } from './i18n/build-locale';\n" +
-      "import { localePath, localeUrl, SITE_JSON_LD, SITE_ORIGIN, siteUrl } from './site';",
-  );
-  tree.overwrite(path, next);
 }
 
 /**
@@ -1327,68 +766,29 @@ function localeConfiguration(locale: string): string {
  * a directory fails the check rather than quietly shipping one language.
  */
 function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[]): void {
-  // The site's own manifest, or the root one in a workspace from before sites
-  // had one. Either way the commands are the marketing schematic's, with paths
-  // to the shared scripts written from where they run.
-  const scripts = projectScripts(tree, name);
-  const script = (file: string) => `node ${scripts.rootPath(`scripts/${file}`)} ${name}`;
   const list = locales.join(',');
-  const build = [
-    // Once, before the first language: the locale configurations turn Angular's
-    // own output cleaning off, because it would delete the shared base each of
-    // them writes into.
-    script('clean-dist.mjs'),
-    ...locales.map((locale) => `ng build ${name} --configuration ${localeConfiguration(locale)}`),
-  ].join(' && ');
-  const postbuild =
-    `${script('generate-sitemap.mjs')} --locales ${list} && ` +
-    `${script('verify-prerender.mjs')} --locales ${list}`;
+  replaceSiteBuild(tree, name, (scripts) => {
+    const script = (file: string) => `node ${scripts.rootPath(`scripts/${file}`)} ${name}`;
+    return {
+      build: [
+        // Once, before the first language: the locale configurations turn
+        // Angular's own output cleaning off, because it would delete the shared
+        // base each of them writes into.
+        script('clean-dist.mjs'),
+        ...locales.map(
+          (locale) => `ng build ${name} --configuration ${localeConfiguration(locale)}`,
+        ),
+      ].join(' && '),
+      postbuild:
+        `${script('generate-sitemap.mjs')} --locales ${list} && ` +
+        `${script('verify-prerender.mjs')} --locales ${list}`,
+    };
+  });
 
-  // Replaced, not added: `addScripts` preserves whatever is already there, and
-  // what is already there is the single-language build that this supersedes.
-  // Replacing only the exact command the marketing schematic wrote, so a script
-  // somebody has tuned is a failure here rather than a silent overwrite.
-  replaceScript(tree, scripts.manifest, scripts.key('build'), `ng build ${name}`, build);
-  replaceScript(
-    tree,
-    scripts.manifest,
-    scripts.key('postbuild'),
-    `${script('generate-sitemap.mjs')} && ${script('verify-prerender.mjs')}`,
-    postbuild,
-  );
-
-  documentProjectScripts(tree, scripts, {
+  documentProjectScripts(tree, projectScripts(tree, name), {
     build:
       `prerenders \`${name}\` once per language into \`dist/${name}/<locale>\`, writes one ` +
       `sitemap with hreflang alternates, and fails on any page a crawler could not use`,
-  });
-}
-
-/**
- * Swaps one generated script for another, refusing to clobber a third thing.
- *
- * Idempotent: a re-run finds the replacement already in place and stops.
- */
-function replaceScript(
-  tree: Tree,
-  manifest: string,
-  name: string,
-  expected: string,
-  replacement: string,
-): void {
-  updateJson(tree, manifest, (file) => {
-    const current = file.get<string>(['scripts', name]);
-    if (current === replacement) {
-      return;
-    }
-    if (current !== undefined && current !== expected) {
-      throw new SchematicsException(
-        `\`${name}\` in ${manifest.slice(1)} is not the command this schematic replaces. ` +
-          `Expected "${expected}", found "${current}". Add the per-locale builds ` +
-          `to it by hand: "${replacement}".`,
-      );
-    }
-    file.modify(['scripts', name], replacement);
   });
 }
 

@@ -7,7 +7,6 @@
 
 <header>
   <span class="brand">{{ title() }}</span>
-  <<%= libPrefix %>-theme-toggle />
 </header>
 
 <main id="main" tabindex="-1" #main>

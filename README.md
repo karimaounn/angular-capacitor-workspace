@@ -90,12 +90,15 @@ added later:
 ```bash
 ng generate angular-capacitor-workspace:app back-office
 ng generate angular-capacitor-workspace:mobile admin --platforms android
+ng generate angular-capacitor-workspace:theming
 ng generate angular-capacitor-workspace:codegen
 ng generate angular-capacitor-workspace:i18n --locales en,fr
 ng generate angular-capacitor-workspace:packages cdk
 ```
 
-Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
+Theming, translation and the curated packages are plugins: they extend every
+project already there and every one generated after them, so a workspace grown
+one `ng generate` at a time matches one generated in a single run. Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
 [API client](packages/angular-capacitor-workspace/README.md#api-client). To bring
 an existing Angular workspace under the policy, run
 `ng add angular-capacitor-workspace`.
@@ -131,8 +134,9 @@ system rather than on the Angular splash: light, dark and three palettes, a
 toggle in the shell, and every colour on the page resolving through tokens that
 `check:contrast` has verified in both modes. Switching is two attributes on
 `<html>`, so nothing re-renders — and the preference is applied before the first
-paint rather than a beat after it. Generate without `--ui-lib` and the app gets
-the same shell in system colours, with nothing to switch.
+paint rather than a beat after it. `--no-theming` leaves the toggle out and the
+apps following the system's light or dark; without `--ui-lib` the app gets the
+same shell in system colours, with nothing to switch.
 
 And it does not emit a **dependency policy**. A generated workspace should be
 audit-clean on the day it is generated, and should tell you when it stops being
@@ -199,8 +203,11 @@ packages/
     src/migrations.json              ng update fixes for files a release wrote
     src/gate/                        lockfile resolve + npm audit + proposals
     src/style.ts                     the terminal palette both CLIs print with
-    src/schematics/                  workspace, app, marketing, ui-lib, mobile,
-                                     codegen, i18n, packages, ng-add
+    src/schematics/                  the hosts: workspace, app, marketing,
+                                     ui-lib, mobile, ng-add
+    src/plugins/                     theming, codegen, i18n, packages, and the
+                                     registry that runs them
+    src/extend/                      the extension points plugins edit hosts through
     src/cli/                         audit, doctor
   create-angular-capacitor-workspace/
     src/                             argv, prompts, bootstrap
@@ -240,12 +247,12 @@ landing three levels down. None of that is visible from an in-memory tree.
 So the load-bearing test is `e2e/matrix.mjs` — generate, install, build, test
 and audit for real, in a temp directory, against the live registry:
 
-| Row         | Apps | Mobile       | Marketing | ui  | codegen |
-| ----------- | ---- | ------------ | --------- | --- | ------- |
-| `minimal`   | 1    | —            | —         | —   | —       |
-| `full`      | 1    | android      | 1         | yes | yes     |
-| `multi-app` | 2    | android, ios | 2         | yes | —       |
-| `lib-only`  | —    | —            | —         | yes | —       |
+| Row         | Apps | Mobile       | Marketing | ui  | theming | codegen |
+| ----------- | ---- | ------------ | --------- | --- | ------- | ------- |
+| `minimal`   | 1    | —            | —         | —   | —       | —       |
+| `full`      | 1    | android      | 1         | yes | yes     | yes     |
+| `multi-app` | 2    | android, ios | 2         | yes | —       | —       |
+| `lib-only`  | —    | —            | —         | yes | yes     | —       |
 
 The minimal row runs on every PR; the full matrix runs nightly alongside the
 advisory sweep. Nightly rather than on-merge because the failures it catches

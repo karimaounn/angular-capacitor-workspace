@@ -2,11 +2,14 @@ import { chain, schematic, type Rule, type Tree } from '@angular-devkit/schemati
 import { POLICY } from '../../policy/advisories';
 import { applyPolicy, type Manifest } from '../../policy/apply';
 import { collectBuilders } from '../../utils/workspace';
+import { treeView } from '../../utils/workspace-view';
 import { inferFeatures } from '../../cli/doctor';
+import { detectedFeatures } from '../../plugins/registry';
 
 export interface NgAddOptions {
   e2e?: 'playwright' | false;
   uiLib?: string;
+  theming?: boolean;
 }
 
 /**
@@ -28,6 +31,9 @@ export function ngAdd(options: NgAddOptions = {}): Rule {
       keepExisting: true,
     }),
     options.uiLib ? schematic('ui-lib', { name: options.uiLib }) : noop(),
+    // Into the library only, and into an existing app only where it has the
+    // shell this collection generates: a header to put the toggle in.
+    options.uiLib && options.theming !== false ? schematic('theming', {}) : noop(),
     applyDependencyPolicy(),
   ]);
 }
@@ -52,12 +58,15 @@ function applyDependencyPolicy(): Rule {
     }
 
     const manifest = JSON.parse(raw.toString('utf8')) as Manifest;
+    // The plugins' tokens from the tree as well as from disk: a plugin this
+    // run installed is in the tree, and on disk only once the run is over.
+    const features = inferFeatures(process.cwd(), manifest);
+    for (const feature of detectedFeatures(treeView(tree))) {
+      features.add(feature);
+    }
     const { manifest: patched } = applyPolicy(
       manifest,
-      {
-        features: inferFeatures(process.cwd(), manifest),
-        builders: collectBuilders(tree),
-      },
+      { features, builders: collectBuilders(tree) },
       POLICY,
     );
 

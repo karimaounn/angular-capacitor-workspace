@@ -635,50 +635,31 @@ describe('app, in a workspace that already has a design system', () => {
     expect(rootScripts(withLib)['prebuild:shop']).toBe('npm run build:libs');
   });
 
-  it('puts the theme toggle in the shell, so every route has it', () => {
-    expect(tree.readContent('/projects/shop/web/src/app/app.ts')).toContain(
-      "import { ThemeToggle } from 'ui';",
-    );
-    expect(tree.readContent('/projects/shop/web/src/app/app.html')).toContain(
-      '<ui-theme-toggle />',
+  it('leaves theme switching to the theming plugin', () => {
+    // The library declares light and dark; without the plugin nothing in the
+    // app picks between them, and the page follows the system colour scheme.
+    expect(tree.readContent('/projects/shop/web/src/app/app.ts')).not.toContain('ThemeToggle');
+    expect(tree.readContent('/projects/shop/web/src/index.html')).not.toContain('data-theme');
+    expect(tree.readContent('/projects/shop/web/src/app/pages/home.page.ts')).not.toContain(
+      'ThemeService',
     );
   });
 
-  it('e2e-tests the part that runs before Angular does', async () => {
-    const base = await runner().runSchematic(
-      'workspace',
-      { e2e: 'playwright' },
-      await baseWorkspace(),
+  it('keeps the anchors the plugins extend it through', () => {
+    // See src/extend/shell.ts: a header for controls, TestBed providers in the
+    // spec, and a starter page that is a list of sections ending in "Next".
+    expect(tree.readContent('/projects/shop/web/src/app/app.html')).toContain('</header>');
+    expect(tree.readContent('/projects/shop/web/src/app/app.spec.ts')).toContain('providers: [');
+    const page = tree.readContent('/projects/shop/web/src/app/pages/home.page.html');
+    expect(page.lastIndexOf('\n<section')).toBe(
+      page.indexOf('\n<section aria-labelledby="next-heading"'),
     );
-    const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, base);
-    const app = await runner().runSchematic('app', { name: 'shop', e2e: 'playwright' }, withLib);
-
-    expect(app.files).toContain('/projects/shop/web/e2e/theme.spec.ts');
   });
 
   it('demonstrates the library on the starter page', () => {
     const page = tree.readContent('/projects/shop/web/src/app/pages/home.page.html');
     expect(page).toContain('<ui-button');
     expect(page).toContain('<ui-field');
-  });
-
-  it('applies the saved theme before the first paint', () => {
-    const html = tree.readContent('/projects/shop/web/src/index.html');
-    // Before </head>, and reading the keys ThemeService writes.
-    expect(html).toContain("localStorage.getItem('ui.theme-mode')");
-    expect(html).toContain("localStorage.getItem('ui.theme-palette')");
-    expect(html.indexOf('data-theme')).toBeLessThan(html.indexOf('</head>'));
-  });
-
-  it('takes the selector prefix from the library, not from the app', async () => {
-    const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
-    const withLib = await runner().runSchematic('ui-lib', { name: 'design', prefix: 'acme' }, base);
-    const app = await runner().runSchematic('app', { name: 'shop', prefix: 'shop' }, withLib);
-
-    expect(app.readContent('/projects/shop/web/src/app/app.html')).toContain(
-      '<acme-theme-toggle />',
-    );
-    expect(app.readContent('/projects/shop/web/src/index.html')).toContain("'acme.theme-mode'");
   });
 });
 
@@ -868,6 +849,35 @@ describe('marketing', () => {
   });
 
   const scripts = (t: UnitTestTree) => JSON.parse(t.readContent('/package.json')).scripts;
+
+  it('keeps the anchors the plugins extend it through', () => {
+    // See src/extend/shell.ts and src/extend/site.ts.
+    expect(tree.readContent('/projects/site/web/src/app/app.html')).toContain('</header>');
+    expect(tree.readContent('/projects/site/web/src/app/app.spec.ts')).toContain('providers: [');
+    const meta = tree.readContent('/projects/site/web/src/app/seo/page-meta.ts');
+    expect(meta).toContain('export const PAGE_META_EXTENSIONS');
+    expect(tree.readContent('/projects/site/web/src/app/app.config.ts')).toContain(
+      "import { PageMetaStrategy } from './seo/page-meta';",
+    );
+    expect(ownScripts(tree, 'site')['build']).toBe('ng build site');
+    expect(ownScripts(tree, 'site')['postbuild']).toBe(
+      'node ../../../scripts/generate-sitemap.mjs site && ' +
+        'node ../../../scripts/verify-prerender.mjs site',
+    );
+  });
+
+  it('runs every head extension it is given, and none when it is given none', () => {
+    const meta = tree.readContent('/projects/site/web/src/app/seo/page-meta.ts');
+    expect(meta).toContain('private readonly extensions = inject(PAGE_META_EXTENSIONS);');
+    expect(meta).toContain('{ factory: () => [] }');
+    expect(meta).toContain('siteUrl(this.servedPath(path))');
+    expect(meta).toContain('extension.written?.(path, canonical !== null);');
+    // And its spec covers an extension, so the seam is exercised in the
+    // generated workspace before any plugin uses it.
+    expect(tree.readContent('/projects/site/web/src/app/seo/page-meta.spec.ts')).toContain(
+      "describe('PageMetaStrategy with an extension'",
+    );
+  });
 
   it('switches the build to static output', () => {
     const options = JSON.parse(tree.readContent('/angular.json')).projects['site'].architect.build
@@ -1193,8 +1203,9 @@ describe('ui-lib', () => {
     const api = tree.readContent('/projects/ui/src/public-api.ts');
     expect(api).toContain("export * from './lib/button/button'");
     expect(api).toContain("export * from './lib/field/field'");
-    expect(api).toContain("export * from './lib/theme/theme'");
-    expect(api).toContain("export * from './lib/theme/theme-toggle'");
+    // The theme service is the theming plugin's, which adds its own exports.
+    expect(api).not.toContain('./lib/theme/');
+    expect(tree.files.some((path) => path.startsWith('/projects/ui/src/lib/theme/'))).toBe(false);
   });
 
   it('ships more than one palette, all with the same steps', () => {
@@ -1204,26 +1215,9 @@ describe('ui-lib', () => {
     expect(palettes).toContain('default');
   });
 
-  it('offers exactly the palettes the stylesheet declares', () => {
-    // The same invariant `npm run check:contrast` enforces in the generated
-    // workspace, asserted here so a template edit cannot ship broken.
-    const ref = tree.readContent('/projects/ui/src/styles/_ref.scss');
-    const declared = [...ref.matchAll(/^\s{2}'([^']+)': \($/gm)].map(([, name]) => name);
-    const offered = [
-      ...tree.readContent('/projects/ui/src/lib/theme/theme.ts').matchAll(/id: '([^']+)'/g),
-    ].map(([, id]) => id);
-    expect(offered).toEqual(declared);
-  });
-
-  it('emits each palette under the attribute the theme service writes', () => {
+  it('emits each palette under the attribute anything may set to choose it', () => {
     const index = tree.readContent('/projects/ui/src/styles/index.scss');
     expect(index).toContain("[data-palette='#{$name}']");
-  });
-
-  it('namespaces the stored preference by the library prefix', () => {
-    const theme = tree.readContent('/projects/ui/src/lib/theme/theme.ts');
-    expect(theme).toContain("THEME_MODE_KEY = 'ui.theme-mode'");
-    expect(theme).toContain("THEME_PALETTE_KEY = 'ui.theme-palette'");
   });
 
   it('retrofits the token import onto an app that predates the library', () => {
@@ -1299,7 +1293,6 @@ describe('ui-lib', () => {
     const sources = [
       '/projects/ui/src/styles/_components.scss',
       '/projects/ui/src/lib/field/field.scss',
-      '/projects/ui/src/lib/theme/theme-toggle.scss',
     ].map((path) => tree.readContent(path));
     for (const source of sources) {
       expect(source).not.toMatch(/outline:[^;]*var\(--accent\)/);

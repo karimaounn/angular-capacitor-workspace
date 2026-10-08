@@ -49,6 +49,8 @@ ${CONTINUED}${dim('canonical URLs and the sitemap (default:')}
 ${CONTINUED}${dim('https://example.com, which its build warns about)')}
 ${option('--ui-lib [name]', 'design-system library skeleton (default: ui)')}
 ${option('--ui-lib-prefix <p>', 'selector prefix for its components (default: its name)')}
+${option('--no-theming', "leave out the theme toggle; apps follow the system's")}
+${CONTINUED}${dim('light or dark (theme switching is on with --ui-lib)')}
 ${option('--codegen orval', 'OpenAPI client generation')}
 ${option('--e2e playwright', 'end-to-end test wiring')}
 ${option('--i18n <locales>', 'runtime translation for these BCP-47 tags')}
@@ -172,6 +174,7 @@ export function parseArguments(argv: string[]): ParsedArgs {
       'marketing-origin': { type: 'string', multiple: true },
       'ui-lib': { type: 'string' },
       'ui-lib-prefix': { type: 'string' },
+      theming: { type: 'boolean' },
       codegen: { type: 'string' },
       e2e: { type: 'string' },
       i18n: { type: 'string', multiple: true },
@@ -216,6 +219,20 @@ export function parseArguments(argv: string[]): ParsedArgs {
       );
     }
     options.uiLibPrefix = uiLibPrefix;
+  }
+
+  if (values.theming !== undefined) {
+    if (!options.uiLib) {
+      throw new ArgError(
+        `--${values.theming ? '' : 'no-'}theming switches the theme toggle in the design ` +
+          'system, and there is no --ui-lib. Theme switching lives in the library.',
+      );
+    }
+    // Only `false` is sent: on is the default, and leaving it to the generator
+    // keeps the default in one place.
+    if (!values.theming) {
+      options.theming = false;
+    }
   }
 
   if (values.codegen !== undefined) {

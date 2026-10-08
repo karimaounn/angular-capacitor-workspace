@@ -1,0 +1,16 @@
+<section aria-labelledby="theme-heading" class="card">
+  <h2 id="theme-heading">Theme</h2>
+  <p>
+    Colour scheme <strong>{{ theme.resolvedMode() }}</strong>, palette
+    <strong>{{ paletteLabel() }}</strong>.
+    @if (theme.mode() === 'system') {
+      <span class="muted">Following your system — pick Light or Dark in the header to override it.</span>
+    }
+  </p>
+  <p class="muted">
+    The controls in the header write <code>data-theme</code> and <code>data-palette</code> on
+    <code>&lt;html&gt;</code>, and every token on this page follows without a re-render.
+    <code>ThemeService</code> in <code><%= importName %></code> remembers the choice, and a script
+    in <code>index.html</code> applies it before the first paint.
+  </p>
+</section>

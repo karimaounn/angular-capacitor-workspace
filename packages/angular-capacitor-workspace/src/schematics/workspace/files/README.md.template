@@ -55,35 +55,29 @@ Every app's `styles.scss` pulls in the design system's tokens, so every app
 gets light and dark for free — a visitor's `prefers-color-scheme` decides,
 in CSS, with nothing to wire up.
 
-Apps generated with the `app` schematic go one step further: their shell
-carries a theme toggle, and two attributes on `<html>` back it.
+The stylesheet also declares every palette in both modes, keyed off two
+attributes on `<html>`:
 
-| Attribute | Values | Set by |
+| Attribute | Values | Effect |
 | --------- | ------ | ------ |
-| `data-theme` | `light`, `dark`, or absent | The toggle. Absent means "follow the OS." |
-| `data-palette` | A palette name | The toggle |
+| `data-theme` | `light`, `dark`, or absent | Forces a colour scheme. Absent means "follow the OS." |
+| `data-palette` | A palette name | Picks a palette. Absent means `default`. |
 
-Every theme/palette combination is already declared in the stylesheet, so
-switching either one is just writing an attribute — nothing re-renders, and
-no component needs to know theming exists. A small inline script in
-`index.html` applies the saved preference before the first paint, so you
-never see a flash of the wrong theme.
-
-Marketing sites have neither the toggle nor that script, on purpose: their
-pages are prerendered once and served to everyone, so nothing may bake one
-visitor's choice into the HTML.
+Whatever sets them gets every combination for free — nothing re-renders, and
+no component needs to know theming exists. Storybook's toolbar sets them for
+the stories, and a fixed `data-palette` on `<html>` in an app's `index.html`
+picks that app's brand. To let visitors choose, the `theming` schematic puts a
+toggle in every app's header (see "Adding to this workspace").
 
 To add a palette:
 
-1. Declare it in `<%= libRoot %>/src/styles/_ref.scss`.
-2. Add it to the `PALETTES` array in `<%= libRoot %>/src/lib/theme/theme.ts`.
-3. Check both against WCAG, in light and dark:
+1. Declare it in `<%= libRoot %>/src/styles/_ref.scss`, and in the palette
+   toolbar in `<%= libRoot %>/.storybook/preview.ts`.
+2. Check it against WCAG, in light and dark:
 
    ```bash
    npm run check:contrast
    ```
-
-   It fails if you only added the palette to one of the two places above.
 <% } %>
 <!-- angular-capacitor-workspace:mobile -->
 <!-- /angular-capacitor-workspace:mobile -->
@@ -97,6 +91,7 @@ workspace also extend it:
 ng generate angular-capacitor-workspace:app <name>          # a client-rendered app
 ng generate angular-capacitor-workspace:marketing <name>    # a prerendered static site
 ng generate angular-capacitor-workspace:ui-lib <name>       # a design-system library
+ng generate angular-capacitor-workspace:theming             # a theme toggle in every app's header
 ng generate angular-capacitor-workspace:mobile <app>        # a Capacitor shell for an app
 ng generate angular-capacitor-workspace:codegen             # an OpenAPI client
 ng generate angular-capacitor-workspace:i18n --locales en,fr  # runtime translation
@@ -105,6 +100,8 @@ ng generate angular-capacitor-workspace:packages cdk        # a curated package:
 
 Each one wires itself into the workspace it finds: new scripts land in the
 table below, and anything that needs explaining is written into this file.
+Theme switching, translation and the curated packages also reach every app or
+site you generate after them, so the order you add things in does not matter.
 
 ## Dependency policy
 

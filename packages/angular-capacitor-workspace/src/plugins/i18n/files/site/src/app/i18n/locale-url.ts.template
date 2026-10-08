@@ -1,0 +1,21 @@
+import type { Locale } from '<%= importName %>';
+
+import { siteUrl } from '../site';
+
+/**
+ * `/about` in `fr` → `/fr/about`. The path of a page in a language, which is
+ * what a link between languages points at.
+ *
+ * The site is built once per language, each under its own directory, so the
+ * language is the first segment of every path it serves. The canonical, the
+ * hreflang alternates and the header's language links all come through here,
+ * so none of them can point somewhere the others do not.
+ */
+export function localePath(locale: Locale, path: string): string {
+  return path === '/' ? `/${locale}/` : `/${locale}${path}`;
+}
+
+/** `/about` in `fr` → the absolute URL of the French copy of that page. */
+export function localeUrl(locale: Locale, path: string): string {
+  return siteUrl(localePath(locale, path));
+}

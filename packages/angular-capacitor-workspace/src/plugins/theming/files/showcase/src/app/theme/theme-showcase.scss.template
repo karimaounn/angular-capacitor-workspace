@@ -1,0 +1,25 @@
+// Its own `.card` and `.muted`, matching the starter page's other sections:
+// style encapsulation stops at the component boundary. Both are built from the
+// same tokens, so they follow the theme with everything else.
+.card {
+  margin-block-start: var(--space-6);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.card h2 {
+  margin-block-end: var(--space-4);
+  font-size: var(--font-size-xl);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}

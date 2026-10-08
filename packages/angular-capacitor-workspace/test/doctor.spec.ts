@@ -129,6 +129,8 @@ describe('inferFeatures', () => {
     write('angular.json', {
       projects: { ui: { projectType: 'library', root: 'projects/ui' } },
     });
+    // What makes the library a design system, which is where translation lives.
+    writeText('projects/ui/src/styles/index.scss', '');
     expect(inferFeatures(cwd, {})).not.toContain('i18n');
 
     writeText(
@@ -136,6 +138,17 @@ describe('inferFeatures', () => {
       "export const LOCALES = ['en'] as const;\n",
     );
     expect(inferFeatures(cwd, {})).toContain('i18n');
+  });
+
+  it('detects theme switching from the design system, where the theming schematic puts it', () => {
+    write('angular.json', {
+      projects: { ui: { projectType: 'library', root: 'projects/ui' } },
+    });
+    writeText('projects/ui/src/styles/index.scss', '');
+    expect(inferFeatures(cwd, {})).not.toContain('theming');
+
+    writeText('projects/ui/src/lib/theme/theme.ts', 'export class ThemeService {}\n');
+    expect(inferFeatures(cwd, {})).toContain('theming');
   });
 
   it('detects a static marketing target from angular.json', () => {

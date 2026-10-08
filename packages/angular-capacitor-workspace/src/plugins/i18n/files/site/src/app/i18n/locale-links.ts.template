@@ -4,7 +4,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import { LOCALES, LOCALE_LABELS, TranslatePipe, isLocale, type Locale } from '<%= importName %>';
 import { filter, map } from 'rxjs';
 
-import { localePath } from '../site';
+import { localePath } from './locale-url';
 import { SITE_LOCALE } from './build-locale';
 
 /**

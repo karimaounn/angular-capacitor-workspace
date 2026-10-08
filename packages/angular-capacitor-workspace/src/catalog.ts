@@ -90,7 +90,7 @@ export interface CatalogEntry {
   appStyles?: readonly string[];
   /**
    * Per-application wiring this entry needs that is not a dependency or a
-   * stylesheet — named here, done in `schematics/packages`.
+   * stylesheet — named here, done in `plugins/packages`.
    *
    * A tag rather than data. A service worker is three edits per application
    * (a config file, a build option, a provider), and describing those three

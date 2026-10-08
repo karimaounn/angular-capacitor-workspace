@@ -10,12 +10,6 @@ describe('App', () => {
     }).compileComponents();
   });
 
-  afterEach(() => {
-    // The theme service writes to the real <html>, which the whole run shares.
-    document.documentElement.removeAttribute('data-theme');
-    document.documentElement.removeAttribute('data-palette');
-  });
-
   it('renders the shell around the routed page', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
@@ -30,13 +24,5 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     expect((fixture.nativeElement as HTMLElement).querySelector('h1')).toBeNull();
-  });
-
-  it('offers the theme toggle from the shell, so every page has it', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('<%= libPrefix %>-theme-toggle'),
-    ).toBeTruthy();
   });
 });

@@ -25,7 +25,7 @@
       "schema": "./schematics/marketing/schema.json"
     },
     "ui-lib": {
-      "description": "A design-system library: ng-packagr, Storybook, Vitest browser mode, SCSS layering and a contrast checker.",
+      "description": "A design-system library: ng-packagr, Storybook, Vitest browser mode, SCSS layering and a contrast checker. Theme switching is the theming schematic.",
       "factory": "./schematics/ui-lib/index#uiLib",
       "schema": "./schematics/ui-lib/schema.json",
       "aliases": ["ui"]
@@ -35,21 +35,27 @@
       "factory": "./schematics/mobile/index#mobile",
       "schema": "./schematics/mobile/schema.json"
     },
+    "theming": {
+      "description": "Theme switching: a colour-scheme and palette toggle in every app's header, remembered and applied before the first paint.",
+      "factory": "./plugins/theming/index#theming",
+      "schema": "./plugins/theming/schema.json",
+      "aliases": ["theme"]
+    },
     "codegen": {
       "description": "OpenAPI client generation with orval, wired into the pre* hooks.",
-      "factory": "./schematics/codegen/index#codegen",
-      "schema": "./schematics/codegen/schema.json"
+      "factory": "./plugins/codegen/index#codegen",
+      "schema": "./plugins/codegen/schema.json"
     },
     "i18n": {
       "description": "Runtime translation, writing direction and a language picker, wired into the design system and every app.",
-      "factory": "./schematics/i18n/index#i18n",
-      "schema": "./schematics/i18n/schema.json",
+      "factory": "./plugins/i18n/index#i18n",
+      "schema": "./plugins/i18n/schema.json",
       "aliases": ["translate"]
     },
     "packages": {
       "description": "Curated extra packages — the Angular CDK and friends — at a version resolved against the Angular line.",
-      "factory": "./schematics/packages/index#packages",
-      "schema": "./schematics/packages/schema.json",
+      "factory": "./plugins/packages/index#packages",
+      "schema": "./plugins/packages/schema.json",
       "aliases": ["with"]
     }
   }

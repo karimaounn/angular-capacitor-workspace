@@ -1,0 +1,18 @@
+import { DEFAULT_LOCALE } from '<%= importName %>';
+
+import { SITE_ORIGIN } from '../site';
+import { localePath, localeUrl } from './locale-url';
+
+describe('locale URLs', () => {
+  it('puts the language first in every path, with a trailing slash only at its root', () => {
+    expect(localePath(DEFAULT_LOCALE, '/')).toBe(`/${DEFAULT_LOCALE}/`);
+    expect(localePath(DEFAULT_LOCALE, '/about')).toBe(`/${DEFAULT_LOCALE}/about`);
+  });
+
+  it('builds the absolute URL of the same page in a language', () => {
+    // What the canonical, the hreflang alternates and the header's language
+    // links are made of, so they cannot point at different places.
+    expect(localeUrl(DEFAULT_LOCALE, '/')).toBe(`${SITE_ORIGIN}/${DEFAULT_LOCALE}/`);
+    expect(localeUrl(DEFAULT_LOCALE, '/about')).toBe(`${SITE_ORIGIN}/${DEFAULT_LOCALE}/about`);
+  });
+});
