@@ -42,6 +42,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Generated workspaces no longer get a `scripts/` directory: the scripts
+  their npm scripts ran are commands of the installed package.** The project
+  runner, a site's sitemap and prerender checks, `clean-dist`, codegen, the
+  contrast check and the mobile preflight are now
+  `angular-capacitor-workspace run`, `sitemap`, `verify-prerender`,
+  `clean-dist`, `codegen`, `check-contrast` and `preflight`. A copied script
+  could not be updated once someone had touched it, and every fix to one
+  reached only new workspaces; now an update of the package updates them all.
+  What a workspace tunes moves to a file it owns: the design system's contrast
+  pairings are `projects/<lib>/contrast.config.mjs`, which
+  `check-contrast` reads. The preflight is no longer a bash script, so it runs
+  on Windows too.
+
+  Existing workspaces are left as they are, and their copies keep working. To
+  switch one over, replace each command in its manifests —
+  `node scripts/project.mjs <verb>` with `angular-capacitor-workspace run <verb>`,
+  `node ../../../scripts/generate-sitemap.mjs <site>` with
+  `angular-capacitor-workspace sitemap <site>`, and the same for the others —
+  move the `PAIRINGS` table out of `check-contrast.mjs` into
+  `contrast.config.mjs` as `export default { pairings: [...] }`, and delete
+  `scripts/`.
+
 - **Theming, translation, codegen and the curated packages are plugins.** Each
   extends every project already in the workspace and every project generated
   after it, through extension points the app and site templates declare,

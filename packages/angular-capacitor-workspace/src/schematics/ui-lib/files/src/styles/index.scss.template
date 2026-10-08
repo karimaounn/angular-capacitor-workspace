@@ -75,7 +75,7 @@
   // `--accent-strong`, not `--accent`: the filled step is picked to carry white
   // text, and text in that colour against the page is the pairing that fails.
   // `-strong` is the step chosen to contrast with the surface in whichever mode
-  // is active, and it is the one `check-contrast.mjs` holds to 4.5:1.
+  // is active, and it is the one `check:contrast` holds to 4.5:1.
   :where(a) {
     color: var(--accent-strong);
   }

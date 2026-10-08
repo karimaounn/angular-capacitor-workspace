@@ -87,9 +87,10 @@ export const VERSIONS = {
   sass: {
     range: '^1.104.1',
     constraint:
-      'Declared explicitly because check-contrast.mjs imports it directly. ' +
-      '@angular/build depends on it too, but relying on a transitive for a ' +
-      'first-party script is how a script breaks on an unrelated upgrade.',
+      'Declared explicitly because `angular-capacitor-workspace check-contrast` ' +
+      "compiles the design system with the workspace's own copy. @angular/build " +
+      'depends on it too, but relying on a transitive for a first-party check is ' +
+      'how a check breaks on an unrelated upgrade.',
   },
 
   // ── Storybook ───────────────────────────────────────────────────────────

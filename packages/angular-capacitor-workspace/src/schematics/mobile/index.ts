@@ -22,7 +22,7 @@ import {
   readProject,
   type AngularProject,
 } from '../../utils/workspace';
-import { projectScripts, upToRoot, type ProjectScripts } from '../../utils/project-scripts';
+import { projectScripts, type ProjectScripts } from '../../utils/project-scripts';
 import type { MobilePlatform } from '../../api';
 
 export interface MobileOptions {
@@ -69,7 +69,6 @@ export function mobile(options: MobileOptions): Rule {
         webDir: webDirFor(tree, app, mobileRoot),
         // Build then sync, always in that order. See capacitor.config.ts.
         buildWeb: web.runFrom(mobileRoot, 'build'),
-        toRoot: upToRoot(mobileRoot),
         versions: Object.fromEntries(
           Object.entries(VERSIONS).map(([name, pin]) => [name, pin.range]),
         ),
@@ -96,7 +95,6 @@ export function mobile(options: MobileOptions): Rule {
           '/projects/*/mobile/ios/App/build/',
         ]);
       },
-      preflightScript(),
     ]);
   };
 }
@@ -125,7 +123,7 @@ function mobileReadmeBlock(
     ...(platforms.includes('android') ? ['a JDK (17+)', 'the Android SDK'] : []),
     ...(platforms.includes('ios') ? ['Xcode'] : []),
   ]);
-  // The preflight script only looks for Xcode on macOS, because only macOS can
+  // The preflight only looks for Xcode on macOS, because only macOS can
   // build for iOS. Saying so here stops the check reading as a broken one on
   // the machine where it deliberately says nothing.
   const caveat = platforms.includes('ios') ? ' (the iOS checks run on macOS only)' : '';
@@ -310,75 +308,3 @@ const PLATFORM_NAMES: Record<MobilePlatform, { label: string; ide: string; targe
   android: { label: 'Android', ide: 'Android Studio', target: 'an Android device or emulator' },
   ios: { label: 'iOS', ide: 'Xcode', target: 'an iOS device or simulator' },
 };
-
-/**
- * The preflight check, written once and shared by every app.
- *
- * It takes the platforms to check as arguments, so each shell's `preflight`
- * script asks only about its own: an Android-only app on a Mac without Xcode is
- * not a failed preflight. An existing copy is left alone — somebody may have
- * tuned it.
- */
-function preflightScript(): Rule {
-  return (tree: Tree) => {
-    const path = '/scripts/cap-preflight.sh';
-    if (!tree.exists(path)) {
-      tree.create(path, PREFLIGHT_SH);
-    }
-  };
-}
-
-const PREFLIGHT_SH = `#!/usr/bin/env bash
-# Checks the things a Capacitor build needs before it fails halfway through
-# with a Gradle stack trace that does not mention any of them.
-#
-#   bash scripts/cap-preflight.sh android ios
-#
-# Only the platforms named are checked. With none, both are.
-set -euo pipefail
-
-platforms="\${*:-android ios}"
-fail=0
-note() { printf '  %-22s %s\\n' "$1" "$2"; }
-wants() { [[ " $platforms " == *" $1 "* ]]; }
-
-echo "Capacitor preflight ($platforms)"
-
-if wants android; then
-  if command -v java >/dev/null 2>&1; then
-    note "java" "$(java -version 2>&1 | head -1)"
-  else
-    note "java" "MISSING — Android builds need a JDK (17 or newer)"
-    fail=1
-  fi
-
-  if [ -n "\${ANDROID_HOME:-}" ] || [ -n "\${ANDROID_SDK_ROOT:-}" ]; then
-    note "android sdk" "\${ANDROID_HOME:-\$ANDROID_SDK_ROOT}"
-  else
-    note "android sdk" "MISSING — set ANDROID_HOME or ANDROID_SDK_ROOT"
-    fail=1
-  fi
-fi
-
-if wants ios; then
-  if [ "$(uname)" = "Darwin" ]; then
-    if command -v xcodebuild >/dev/null 2>&1; then
-      note "xcode" "$(xcodebuild -version 2>/dev/null | head -1)"
-    else
-      note "xcode" "MISSING — iOS builds need Xcode and its command line tools"
-      fail=1
-    fi
-  else
-    note "xcode" "skipped (iOS builds require macOS)"
-  fi
-fi
-
-if [ "$fail" -ne 0 ]; then
-  echo
-  echo "Preflight failed. Fix the items marked MISSING above."
-  exit 1
-fi
-
-echo
-echo "Preflight passed."
-`;

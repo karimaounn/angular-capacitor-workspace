@@ -27,12 +27,13 @@ way, and so does the e2e accessibility check.
 
 ## After the build
 
-The `build` script runs `postbuild` afterwards:
+The `build` script runs `postbuild` afterwards, which runs two commands of
+`angular-capacitor-workspace`, the generator this workspace keeps installed:
 
-1. `scripts/generate-sitemap.mjs` writes `sitemap.xml` from the prerendered
-   pages, using each page's canonical and skipping noindex pages. The sitemap
-   is built from the output, so it cannot fall out of step with it.
-2. `scripts/verify-prerender.mjs` fails the build when a page has no `<h1>`
+1. `sitemap` writes `sitemap.xml` from the prerendered pages, using each
+   page's canonical and skipping noindex pages. The sitemap is built from the
+   output, so it cannot fall out of step with it.
+2. `verify-prerender` fails the build when a page has no `<h1>`
    (a prerender that fell back to an empty shell), a title or description that
    another page also uses, a canonical pointing somewhere else, or a
    `data-theme` pinned on `<html>`. It also fails when the sitemap or

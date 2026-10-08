@@ -4,8 +4,8 @@ import { expect, test } from '@playwright/test';
  * A prerendered site's translation and theming, in a browser.
  *
  * The division of labour matters here, because most of this site's i18n is
- * checked somewhere better. `npm run build:<%= name %>` builds it once per language and
- * then runs `scripts/verify-prerender.mjs` over all of it, which is where the
+ * checked somewhere better. `npm run build <%= name %>` builds it once per language and
+ * then runs `angular-capacitor-workspace verify-prerender` over all of it, which is where the
  * per-locale output is verified: that `/fr/` rendered in French and says so in
  * `<html lang>`, that every page carries an hreflang alternate for every
  * language plus `x-default`, that the canonical is that language's own URL,
@@ -93,7 +93,7 @@ test('the design tokens reach the site, with no toggle to set them', async ({ pa
   // A prerendered page carries no theme toggle and no theme script on purpose:
   // it is written once and served to everyone, so light and dark are left to
   // prefers-color-scheme — the only mechanism that survives being cached at the
-  // edge. verify-prerender.mjs fails the build if anything pins `data-theme`.
+  // edge. `verify-prerender` fails the build if anything pins `data-theme`.
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
 
   const surface = await page.evaluate(() =>

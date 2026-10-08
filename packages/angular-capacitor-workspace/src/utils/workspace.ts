@@ -1,17 +1,8 @@
 import { SchematicsException, type Tree } from '@angular-devkit/schematics';
+import { isProjectRunner } from './commands';
 import { JsonFile, updateJson } from './json-file';
 
 export const ANGULAR_JSON = '/angular.json';
-
-/**
- * The root script that runs a project's script by name, or every project's
- * (`workspace/files/scripts/project.mjs.template`). The root `start`, `watch`,
- * `build`, `test` and `e2e` are this with the verb, so the root manifest names
- * no project.
- */
-export function projectRunner(verb: string): string {
-  return `node scripts/project.mjs ${verb}`;
-}
 export const PACKAGE_JSON = '/package.json';
 export const TSCONFIG_JSON = '/tsconfig.json';
 
@@ -469,7 +460,7 @@ export function addGitignoreSection(tree: Tree, heading: string, patterns: strin
  */
 export function aggregateTests(tree: Tree): void {
   // The project runner already runs every suite, and documents itself.
-  if (new JsonFile(tree, PACKAGE_JSON).get<string>(['scripts', 'test']) === projectRunner('test')) {
+  if (isProjectRunner(new JsonFile(tree, PACKAGE_JSON).get<string>(['scripts', 'test']), 'test')) {
     return;
   }
   updateJson(tree, PACKAGE_JSON, (file) => {

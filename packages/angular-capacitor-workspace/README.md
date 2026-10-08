@@ -216,7 +216,7 @@ reason: a crawler follows them, and a visitor can share the page in the language
 they read it in. One `sitemap.xml` at the output root covers every language,
 each URL carrying `xhtml:link` alternates.
 
-`verify-prerender.mjs` grew with it. It now fails the build when a language
+`verify-prerender` grew with it. It now fails the build when a language
 rendered in the wrong one — the tell is `<html lang>` disagreeing with the
 directory — when a page is missing an hreflang alternate, or when one language
 skipped a route another rendered. Titles and descriptions are checked for
@@ -230,7 +230,7 @@ Deploy `dist/<site>` as the web root. Every page lives under a language, so the
 build puts nothing at `/` — the bare domain is a 404 until the host redirects
 it, and that cannot be a file, because the destination depends on the visitor.
 It is a 302 on `Accept-Language` falling back to the source locale, which is
-what each page's `x-default` already advertises. `verify-prerender.mjs` warns on
+what each page's `x-default` already advertises. `verify-prerender` warns on
 every build until one exists.
 
 ### The translation showcase
@@ -323,9 +323,9 @@ search engines:
 
 Run it more than once for more than one site. A product site and a docs site
 are two sets of pages sharing a design system, not two repositories: each site
-gets its own project, dev-server port, scripts and origin, and they share the
-`scripts/` postbuild checks — which a second generation leaves alone, so
-checks someone has tuned survive it.
+gets its own project, dev-server port, scripts and origin, and both run the
+same postbuild checks, `angular-capacitor-workspace sitemap` and
+`verify-prerender`, from the installed package.
 
 The generated `projects/<site>/web/README.md` covers hosting: real 404s,
 upload order and caching.
@@ -407,6 +407,26 @@ npx angular-capacitor-workspace doctor   # diff this workspace against the insta
 npx angular-capacitor-workspace doctor --fix
 npx angular-capacitor-workspace policy   # print the policy this version ships
 ```
+
+### Workspace scripts
+
+A generated workspace's npm scripts run these rather than scripts copied into
+it, so an update of the package updates them, and nothing in the workspace is a
+copy someone has to keep in step:
+
+| Command                                  | Run by                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `run <verb> [<project>]`                 | the root `start`, `watch`, `build`, `test` and `e2e`              |
+| `clean-dist <site>`                      | a translated site's `build`, before its per-language builds       |
+| `sitemap <site> [--locales en,fr]`       | a site's `postbuild`                                              |
+| `verify-prerender <site> [--locales …]`  | a site's `postbuild`, after the sitemap                           |
+| `codegen [--optional] [--spec-env NAME]` | `codegen`, and `codegen:optional` from the `pre*` hooks           |
+| `check-contrast <library>`               | `check:contrast`, against the library's own `contrast.config.mjs` |
+| `preflight [android] [ios]`              | a mobile shell's `preflight`                                      |
+
+What a workspace tunes is in files it owns: the pairings the contrast check
+holds to WCAG are the design system's `contrast.config.mjs`, and orval's
+configuration is `orval.config.ts`.
 
 ### `audit`
 

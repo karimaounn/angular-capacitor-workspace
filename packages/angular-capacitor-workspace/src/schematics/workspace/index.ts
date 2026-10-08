@@ -15,6 +15,7 @@ import {
   type Tree,
 } from '@angular-devkit/schematics';
 import { ANGULAR_LINE, pins } from '../../policy/versions';
+import { cli, isProjectRunner, projectRunner } from '../../utils/commands';
 import { JsonFile, updateJson } from '../../utils/json-file';
 import {
   addDependencies,
@@ -22,7 +23,6 @@ import {
   addScripts,
   documentCommands,
   PACKAGE_JSON,
-  projectRunner,
   setEngines,
   TSCONFIG_JSON,
 } from '../../utils/workspace';
@@ -78,9 +78,6 @@ export function workspaceOverlay(options: WorkspaceOverlayOptions = {}): Rule {
       // Into an existing project, a file that is already there is somebody's:
       // their README, their CI. Overwriting it is a diff they did not ask for.
       filter((path) => !options.keepExisting || !tree.exists(path)),
-      // The project runner is the user's once written, like the other shared
-      // scripts: a second run must not undo changes made to it.
-      filter((path) => path !== '/scripts/project.mjs' || !tree.exists(path)),
     ]);
 
     return chain([
@@ -180,8 +177,8 @@ function rootScripts(options: WorkspaceOverlayOptions): Rule {
     // README's "run this first" instruction a lie in a workspace that has no
     // libraries yet, and a broken one in a workspace that gains them later.
     addScripts(tree, {
-      'audit:policy': 'angular-capacitor-workspace audit',
-      doctor: 'angular-capacitor-workspace doctor',
+      'audit:policy': cli('audit'),
+      doctor: cli('doctor'),
     });
   };
 }
@@ -199,7 +196,7 @@ function documentRunner(tree: Tree, verbs: string[]): void {
   const ours = Object.fromEntries(
     Object.entries(rows).filter(([command]) => {
       const verb = command.replace(/^npm (?:run )?(\w+).*$/, '$1');
-      return verbs.includes(verb) && scripts[verb] === projectRunner(verb);
+      return verbs.includes(verb) && isProjectRunner(scripts[verb], verb);
     }),
   );
   documentCommands(tree, ours);

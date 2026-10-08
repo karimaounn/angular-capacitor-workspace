@@ -73,10 +73,8 @@ describe('theming', () => {
         ...tree.readContent('/projects/ui/src/lib/theme/theme.ts').matchAll(/id: '([^']+)'/g),
       ].map(([, id]) => id);
       expect(offered).toEqual(declared);
-      // And the checker compares the two when, and only when, there is a picker.
-      expect(tree.readContent('/projects/ui/scripts/check-contrast.mjs')).toContain(
-        'if (!existsSync(path)) {',
-      );
+      // `angular-capacitor-workspace check-contrast` compares the two in the
+      // generated workspace, when there is a picker; see cli.spec.ts.
     });
 
     it('namespaces the stored preference by the library prefix', () => {

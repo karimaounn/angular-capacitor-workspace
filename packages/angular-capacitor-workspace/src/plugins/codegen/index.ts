@@ -21,6 +21,7 @@ import {
   readProject,
   readProjects,
 } from '../../utils/workspace';
+import { cli, DEFAULT_SPEC_ENV } from '../../utils/commands';
 import { hookProjectEntryPoints, syncRootHooks } from '../../utils/project-scripts';
 
 export interface CodegenOptions {
@@ -38,7 +39,7 @@ export interface CodegenOptions {
  */
 export function codegen(options: CodegenOptions = {}): Rule {
   return (tree: Tree) => {
-    const specEnvVar = options.specEnvVar ?? 'OPENAPI_SPEC';
+    const specEnvVar = options.specEnvVar ?? DEFAULT_SPEC_ENV;
     const apps = (options.apps?.length ? options.apps : applicationNames(tree)).map((name) =>
       strings.dasherize(name),
     );
@@ -216,11 +217,14 @@ function apiClientFor(tree: Tree, name: string, root: string): Rule {
  */
 function codegenScripts(apps: string[], specEnvVar: string): Rule {
   return (tree: Tree) => {
+    // Named only when it is not the default, so the common case reads as the
+    // plain command.
+    const env = specEnvVar === DEFAULT_SPEC_ENV ? '' : ` --spec-env ${specEnvVar}`;
     addScripts(tree, {
-      codegen: 'node scripts/codegen.mjs',
+      codegen: cli(`codegen${env}`),
       // The hooks use the optional form, which skips with a message when no
-      // spec is configured. See scripts/codegen.mjs for why the two differ.
-      'codegen:optional': 'node scripts/codegen.mjs --optional',
+      // spec is configured. See src/cli/codegen.ts for why the two differ.
+      'codegen:optional': cli(`codegen --optional${env}`),
     });
     documentScripts(tree, {
       codegen:

@@ -21,6 +21,9 @@ import { VERSIONS } from '../src/policy/versions';
 // be testing. `npm test` builds first.
 const collection = join(__dirname, '..', 'dist', 'collection.json');
 
+/** The CLI a generated workspace's scripts run, from the same build. */
+const cli = join(__dirname, '..', 'dist', 'cli', 'index.js');
+
 if (!existsSync(collection)) {
   throw new Error(
     `${collection} does not exist. Run \`npm run build\` before the tests — ` +
@@ -113,11 +116,10 @@ function withRootScripts(tree: UnitTestTree, project: string): UnitTestTree {
     e2e: `npm run e2e:${project}`,
   };
   for (const [verb, command] of Object.entries(named)) {
-    if (root.scripts[verb] === `node scripts/project.mjs ${verb}`) {
+    if (root.scripts[verb] === `angular-capacitor-workspace run ${verb}`) {
       root.scripts[verb] = command;
     }
   }
-  tree.delete('/scripts/project.mjs');
   root.workspaces = root.workspaces.filter(
     (member: string) => member !== `projects/${project}/web`,
   );
@@ -365,9 +367,10 @@ describe('app', () => {
     // No default app: `npm start shop`, through the project runner.
     const scripts = rootScripts(tree);
     for (const verb of ['start', 'watch', 'build', 'test', 'e2e']) {
-      expect(scripts[verb]).toBe(`node scripts/project.mjs ${verb}`);
+      expect(scripts[verb]).toBe(`angular-capacitor-workspace run ${verb}`);
     }
-    expect(tree.exists('/scripts/project.mjs')).toBe(true);
+    // The runner is the installed package's, not a copy in the workspace.
+    expect(tree.files.some((path) => path.startsWith('/scripts/'))).toBe(false);
     expect(ownScripts(tree, 'shop')['watch']).toBe(
       'ng build shop --watch --configuration development',
     );
@@ -472,7 +475,7 @@ describe('app', () => {
     // The runner finds every app in angular.json, so a second one changes
     // nothing at the root.
     expect(rootScripts(two)).toEqual(rootScripts(await withShop()));
-    expect(rootScripts(two)['build']).toBe('node scripts/project.mjs build');
+    expect(rootScripts(two)['build']).toBe('angular-capacitor-workspace run build');
   });
 
   it('keeps building the apps a workspace already had', async () => {
@@ -506,7 +509,7 @@ describe('app', () => {
     expect(ownScripts(tree, 'shop')['e2e']).toBe(
       'tsc -p e2e/tsconfig.json && playwright test --config playwright.config.ts',
     );
-    expect(rootScripts(tree)['e2e']).toBe('node scripts/project.mjs e2e');
+    expect(rootScripts(tree)['e2e']).toBe('angular-capacitor-workspace run e2e');
     expect(tree.readContent('/projects/shop/web/e2e/tsconfig.json')).toContain(
       '"extends": "../../../../tsconfig.json"',
     );
@@ -791,38 +794,20 @@ describe('mobile', () => {
   });
 
   it('gives every mobile app the preflight its README block tells you to run', async () => {
-    // The script is shared; the npm script is per app, and names that app's
+    // The check is the CLI's; the npm script is per app, and names that app's
     // platforms, so each checks only what its own build needs.
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const one = await runner().runSchematic('app', { name: 'shop', mobile: ['android'] }, base);
     const two = await runner().runSchematic('app', { name: 'admin', mobile: ['ios'] }, one);
 
     expect(ownScripts(two, 'shop', 'mobile')['preflight']).toBe(
-      'bash ../../../scripts/cap-preflight.sh android',
+      'angular-capacitor-workspace preflight android',
     );
     expect(ownScripts(two, 'admin', 'mobile')['preflight']).toBe(
-      'bash ../../../scripts/cap-preflight.sh ios',
+      'angular-capacitor-workspace preflight ios',
     );
+    expect(two.exists('/scripts/cap-preflight.sh')).toBe(false);
     expect(two.readContent('/README.md')).toContain('npm run preflight -w @test-ws/admin-mobile');
-  });
-
-  it('checks only the platforms it is asked about', () => {
-    // An Android-only app on a Mac without Xcode is not a failed preflight.
-    const script = tree.readContent('/scripts/cap-preflight.sh');
-    const run = (...platforms: string[]) =>
-      spawnSync('bash', ['-c', script, 'preflight', ...platforms], {
-        encoding: 'utf8',
-        env: { PATH: process.env['PATH'] ?? '' },
-      }).stdout;
-
-    const android = run('android');
-    expect(android).toContain('android sdk');
-    expect(android).not.toContain('xcode');
-
-    const ios = run('ios');
-    expect(ios).toContain('xcode');
-    expect(ios).not.toContain('java');
-    expect(ios).not.toContain('android sdk');
   });
 
   it('gitignores the native build output, from whichever run adds the target', () => {
@@ -861,8 +846,8 @@ describe('marketing', () => {
     );
     expect(ownScripts(tree, 'site')['build']).toBe('ng build site');
     expect(ownScripts(tree, 'site')['postbuild']).toBe(
-      'node ../../../scripts/generate-sitemap.mjs site && ' +
-        'node ../../../scripts/verify-prerender.mjs site',
+      'angular-capacitor-workspace sitemap site && ' +
+        'angular-capacitor-workspace verify-prerender site',
     );
   });
 
@@ -978,31 +963,21 @@ describe('marketing', () => {
   });
 
   it('writes the sitemap and checks every page after each build', () => {
-    // The site's own postbuild, which npm runs after its build, reaching the
-    // shared scripts at the root from projects/site/web.
+    // The site's own postbuild, which npm runs after its build: the installed
+    // package's checks, with nothing copied into the workspace to drift.
     expect(ownScripts(tree, 'site')['postbuild']).toBe(
-      'node ../../../scripts/generate-sitemap.mjs site && ' +
-        'node ../../../scripts/verify-prerender.mjs site',
+      'angular-capacitor-workspace sitemap site && ' +
+        'angular-capacitor-workspace verify-prerender site',
     );
-    for (const script of ['prerendered', 'generate-sitemap', 'verify-prerender']) {
-      expect(tree.files).toContain(`/scripts/${script}.mjs`);
-    }
-    // Adapted to the attribute this generator's design system uses.
-    expect(tree.readContent('/scripts/verify-prerender.mjs')).toContain(
-      "'data-theme' in head.html",
-    );
+    expect(tree.files.some((path) => path.startsWith('/scripts/'))).toBe(false);
   });
 
-  it('shares the check scripts with a second site, leaving edited copies alone', async () => {
-    const edited = await runner().runSchematic(
-      'marketing',
-      { name: 'site' },
-      await runner().runSchematic('workspace', {}, await baseWorkspace()),
+  it('checks a second site with the same commands, by name', async () => {
+    const two = await runner().runSchematic('marketing', { name: 'docs' }, tree);
+    expect(ownScripts(two, 'docs')['postbuild']).toBe(
+      'angular-capacitor-workspace sitemap docs && ' +
+        'angular-capacitor-workspace verify-prerender docs',
     );
-    edited.overwrite('/scripts/verify-prerender.mjs', '// tuned\n');
-    const two = await runner().runSchematic('marketing', { name: 'docs' }, edited);
-    expect(two.readContent('/scripts/verify-prerender.mjs')).toBe('// tuned\n');
-    expect(ownScripts(two, 'docs')['postbuild']).toContain('verify-prerender.mjs docs');
   });
 
   it('holds a page to a page budget, not an app one', () => {
@@ -1016,8 +991,8 @@ describe('marketing', () => {
 
   it('is built by npm run build, and served by name like any app', () => {
     // The runner finds the site like any app, and serves it only by name.
-    expect(scripts(tree)['build']).toBe('node scripts/project.mjs build');
-    expect(scripts(tree)['start']).toBe('node scripts/project.mjs start');
+    expect(scripts(tree)['build']).toBe('angular-capacitor-workspace run build');
+    expect(scripts(tree)['start']).toBe('angular-capacitor-workspace run start');
     expect(ownScripts(tree, 'site')['build']).toBe('ng build site');
   });
 
@@ -1025,7 +1000,7 @@ describe('marketing', () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
     const both = await runner().runSchematic('marketing', { name: 'site' }, withApp);
-    expect(scripts(both)['start']).toBe('node scripts/project.mjs start');
+    expect(scripts(both)['start']).toBe('angular-capacitor-workspace run start');
     expect(
       JSON.parse(both.readContent('/angular.json')).projects['site'].architect.serve.options.port,
     ).toBe(4201);
@@ -1064,7 +1039,7 @@ describe('marketing', () => {
 
     expect(ownScripts(two, 'docs')['start']).toBe('ng serve docs');
     expect(ownScripts(two, 'docs')['build']).toBe('ng build docs');
-    expect(scripts(two)['build']).toBe('node scripts/project.mjs build');
+    expect(scripts(two)['build']).toBe('angular-capacitor-workspace run build');
   });
 
   it('gives each site its own origin, so their canonicals do not collide', async () => {
@@ -1302,13 +1277,18 @@ describe('ui-lib', () => {
       'outline: 2px solid var(--accent-strong)',
     );
 
-    const check = tree.readContent('/projects/ui/scripts/check-contrast.mjs');
+    // The pairings are the library's own config; the checker is the CLI's.
+    const check = tree.readContent('/projects/ui/contrast.config.mjs');
     expect(check).toContain("fg: 'danger-strong', bg: 'surface'");
     expect(check).toContain("fg: 'accent-strong', bg: 'surface'");
+    expect(rootScripts(tree)['check:contrast']).toBe(
+      'angular-capacitor-workspace check-contrast ui',
+    );
+    expect(tree.exists('/projects/ui/scripts/check-contrast.mjs')).toBe(false);
   });
 
   it('runs its tests through the project runner, with no root script of its own', () => {
-    expect(rootScripts(tree)['test']).toBe('node scripts/project.mjs test');
+    expect(rootScripts(tree)['test']).toBe('angular-capacitor-workspace run test');
     expect(rootScripts(tree)['test:ui']).toBeUndefined();
     expect(scriptsTable(tree)).toContain('| `npm test ui` |');
   });
@@ -1508,7 +1488,12 @@ describe('codegen', () => {
     const again = await runner().runSchematic('codegen', { apps: ['shop'] }, first);
 
     expect(again.readContent('/orval.config.ts')).toContain("process.env['API_SPEC']");
-    expect(again.readContent('/scripts/codegen.mjs')).toContain("process.env['API_SPEC']");
+    expect(rootScripts(again)['codegen']).toBe(
+      'angular-capacitor-workspace codegen --spec-env API_SPEC',
+    );
+    expect(rootScripts(again)['codegen:optional']).toBe(
+      'angular-capacitor-workspace codegen --optional --spec-env API_SPEC',
+    );
   });
 
   it('says what to add by hand when the config no longer has the shape it writes', async () => {
@@ -1875,7 +1860,6 @@ describe('the project runner', () => {
 
     dir = mkdtempSync(join(tmpdir(), 'acw-runner-'));
     for (const file of [
-      '/scripts/project.mjs',
       '/angular.json',
       '/package.json',
       '/projects/shop/web/package.json',
@@ -1894,7 +1878,7 @@ describe('the project runner', () => {
   function run(...args: string[]): { status: number | null; ran: string[]; stderr: string } {
     const log = join(dir, `log-${Math.random().toString(36).slice(2)}`);
     writeFileSync(log, '');
-    const result = spawnSync(process.execPath, ['scripts/project.mjs', ...args], {
+    const result = spawnSync(process.execPath, [cli, 'run', ...args], {
       cwd: dir,
       encoding: 'utf8',
       env: { PATH: `${join(dir, 'bin')}:${dirname(process.execPath)}`, RUNNER_LOG: log },

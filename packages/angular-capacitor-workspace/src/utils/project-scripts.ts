@@ -1,5 +1,6 @@
 import { strings } from '@angular-devkit/core';
 import type { Tree } from '@angular-devkit/schematics';
+import { isProjectRunner, projectRunner, ROOT_PREREQUISITES } from './commands';
 import { JsonFile, updateJson } from './json-file';
 import {
   addScripts,
@@ -9,7 +10,6 @@ import {
   documentScripts,
   PACKAGE_JSON,
   prependHook,
-  projectRunner,
   readProject,
   readProjects,
 } from './workspace';
@@ -22,7 +22,7 @@ import {
  * of its own, registered as an npm workspace member. The root manifest keeps
  * only what concerns the whole workspace, so it stays the same size however
  * many projects there are. From the root, `npm run build shop` reaches a
- * project's script through the project runner (`scripts/project.mjs`), and
+ * project's script through the project runner (`src/cli/run.ts`), and
  * `npm run build -w @acme/shop` reaches it directly.
  *
  * Earlier 22.x releases wrote them into the root manifest as `<verb>:<project>`
@@ -80,7 +80,7 @@ export function projectScripts(tree: Tree, name: string): ProjectScripts {
       ['start', 'build', 'test'].some((verb) => rootScripts?.[`${verb}:${name}`] !== undefined));
 
   const command = (verb: string, fallback: string) =>
-    rootScripts?.[verb] === projectRunner(verb)
+    isProjectRunner(rootScripts?.[verb], verb)
       ? `${verb === 'start' || verb === 'test' ? `npm ${verb}` : `npm run ${verb}`} ${name}`
       : fallback;
 
@@ -236,17 +236,10 @@ export function hookLibraryBuild(tree: Tree, projectName: string): void {
 }
 
 /**
- * The root scripts that run before a project's entry points, in the order they
- * run: codegen first, since a library can import the client. The project
- * runner runs the same list for a project without hooks of its own.
- */
-const ROOT_PREREQUISITES = ['codegen:optional', 'build:libs'] as const;
-
-/**
  * Keeps the root `prestart`, `prebuild` and `pretest` hooks only where
  * something needs them.
  *
- * The project runner (`scripts/project.mjs`) runs codegen and the library
+ * The project runner (`angular-capacitor-workspace run`) runs codegen and the library
  * build itself, once, where a project has no hooks of its own to do it, so
  * with it in `start`, `build` and `test` a root hook would only run them
  * again. The same goes for a root script that only calls project scripts with
@@ -299,7 +292,7 @@ function delegatesToProjects(verb: string, command: string | undefined): boolean
   if (!command) {
     return false;
   }
-  if (command === projectRunner(verb)) {
+  if (isProjectRunner(command, verb)) {
     return true;
   }
   return command
@@ -326,7 +319,7 @@ function delegatesToProjects(verb: string, command: string | undefined): boolean
  * itself. The chain is what a workspace from an earlier 22.x has.
  */
 export function addToBuild(tree: Tree, name: string): void {
-  if (rootScript(tree, 'build') === projectRunner('build')) {
+  if (isProjectRunner(rootScript(tree, 'build'), 'build')) {
     return;
   }
   updateJson(tree, PACKAGE_JSON, (file) => {
@@ -364,10 +357,10 @@ export function addToBuild(tree: Tree, name: string): void {
  */
 export function addToE2e(tree: Tree, name: string): void {
   const e2e = rootScript(tree, 'e2e');
-  if (e2e === projectRunner('e2e')) {
+  if (isProjectRunner(e2e, 'e2e')) {
     return;
   }
-  if (e2e === undefined && rootScript(tree, 'build') === projectRunner('build')) {
+  if (e2e === undefined && isProjectRunner(rootScript(tree, 'build'), 'build')) {
     addScripts(tree, { e2e: projectRunner('e2e') });
     documentCommands(tree, {
       'npm run e2e [<project>]': "runs one project's Playwright suite, or every one",
@@ -406,7 +399,7 @@ function hasProjectScript(tree: Tree, name: string, verb: string): boolean {
  * names the app.
  */
 export function claimDefaultStart(tree: Tree, name: string): void {
-  if (rootScript(tree, 'start') === projectRunner('start')) {
+  if (isProjectRunner(rootScript(tree, 'start'), 'start')) {
     return;
   }
   const start = projectScripts(tree, name).run('start');

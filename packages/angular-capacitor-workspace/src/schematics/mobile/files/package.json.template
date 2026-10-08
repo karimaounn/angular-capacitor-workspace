@@ -9,7 +9,7 @@
     "sync:<%= platform %>": "<%= buildWeb %> && cap sync <%= platform %>",
     "run:<%= platform %>": "<%= buildWeb %> && cap run <%= platform %>",
     "open:<%= platform %>": "cap open <%= platform %>",<% } %>
-    "preflight": "bash <%= toRoot %>/scripts/cap-preflight.sh <%= platforms.join(' ') %>",
+    "preflight": "angular-capacitor-workspace preflight <%= platforms.join(' ') %>",
     "doctor": "cap doctor"
   },
   "dependencies": {

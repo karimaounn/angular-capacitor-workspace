@@ -24,10 +24,10 @@ import {
   documentScripts,
   ANGULAR_JSON,
   documentCommands,
-  projectRunner,
   readProject,
   readProjects,
 } from '../../utils/workspace';
+import { cli, isProjectRunner } from '../../utils/commands';
 import { hookLibraryBuild, syncRootHooks } from '../../utils/project-scripts';
 import { extendWithPlugins } from '../../plugins/registry';
 
@@ -101,7 +101,7 @@ export function uiLib(options: UiLibOptions = {}): Rule {
           browserModeTests(name),
           storybook ? storybookTargets(name, root) : (host: Tree) => host,
           adoptExistingApps(name),
-          libraryScripts(name, root, storybook),
+          libraryScripts(name, storybook),
           libraryDependencies(storybook),
           libraryGitignore(),
 
@@ -272,20 +272,23 @@ function adoptExistingApps(name: string): Rule {
   };
 }
 
-function libraryScripts(name: string, root: string, storybook: boolean): Rule {
+function libraryScripts(name: string, storybook: boolean): Rule {
   return (tree: Tree) => {
     // Composed, because Angular has no "build every library" command.
     appendToScript(tree, 'build:libs', `ng build ${name} --configuration production`);
     // A library's own tests run through the project runner, `npm test <lib>`,
     // where the root `test` is one. Elsewhere it is a root script, as an
     // earlier 22.x wrote it.
-    const runner =
-      new JsonFile(tree, '/package.json').get<string>(['scripts', 'test']) ===
-      projectRunner('test');
+    const runner = isProjectRunner(
+      new JsonFile(tree, '/package.json').get<string>(['scripts', 'test']),
+      'test',
+    );
     const testScript = runner ? `npm test ${name}` : `npm run test:${name}`;
     addScripts(tree, {
       'watch:libs': `ng build ${name} --watch --configuration development`,
-      'check:contrast': `node ${root}/scripts/check-contrast.mjs`,
+      // The checker is this package's; the pairings it checks are the
+      // library's own, in `contrast.config.mjs`.
+      'check:contrast': cli(`check-contrast ${name}`),
       ...(runner ? {} : { [`test:${name}`]: `ng test ${name}` }),
 
       // Browser-mode tests need the engines on disk, and Playwright ships the

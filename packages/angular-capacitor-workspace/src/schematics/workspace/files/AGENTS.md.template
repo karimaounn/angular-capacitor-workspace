@@ -73,10 +73,17 @@ built once.
 - A project's own scripts (`start`, `watch`, `build`, `test`, `e2e` and their
   `pre*` hooks) go in that project's `package.json`, not the root one. The
   root keeps what concerns the whole workspace and never names a project:
-  `scripts/project.mjs` runs `start`, `watch`, `build`, `test` and `e2e` for a
-  project named as an argument (`npm run build shop`), and `build`, `test` and
-  `e2e` for every project without one. Any other project script runs with
+  its `start`, `watch`, `build`, `test` and `e2e` are
+  `angular-capacitor-workspace run`, which runs one project named as an
+  argument (`npm run build shop`), or with no name, `build`, `test` and `e2e`
+  for every project. Any other project script runs with
   `npm run <script> -w <package>`.
+- The project runner, the prerender checks, codegen, the contrast check and
+  the mobile preflight are `angular-capacitor-workspace` commands, from the
+  installed package, so updating the package updates them. Never replace one
+  with a copy in this repository: a copy stops getting fixes. What they check
+  is configured in files this workspace owns, such as the design system's
+  `contrast.config.mjs`.
 - A project's script runs in the project's directory. Reach a root script with
   `--prefix` back to the root (`npm run build:libs --prefix ../../..`) and a
   root file by its relative path.

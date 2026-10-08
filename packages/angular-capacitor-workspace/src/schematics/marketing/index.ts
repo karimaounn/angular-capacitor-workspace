@@ -343,29 +343,16 @@ function designTokens(name: string): Rule {
 }
 
 /**
- * The scripts that run after every build of the site: write the sitemap from
+ * The checks that run after every build of the site: write the sitemap from
  * the prerendered pages, then fail on pages a crawler could not use.
  *
- * They take the app name as an argument and live in the root `scripts/`, so a
- * second marketing site shares them. Existing copies are left alone: a second
- * `ng generate` must not overwrite checks someone has tuned. The hook that
- * runs them is the site's own `postbuild`, which npm runs after its `build`.
+ * Both are this package's CLI, named in the site's own `postbuild`, which npm
+ * runs after its `build`. Nothing is copied into the workspace, so a fix to a
+ * check reaches every site with an update of the package.
  */
 function postbuildChecks(name: string): Rule {
   return (tree: Tree) => {
-    const scripts = apply(url('./files/scripts'), [
-      applyTemplates({}),
-      move('/scripts'),
-      filter((path) => !tree.exists(path)),
-    ]);
-
-    return chain([
-      mergeWith(scripts),
-      (host: Tree) => {
-        const own = projectScripts(host, name);
-        addProjectScripts(host, own, { postbuild: siteBuild(own, name).postbuild });
-      },
-    ]);
+    addProjectScripts(tree, projectScripts(tree, name), { postbuild: siteBuild(name).postbuild });
   };
 }
 
@@ -376,7 +363,7 @@ function marketingScripts(name: string): Rule {
     addProjectScripts(tree, scripts, {
       start: `ng serve ${name}`,
       watch: `ng build ${name} --watch --configuration development`,
-      build: siteBuild(scripts, name).build,
+      build: siteBuild(name).build,
       test: `ng test ${name}`,
     });
     documentProjectScripts(tree, scripts, {
@@ -404,8 +391,9 @@ function houseRules(): Rule {
       'Prerendered sites',
       `
 A marketing site is rendered to static HTML at build time, and that HTML is
-what crawlers and first-time visitors get. A site's \`build\` script fails on
-the rules below that the build can see (\`scripts/verify-prerender.mjs\`).
+what crawlers and first-time visitors get. A site's \`build\` fails on the
+rules below that the build can see: its \`postbuild\` runs
+\`angular-capacitor-workspace verify-prerender\`.
 
 - Every route states \`data.seo\` — a title, and a description no other page
   uses. \`PageMetaStrategy\` turns it into the head tags.

@@ -1,0 +1,58 @@
+/**
+ * The colour pairings `npm run check:contrast` holds to WCAG, in every palette
+ * and in both light and dark mode.
+ *
+ * This file is the library's: the checker is
+ * `angular-capacitor-workspace check-contrast`, which an update of the package
+ * improves, and this is what it checks. It compiles the real Sass for every
+ * palette in `src/styles/_ref.scss` and reads each token below off the result,
+ * so the names here are the custom properties `src/styles/_semantic.scss`
+ * emits, without their `--`.
+ *
+ * Extend the table when you add a token pair that carries meaning. A token
+ * that never appears here is a token whose contrast nobody has checked.
+ *
+ * Levels come from WCAG 2.2:
+ *   4.5  normal body text (AA)
+ *   3.0  large text (>= 24px, or >= 18.66px bold) and UI component boundaries
+ */
+export default {
+  pairings: [
+    { fg: 'text', bg: 'surface', min: 4.5, label: 'body text on the page' },
+    { fg: 'text', bg: 'surface-raised', min: 4.5, label: 'body text on a card' },
+    { fg: 'text', bg: 'surface-sunken', min: 4.5, label: 'body text on a well' },
+    { fg: 'text-muted', bg: 'surface', min: 4.5, label: 'secondary text' },
+    { fg: 'text-muted', bg: 'surface-raised', min: 4.5, label: 'secondary text on a card' },
+
+    // Filled controls. `on-accent`, not `text-inverse` — see _semantic.scss.
+    { fg: 'on-accent', bg: 'accent', min: 4.5, label: 'text on a primary button' },
+    { fg: 'on-accent', bg: 'info', min: 4.5, label: 'text on an informational fill' },
+    { fg: 'on-accent', bg: 'danger', min: 4.5, label: 'text on a destructive button' },
+    { fg: 'on-accent', bg: 'success', min: 4.5, label: 'text on a success button' },
+    { fg: 'on-accent', bg: 'warning', min: 4.5, label: 'text on a warning button' },
+
+    // Accent-coloured text on the page: links, and anything else that borrows the
+    // brand colour for type. `-strong`, never `--accent` — the filled step is
+    // chosen to sit under white and does not survive being put on the surface.
+    // The focus ring is drawn in the same token, at 3:1, which these cover.
+    { fg: 'accent-strong', bg: 'surface', min: 4.5, label: 'a link, or a focus ring' },
+    { fg: 'accent-strong', bg: 'surface-raised', min: 4.5, label: 'a link on a card' },
+
+    // Error text and an invalid field's outline. `-strong` for the same reason as
+    // the accent: `--danger` is the fill step and fails as text on a dark page.
+    { fg: 'danger-strong', bg: 'surface', min: 4.5, label: 'an error message' },
+    { fg: 'danger-strong', bg: 'surface-raised', min: 4.5, label: 'an error message on a card' },
+
+    // Boundaries that identify a control — input outlines, selected states.
+    // WCAG 1.4.11, 3:1.
+    { fg: 'border-strong', bg: 'surface', min: 3.0, label: 'interactive boundary' },
+    { fg: 'border-strong', bg: 'surface-raised', min: 3.0, label: 'interactive boundary on a card' },
+
+    // `border` is deliberately absent. It is a decorative separator — a card
+    // edge, a list divider — and 1.4.11 governs boundaries that identify a
+    // control, not every line on the page. Holding decoration to 3:1 produces a
+    // heavy, over-ruled interface and, worse, trains people to add exemptions to
+    // this table. If a border ever *is* the affordance, it should use
+    // `border-strong`, which is checked.
+  ],
+};

@@ -9,14 +9,14 @@
 /// Palettes are generated as perceptually even ramps. Keeping every hue on the
 /// same lightness scale is what lets `_semantic.scss` swap one palette for
 /// another without re-checking every contrast pair by hand — and what lets
-/// `check-contrast.mjs` verify a whole palette from its endpoints.
+/// `check:contrast` verify a whole palette from its endpoints.
 
 $ramp-steps: (0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950, 1000);
 
 /// The palettes this skeleton ships.
 ///
 /// Every palette carries the same step keys, so switching one for another is an
-/// attribute change and nothing else. `check-contrast.mjs` finds them by
+/// attribute change and nothing else. `check:contrast` finds them by
 /// parsing this map, and checks every one of them in both modes — a palette
 /// added here is a palette that is verified, and one that fails the check fails
 /// the build rather than shipping unreadable text.
@@ -97,7 +97,7 @@ $accents: (
 /// step that carries white text on a filled button, and white on a mid-bright
 /// blue is about 3.9:1 — under the 4.5:1 that body-sized text needs. Picking
 /// the pretty value and discovering that later means either re-theming every
-/// filled control or shipping unreadable buttons; `check-contrast.mjs` is what
+/// filled control or shipping unreadable buttons; `check:contrast` is what
 /// stops that decision from being made by accident.
 $status: (
   'success': (300: #6ee7b7, 500: #047857, 700: #064e3b),

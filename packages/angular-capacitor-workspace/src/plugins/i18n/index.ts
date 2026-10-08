@@ -27,7 +27,8 @@ import {
   addShellTestProvider,
   addStarterSection,
 } from '../../extend/shell';
-import { addPageMetaExtension, replaceSiteBuild } from '../../extend/site';
+import { addPageMetaExtension, replaceSiteBuild, siteBuild } from '../../extend/site';
+import { cli } from '../../utils/commands';
 import { updateJson } from '../../utils/json-file';
 import { documentProjectScripts, projectScripts } from '../../utils/project-scripts';
 import {
@@ -642,7 +643,6 @@ function localizedSite(
       showcase(tree, root, prefix, design),
       siteFiles,
       e2eSuite(tree, root, './files/site-e2e', locales, defaultLocale, name),
-      localizedPostbuild(tree),
       (host: Tree) => {
         addRootProvider(host, name, {
           symbol: 'provideTranslations',
@@ -684,31 +684,6 @@ function localizedSite(
 }
 
 /**
- * Replaces the postbuild scripts with locale-aware versions.
- *
- * The first time, overwritten rather than merged, unlike the marketing
- * schematic's own copy which leaves an existing file alone: these are the same
- * scripts with the locale dimension added, and a site built once per language
- * against the single-output versions would report every page as missing. They
- * still handle a site with no locales, so a workspace with one localized site
- * and one without is not a broken combination.
- *
- * Once `clean-dist.mjs` is there the locale-aware set is too, and from then on
- * a copy someone has tuned is theirs.
- */
-function localizedPostbuild(tree: Tree): Rule {
-  const installed = tree.exists('/scripts/clean-dist.mjs');
-  return mergeWith(
-    apply(url('./files/scripts'), [
-      applyTemplates({}),
-      move('/scripts'),
-      installed ? onlyNew(tree) : noop(),
-    ]),
-    MergeStrategy.Overwrite,
-  );
-}
-
-/**
  * One build configuration per language, and the `define` that makes each one
  * that language.
  *
@@ -744,7 +719,7 @@ function addLocaleConfigurations(tree: Tree, name: string, locales: readonly str
         define: { BUILD_LOCALE: JSON.stringify(locale) },
         // Angular deletes `outputPath.base`, not the browser directory under
         // it — so the second language's build would take the first one's output
-        // with it and only the last would survive. `clean-dist.mjs` runs once
+        // with it and only the last would survive. `clean-dist` runs once
         // before them all instead.
         deleteOutputPath: false,
       });
@@ -766,23 +741,17 @@ function localeConfiguration(locale: string): string {
  * a directory fails the check rather than quietly shipping one language.
  */
 function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[]): void {
-  const list = locales.join(',');
-  replaceSiteBuild(tree, name, (scripts) => {
-    const script = (file: string) => `node ${scripts.rootPath(`scripts/${file}`)} ${name}`;
-    return {
-      build: [
-        // Once, before the first language: the locale configurations turn
-        // Angular's own output cleaning off, because it would delete the shared
-        // base each of them writes into.
-        script('clean-dist.mjs'),
-        ...locales.map(
-          (locale) => `ng build ${name} --configuration ${localeConfiguration(locale)}`,
-        ),
-      ].join(' && '),
-      postbuild:
-        `${script('generate-sitemap.mjs')} --locales ${list} && ` +
-        `${script('verify-prerender.mjs')} --locales ${list}`,
-    };
+  replaceSiteBuild(tree, name, {
+    build: [
+      // Once, before the first language: the locale configurations turn
+      // Angular's own output cleaning off, because it would delete the shared
+      // base each of them writes into.
+      cli(`clean-dist ${name}`),
+      ...locales.map((locale) => `ng build ${name} --configuration ${localeConfiguration(locale)}`),
+    ].join(' && '),
+    // Told which languages to expect, so a build whose second language failed
+    // to produce a directory fails the check rather than quietly shipping one.
+    postbuild: siteBuild(name, locales).postbuild,
   });
 
   documentProjectScripts(tree, projectScripts(tree, name), {
@@ -870,7 +839,7 @@ The header's language links are real \`<a href>\`s for that reason — a crawler
 follows them, and a visitor can share the page in the language they read it in.
 
 One sitemap covers every language, with \`xhtml:link\` alternates per URL.
-\`verify-prerender.mjs\` fails the build if a language rendered in the wrong one,
+\`verify-prerender\` fails the build if a language rendered in the wrong one,
 skipped a route the others have, or left out an hreflang.
 
 \`${projectScripts(tree, sites[0]!).command('start')}\` serves the source locale: \`ng serve\` applies no
@@ -881,7 +850,7 @@ lives under a language, so the build puts nothing at \`/\` — the bare domain i
 404 until the host sends it somewhere. That cannot be a file, because the right
 destination depends on the visitor: it is a 302 on \`Accept-Language\`, falling
 back to \`/${defaultLocale}/\`, which is what the pages' \`x-default\` already
-advertises. \`verify-prerender.mjs\` warns on every build until you have one.
+advertises. \`verify-prerender\` warns on every build until you have one.
 
 - Cloudflare, Netlify, Vercel — a redirect rule on \`/\` with language matching
 - S3 + CloudFront — a CloudFront Function on viewer-request
@@ -940,7 +909,7 @@ function houseRules(
         `\n  \`setLocale\` there, and never link between languages with \`routerLink\` —` +
         `\n  they are separate documents, so they need a real \`href\`.`,
       `- **A new route on a site is a new route in every language.** They are` +
-        `\n  prerendered from the same \`app.routes.ts\`, and \`verify-prerender.mjs\`` +
+        `\n  prerendered from the same \`app.routes.ts\`, and \`verify-prerender\`` +
         `\n  fails the build if one language rendered a route another did not.`,
     );
   }

@@ -357,9 +357,6 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **`EXPECTED_PROVIDERS`** in `schematics/marketing/index.ts` must match
   `marketing/files/site/src/app/app.config.ts.template` and Angular's SSR output
   (_tested_).
-- **The postbuild scripts exist twice**: single-locale in
-  `marketing/files/scripts/` and locale-aware in `plugins/i18n/files/scripts/`.
-  A check added to one belongs in the other.
 - **The palettes are listed three times**: `$palettes` in the `ui-lib`
   template's `_ref.scss`, the palette toolbar in its `.storybook/preview.ts`,
   and `PALETTES` in the theming plugin's `theme.ts`. `check:contrast` in a
@@ -369,13 +366,12 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   Angular's own default (_tested_).
 - **A migration's `version`** must be the release whose CHANGELOG section first
   names it in backticks (_tested_). `npm run bump` sets it.
-- **The project runner's command** `node scripts/project.mjs <verb>` is
-  `projectRunner()` in `src/utils/workspace.ts`, and its file is
-  `workspace/files/scripts/project.mjs.template`. The runner reads which
-  projects have a manifest from the root `workspaces`, and runs the same
-  `codegen:optional` and `build:libs` that the projects' hooks do
-  (`ROOT_PREREQUISITES`); a new prerequisite belongs in both. Its behaviour is
-  _tested_ by running it against stubbed `npm` and `ng`.
+- **The generated scripts name CLI commands by string**: `cli()` and
+  `projectRunner()` in `src/utils/commands.ts` write them, and the switch in
+  `src/cli/index.ts` dispatches them. Renaming a command, or changing its
+  arguments, breaks every workspace generated before the change until it is
+  regenerated; keep the old name working. The runner is _tested_ against
+  stubbed `npm` and `ng` (`schematics.spec.ts`), and the rest in `cli.spec.ts`.
 - **The README markers** in `workspace/files/README.md.template`
   (`angular-capacitor-workspace:scripts`, `:mobile`) are matched by constants in
   `src/utils/workspace.ts`.
@@ -401,9 +397,8 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   - key every insertion on a symbol, heading or marker
   - `addScripts` never overwrites a script that differs
   - files handed to the user (translation catalogs, `api-client.ts`,
-    `orval.config.ts`, `ngsw-config.json`, the shared postbuild and codegen
-    scripts) are written only when missing (`onlyNew`, or a
-    `!tree.exists(path)` filter)
+    `orval.config.ts`, `ngsw-config.json`, `contrast.config.mjs`) are written
+    only when missing (`onlyNew`, or a `!tree.exists(path)` filter)
   - a shared file that gains an entry per project adds the missing entry and
     leaves the rest alone (`addOrvalEntries`, `appendToScript`)
 - **Plugins go through `src/extend/`.** A plugin never reads or rewrites a line
@@ -423,7 +418,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   (`src/utils/project-scripts.ts`); a mobile shell's are in its
   `package.json.template`. Never write `<verb>:<project>` or a project name into
   the root: its `start`, `watch`, `build`, `test` and `e2e` are the project
-  runner (`workspace/files/scripts/project.mjs.template`), which takes the
+  runner (`angular-capacitor-workspace run`, `src/cli/run.ts`), which takes the
   project as an argument and finds its manifest through `angular.json` and
   `workspaces`. Earlier 22.x workspaces have neither the runner nor project
   manifests, so anything that patches an existing project's scripts goes
@@ -431,6 +426,13 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   for the runner first (`addToBuild`, `addToE2e`, `claimDefaultStart`). Document each script
   with `documentScripts` or `documentProjectScripts`, and hook library builds
   with `hookLibraryBuild` once the script exists.
+- **Ship tools, never copy them.** A script a generated workspace runs is a
+  command of this package's CLI (`src/cli/`), named in the npm script through
+  `cli()` (`src/utils/commands.ts`). A script templated into the workspace is
+  a copy no update can reach. What a workspace may tune goes in a config file
+  it owns, which the command reads (the design system's `contrast.config.mjs`).
+  A command must not load the schematics engine: `src/cli/index.ts` requires
+  each one when it runs, because `run` is behind every `npm start`.
 - **No new runtime dependencies without a reason.** `create-*` has exactly one,
   the schematics package. There is no prompt, colour or argv library: output
   goes through `src/style.ts` and `src/spinner.ts`. An install script this
@@ -454,6 +456,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 | a host schematic, its extension anchors     | `test/schematics.spec.ts`                                                                                    |
 | a plugin                                    | its own spec: `test/i18n.spec.ts`, `test/theming.spec.ts`; codegen and packages in `test/schematics.spec.ts` |
 | the registry, `src/extend/`                 | `test/plugins.spec.ts`                                                                                       |
+| a workspace command in `src/cli/`           | `test/cli.spec.ts`; the runner in `test/schematics.spec.ts`                                                  |
 | manifest versions, licence copies           | `test/release-line.spec.ts`                                                                                  |
 | a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts`                                      |
 | CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                                                                   |

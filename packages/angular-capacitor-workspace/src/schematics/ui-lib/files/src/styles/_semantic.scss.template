@@ -36,7 +36,7 @@ $status-tokens: ('success', 'warning', 'danger', 'info');
 
 /// Emits one mode's tokens. `$index` is 1 for light, 2 for dark.
 ///
-/// Public because `check-contrast.mjs` compiles it directly, once per palette
+/// Public because `check:contrast` compiles it directly, once per palette
 /// per mode, to get the real resolved values rather than re-deriving them by
 /// parsing Sass. A checker that reimplements the token logic can agree with
 /// itself while disagreeing with what ships.

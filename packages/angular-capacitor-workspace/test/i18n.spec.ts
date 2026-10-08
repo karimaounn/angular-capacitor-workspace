@@ -71,11 +71,10 @@ function withRootScripts(tree: UnitTestTree, project: string): UnitTestTree {
     e2e: `npm run e2e:${project}`,
   };
   for (const [verb, command] of Object.entries(named)) {
-    if (root.scripts[verb] === `node scripts/project.mjs ${verb}`) {
+    if (root.scripts[verb] === `angular-capacitor-workspace run ${verb}`) {
       root.scripts[verb] = command;
     }
   }
-  tree.delete('/scripts/project.mjs');
   root.workspaces = root.workspaces.filter(
     (member: string) => member !== `projects/${project}/web`,
   );
@@ -521,15 +520,18 @@ describe('i18n', () => {
       // In the site's own manifest, which runs in projects/site/web.
       const scripts = JSON.parse(site.readContent('/projects/site/web/package.json')).scripts;
       expect(scripts['build']).toBe(
-        'node ../../../scripts/clean-dist.mjs site && ' +
+        'angular-capacitor-workspace clean-dist site && ' +
           'ng build site --configuration locale-en && ' +
           'ng build site --configuration locale-fr',
       );
-      expect(site.exists('/scripts/clean-dist.mjs')).toBe(true);
+      // Told which locales to expect, so a language that failed to build is a
+      // failed check rather than a site that quietly ships one language.
       expect(scripts['postbuild']).toBe(
-        'node ../../../scripts/generate-sitemap.mjs site --locales en,fr && ' +
-          'node ../../../scripts/verify-prerender.mjs site --locales en,fr',
+        'angular-capacitor-workspace sitemap site --locales en,fr && ' +
+          'angular-capacitor-workspace verify-prerender site --locales en,fr',
       );
+      // The checks are the installed package's, so nothing is copied in.
+      expect(site.files.some((path) => path.startsWith('/scripts/'))).toBe(false);
     });
 
     it('pins the locale rather than negotiating it', () => {
@@ -585,23 +587,11 @@ describe('i18n', () => {
     it('warns that nothing serves the bare domain', () => {
       // Every page lives under a language, so `/` is a 404 until the host
       // redirects it. That cannot be a file — the destination depends on the
-      // visitor — so this warns rather than fails.
-      const verify = site.readContent('/scripts/verify-prerender.mjs');
-      expect(verify).toContain('nothing in this build serves /');
-      expect(verify).toContain("path.join(root, 'index.html')");
-
-      // And the README says what to do about it.
+      // visitor — so `verify-prerender` warns rather than fails (see
+      // cli.spec.ts), and the README says what to do about it.
       const readme = site.readContent('/README.md');
       expect(readme).toContain('redirect `/` yourself');
       expect(readme).toContain('Accept-Language');
-    });
-
-    it('teaches the postbuild checks about locales', () => {
-      const verify = site.readContent('/scripts/verify-prerender.mjs');
-      // The tell for a prerender that fell back to the source locale.
-      expect(verify).toContain('expected "${output.locale}"');
-      expect(verify).toContain('no hreflang alternate for');
-      expect(site.readContent('/scripts/generate-sitemap.mjs')).toContain('xhtml:link');
     });
 
     it('tells the reader the npm command that serves the source locale', () => {
@@ -616,16 +606,14 @@ describe('i18n', () => {
       expect(links).toContain('routePath(this.url())');
     });
 
-    it('leaves the scripts and pages alone once the site is localized', async () => {
+    it('leaves the pages alone once the site is localized', async () => {
       // The first run replaces the marketing schematic's single-language files;
       // after that they are the site's own, and every `ng generate` into the
       // workspace runs this schematic again.
       const tuned = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, site);
-      tuned.overwrite('/scripts/verify-prerender.mjs', '// tuned\n');
       tuned.overwrite('/projects/site/web/src/app/pages/home.page.ts', '// edited\n');
 
       const again = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, tuned);
-      expect(again.readContent('/scripts/verify-prerender.mjs')).toBe('// tuned\n');
       expect(again.readContent('/projects/site/web/src/app/pages/home.page.ts')).toBe(
         '// edited\n',
       );
@@ -636,7 +624,7 @@ describe('i18n', () => {
       const scripts = JSON.parse(twice.readContent('/projects/site/web/package.json')).scripts;
 
       expect(scripts['build']).toBe(
-        'node ../../../scripts/clean-dist.mjs site && ' +
+        'angular-capacitor-workspace clean-dist site && ' +
           'ng build site --configuration locale-en && ' +
           'ng build site --configuration locale-fr',
       );
@@ -670,12 +658,12 @@ describe('i18n', () => {
 
       expect(localized.exists('/projects/site/web/package.json')).toBe(false);
       expect(scripts['build:site']).toBe(
-        'node scripts/clean-dist.mjs site && ' +
+        'angular-capacitor-workspace clean-dist site && ' +
           'ng build site --configuration locale-en && ' +
           'ng build site --configuration locale-fr',
       );
       expect(scripts['postbuild:site']).toContain(
-        'node scripts/verify-prerender.mjs site --locales en,fr',
+        'angular-capacitor-workspace verify-prerender site --locales en,fr',
       );
     });
   });

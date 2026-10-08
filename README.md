@@ -75,7 +75,7 @@ npm run storybook                 # the ui library in isolation
 Each app, site and mobile shell keeps its own scripts in its own
 `package.json`, an npm workspace member, so the root manifest names no project
 and stays the same however many there are. `start`, `watch`, `build`, `test` and
-`e2e` take the project as an argument, through `scripts/project.mjs`; anything
+`e2e` take the project as an argument, through `angular-capacitor-workspace run`; anything
 else a project has runs with `-w`, such as
 `npm run run:android -w @acme/storefront-mobile`. The generated README lists
 every script the workspace has. The native Android and iOS projects are added
@@ -208,7 +208,8 @@ packages/
     src/plugins/                     theming, codegen, i18n, packages, and the
                                      registry that runs them
     src/extend/                      the extension points plugins edit hosts through
-    src/cli/                         audit, doctor
+    src/cli/                         audit, doctor, and the commands the
+                                     generated npm scripts run
   create-angular-capacitor-workspace/
     src/                             argv, prompts, bootstrap
 e2e/

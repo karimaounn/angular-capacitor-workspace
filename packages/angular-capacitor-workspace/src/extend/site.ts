@@ -1,6 +1,7 @@
 import { SchematicsException, type Tree } from '@angular-devkit/schematics';
+import { cli } from '../utils/commands';
 import { updateJson } from '../utils/json-file';
-import { projectScripts, type ProjectScripts } from '../utils/project-scripts';
+import { projectScripts } from '../utils/project-scripts';
 import { readProject } from '../utils/workspace';
 import { addRootProvider } from './shell';
 
@@ -20,13 +21,16 @@ import { addRootProvider } from './shell';
  * `postbuild`: one prerendering build, then the sitemap and the crawler checks
  * over its output. One function, so the host that writes them and a plugin that
  * replaces them cannot disagree about what they were.
+ *
+ * The checks are this package's CLI rather than scripts copied into the
+ * workspace, so an update of the package updates them. `locales` is for a site
+ * built once per language, whose output is one directory per locale.
  */
-export function siteBuild(scripts: ProjectScripts, name: string): SiteBuild {
+export function siteBuild(name: string, locales: readonly string[] = []): SiteBuild {
+  const across = locales.length > 0 ? ` --locales ${locales.join(',')}` : '';
   return {
     build: `ng build ${name}`,
-    postbuild:
-      `node ${scripts.rootPath('scripts/generate-sitemap.mjs')} ${name} && ` +
-      `node ${scripts.rootPath('scripts/verify-prerender.mjs')} ${name}`,
+    postbuild: `${cli(`sitemap ${name}${across}`)} && ${cli(`verify-prerender ${name}${across}`)}`,
   };
 }
 
@@ -43,14 +47,9 @@ export interface SiteBuild {
  * that is a failure naming the command to put in by hand, rather than an
  * overwrite.
  */
-export function replaceSiteBuild(
-  tree: Tree,
-  name: string,
-  next: (scripts: ProjectScripts) => SiteBuild,
-): void {
+export function replaceSiteBuild(tree: Tree, name: string, after: SiteBuild): void {
   const scripts = projectScripts(tree, name);
-  const before = siteBuild(scripts, name);
-  const after = next(scripts);
+  const before = siteBuild(name);
   updateJson(tree, scripts.manifest, (file) => {
     for (const verb of ['build', 'postbuild'] as const) {
       const key = scripts.key(verb);
