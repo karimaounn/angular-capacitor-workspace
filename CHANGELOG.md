@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.6.0] — 2026-10-08
+
 ### Added
 
 - **Theme switching is optional: `--no-theming` leaves it out.** The theme
@@ -858,7 +860,8 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.5.0...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.6.0...HEAD
+[22.6.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.5.0...v22.6.0
 [22.5.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.4.0...v22.5.0
 [22.4.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.2...v22.4.0
 [22.3.2]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.3.1...v22.3.2
