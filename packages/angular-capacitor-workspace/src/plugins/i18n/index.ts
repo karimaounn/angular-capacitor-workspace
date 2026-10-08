@@ -1,3 +1,4 @@
+import { posix } from 'node:path';
 import { strings } from '@angular-devkit/core';
 import {
   apply,
@@ -29,6 +30,7 @@ import {
 } from '../../extend/shell';
 import { addPageMetaExtension, replaceSiteBuild, siteBuild } from '../../extend/site';
 import { cli } from '../../utils/commands';
+import { ConfigError, readConfigLiteral } from '../../utils/config-file';
 import { updateJson } from '../../utils/json-file';
 import { documentProjectScripts, projectScripts } from '../../utils/project-scripts';
 import {
@@ -40,7 +42,7 @@ import {
   type AngularProject,
 } from '../../utils/workspace';
 import { isPrerendered, treeView } from '../../utils/workspace-view';
-import { installedLocales } from './plugin';
+import { I18N_CONFIG, installedI18n, type I18nSetup } from './plugin';
 
 export interface I18nOptions {
   locales?: string[];
@@ -68,16 +70,19 @@ export interface I18nOptions {
  *
  * A plugin (see `plugin.ts`): a project generated later is wired into the same
  * locales, and every edit to a host's files goes through `src/extend/`.
+ *
+ * The locales are the design system's `src/config/i18n.ts`, which the first run
+ * writes from `--locales`. Every run after that reads it, and brings each app
+ * and site in line with it — so adding a language is an entry there and a run
+ * of this schematic, with no generated file to edit.
  */
 export function i18n(options: I18nOptions = {}): Rule {
   return (tree: Tree) => {
-    const locales = normalizeLocales(options.locales ?? ['en']);
-    const defaultLocale = resolveDefault(locales, options.defaultLocale);
-
     const design = requireDesignSystem(
       tree,
       'The i18n schematic wires the translation machinery into the design-system library',
     );
+    const setup = resolveSetup(tree, design, options);
 
     const { apps, sites } = targets(tree, options.apps);
     if (apps.length === 0 && sites.length === 0) {
@@ -88,15 +93,81 @@ export function i18n(options: I18nOptions = {}): Rule {
     }
 
     return chain([
-      library(tree, design, locales, defaultLocale),
-      ...apps.map((app) => application(app, design, locales, defaultLocale)),
-      ...sites.map((site) => localizedSite(site, design, locales, defaultLocale)),
+      library(tree, design, setup),
+      ...apps.map((app) => application(app, design, setup)),
+      ...sites.map((site) => localizedSite(site, design, setup)),
       (host: Tree) => {
-        documentI18n(host, design, locales, defaultLocale, sites);
-        houseRules(host, design, locales, sites);
+        documentI18n(host, design, setup, sites);
+        houseRules(host, design, setup, sites);
       },
     ]);
   };
+}
+
+/**
+ * The locales to wire: the config's, once there is one, or `--locales` on the
+ * first run, which writes the config from them.
+ *
+ * A run that asks for other locales than the config's is refused rather than
+ * obeyed or ignored. The config is the one place a locale lives, and a second
+ * way to change the set would be a second place.
+ */
+function resolveSetup(tree: Tree, design: DesignSystem, options: I18nOptions): I18nSetup {
+  let installed: I18nSetup | undefined;
+  try {
+    installed = installedI18n(treeView(tree));
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      throw new SchematicsException(error.message);
+    }
+    throw error;
+  }
+
+  if (!installed) {
+    const tags = normalizeLocales(options.locales ?? ['en']);
+    return {
+      defaultLocale: resolveDefault(tags, options.defaultLocale),
+      locales: tags.map((tag) => ({
+        tag,
+        label: localeInfo(tag).label,
+        direction: localeInfo(tag).direction,
+      })),
+    };
+  }
+
+  if (options.locales?.length || options.defaultLocale) {
+    const asked = options.locales?.length
+      ? normalizeLocales(options.locales)
+      : installed.locales.map((locale) => locale.tag);
+    const same =
+      resolveDefault(asked, options.defaultLocale ?? installed.defaultLocale) ===
+        installed.defaultLocale &&
+      asked.length === installed.locales.length &&
+      installed.locales.every((locale) => asked.includes(locale.tag));
+    if (!same) {
+      throw new SchematicsException(
+        `${design.name} already translates into ` +
+          `${installed.locales.map((locale) => locale.tag).join(', ')} ` +
+          `(source: ${installed.defaultLocale}). The locales are ` +
+          `${design.root}/${I18N_CONFIG}: change them there, then run this ` +
+          `schematic without --locales to bring every app and site in line.`,
+      );
+    }
+  }
+  return installed;
+}
+
+/** The tags, in the config's order. */
+function tagsOf(setup: I18nSetup): string[] {
+  return setup.locales.map((locale) => locale.tag);
+}
+
+function labelOf(setup: I18nSetup, tag: string): string {
+  return setup.locales.find((locale) => locale.tag === tag)?.label ?? tag;
+}
+
+function directionOf(setup: I18nSetup, tag: string): 'ltr' | 'rtl' {
+  return setup.locales.find((locale) => locale.tag === tag)?.direction ?? 'ltr';
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────
@@ -210,23 +281,18 @@ function onlyNew(tree: Tree): Rule {
 
 // ── The library half: the mechanism ──────────────────────────────────────────
 
-function library(
-  tree: Tree,
-  design: DesignSystem,
-  locales: readonly string[],
-  defaultLocale: string,
-): Rule {
-  assertSameLocales(tree, locales, defaultLocale, design);
-
+function library(tree: Tree, design: DesignSystem, setup: I18nSetup): Rule {
+  // Everything here, the config included, is written only where missing. The
+  // config is the workspace's once it exists, and the machinery derives every
+  // table from it, so nothing in the library is rewritten when it changes.
   const templates = apply(url('./files/lib'), [
     applyTemplates({
       ...strings,
       prefix: design.prefix,
-      defaultLocale,
-      defaultLabel: localeInfo(defaultLocale).label,
-      localeList: locales.map((tag) => `'${tag}'`).join(', '),
-      directionEntries: mapEntries(locales, (tag) => `'${localeInfo(tag).direction}'`),
-      labelEntries: mapEntries(locales, (tag) => labelLiteral(tag)),
+      defaultLocale: setup.defaultLocale,
+      localeEntries: setup.locales
+        .map((locale) => `    ${key(locale.tag)}: ${configEntry(locale.tag, locale.direction)},`)
+        .join('\n'),
     }),
     move(`/${design.root}`),
     onlyNew(tree),
@@ -262,6 +328,7 @@ function library(
         "} from './lib/i18n/i18n.tokens';",
         'export type {',
         '  Direction,',
+        '  I18nConfig,',
         '  Locale,',
         '  TranslationCatalog,',
         '  TranslationParams,',
@@ -269,45 +336,6 @@ function library(
       ]);
     },
   ]);
-}
-
-/**
- * Refuses a locale set that differs from the one the library already has.
- *
- * The library's locale tables are not rewritten once they exist, so a run asking
- * for other locales would generate catalogs the library does not know about.
- * Adding a locale is a hand edit the compiler then walks you through, and the
- * README's Translation section says how.
- */
-function assertSameLocales(
-  tree: Tree,
-  locales: readonly string[],
-  defaultLocale: string,
-  design: DesignSystem,
-): void {
-  const installed = installedLocales(treeView(tree));
-  if (!installed) {
-    return;
-  }
-  const same =
-    installed.defaultLocale === defaultLocale &&
-    installed.locales.length === locales.length &&
-    installed.locales.every((tag) => locales.includes(tag));
-  if (!same) {
-    throw new SchematicsException(
-      `${design.name} already translates into ${installed.locales.join(', ')} ` +
-        `(source: ${installed.defaultLocale}), and this schematic does not rewrite ` +
-        `files it has handed over. To change the set, edit LOCALES and the two maps ` +
-        `beside it in i18n.tokens.ts by hand — the compiler then points at every ` +
-        `catalog and loader that needs the change. See the Translation section of ` +
-        `the README.`,
-    );
-  }
-}
-
-/** `  en: 'ltr',` — one indented entry per locale, for an exhaustive map. */
-function mapEntries(locales: readonly string[], value: (tag: string) => string): string {
-  return locales.map((tag) => `  ${key(tag)}: ${value(tag)},`).join('\n');
 }
 
 /**
@@ -320,37 +348,38 @@ function key(tag: string): string {
 }
 
 /**
- * The endonym, or the tag itself with a note when the generator does not know
- * one.
+ * `{ label: 'Français', direction: 'ltr' }`, with a note when the generator
+ * does not know the language's own name for itself.
  *
  * A wrong label is worse than an obviously missing one: a picker that offers
  * "pt-BR" is asking to be fixed, while one that offers "Portuguese" to a
  * Brazilian reader looks finished and is not.
  */
-function labelLiteral(tag: string): string {
+function configEntry(tag: string, direction: 'ltr' | 'rtl'): string {
   const info = localeInfo(tag);
+  const entry = `{ label: ${quote(info.label)}, direction: '${direction}' }`;
   return info.known
-    ? `'${info.label}'`
-    : `'${info.label}', // TODO: replace with the endonym — the language's name in that language`;
+    ? entry
+    : `${entry}, // TODO: the label is the language's name in that language`;
+}
+
+/** A single-quoted TypeScript string literal. */
+function quote(text: string): string {
+  return `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
 }
 
 // ── The application half: the messages ───────────────────────────────────────
 
-function application(
-  name: string,
-  design: DesignSystem,
-  locales: readonly string[],
-  defaultLocale: string,
-): Rule {
+function application(name: string, design: DesignSystem, setup: I18nSetup): Rule {
   return (tree: Tree) => {
     const root = requireRoot(readProjects(tree), name);
     const prefix = prefixOf(tree, name);
     const starterPage = tree.exists(`/${root}/src/app/pages/home.page.html`);
 
     return chain([
-      messages(tree, name, root, design, locales, defaultLocale, false),
+      messages(tree, name, root, design, setup, false),
       starterPage ? showcase(tree, root, prefix, design) : noop(),
-      e2eSuite(tree, root, './files/app-e2e', locales, defaultLocale, name),
+      e2eSuite(tree, root, './files/app-e2e', design, name),
       (host: Tree) => {
         addRootProvider(host, name, {
           symbol: 'provideTranslations',
@@ -360,7 +389,7 @@ function application(
             "import { loadCatalog } from './i18n/catalog.loader';",
           ],
         });
-        addBootScript(host, name, noFoucScript(locales, defaultLocale, design.prefix));
+        addBootScript(host, name, noFoucScript(setup, design.prefix));
         addHeaderControl(host, name, {
           symbol: 'LanguagePicker',
           from: design.name,
@@ -379,28 +408,38 @@ function application(
 
 /**
  * The catalogs, the typed message map and the loader — the part an app and a
- * site have in common. Written only where missing: a catalog that exists has
- * been, or is being, translated.
+ * site have in common.
+ *
+ * A catalog is written only where missing: one that exists has been, or is
+ * being, translated. The first run writes them from the template. A language
+ * added to the config later gets a copy of the source catalog as it stands,
+ * each value tagged — the template's starter strings would be the wrong keys by
+ * then.
+ *
+ * The loader is the generator's, derived from the config and rewritten on every
+ * run, which is what lets a language be added without editing it.
  */
 function messages(
   tree: Tree,
   name: string,
   root: string,
   design: DesignSystem,
-  locales: readonly string[],
-  defaultLocale: string,
+  setup: I18nSetup,
   isSite: boolean,
 ): Rule {
+  const defaultLocale = setup.defaultLocale;
   const defaultConstName = constName(defaultLocale);
+  const source = `/${root}/src/app/i18n/${defaultLocale}.ts`;
   const shared = {
     ...strings,
     importName: design.name,
+    configFile: `${design.root}/${I18N_CONFIG}`,
     title: titleFromName(name),
     defaultLocale,
     defaultConstName,
-    defaultLabel: localeInfo(defaultLocale).label,
+    defaultLabel: labelOf(setup, defaultLocale),
     isSite,
-    loaderCases: locales
+    loaderCases: tagsOf(setup)
       .map(
         (tag) => `    case '${tag}':\n      return (await import('./${tag}')).${constName(tag)};`,
       )
@@ -411,40 +450,107 @@ function messages(
   // source one carries the real strings and the documentation, the others carry
   // placeholders and the type annotation that keeps them in step. A single
   // templating pass cannot produce both.
-  const catalogs = locales.map((tag) =>
+  const catalogs = tagsOf(setup).map((tag) =>
+    tag !== defaultLocale && tree.exists(source)
+      ? translatedCopy(source, `/${root}/src/app/i18n/${tag}.ts`, setup, tag)
+      : mergeWith(
+          apply(url('./files/app'), [
+            filter((path) => path.endsWith('__locale__.ts.template')),
+            applyTemplates({
+              ...shared,
+              locale: tag,
+              constName: constName(tag),
+              localeLabel: labelOf(setup, tag),
+              isDefault: tag === defaultLocale,
+              // Tags every placeholder value in a catalog nobody has translated
+              // yet, so an untranslated string is impossible to miss on screen —
+              // the same reason a missing key renders as the key. Empty for the
+              // source catalog, whose values are the real ones.
+              mark: tag === defaultLocale ? '' : `[${tag}] `,
+            }),
+            move(`/${root}`),
+            onlyNew(tree),
+          ]),
+          MergeStrategy.Overwrite,
+        ),
+  );
+
+  const loader = (path: string) => path.endsWith('catalog.loader.ts.template');
+  const support = [
     mergeWith(
       apply(url('./files/app'), [
-        filter((path) => path.endsWith('__locale__.ts.template')),
-        applyTemplates({
-          ...shared,
-          locale: tag,
-          constName: constName(tag),
-          localeLabel: localeInfo(tag).label,
-          isDefault: tag === defaultLocale,
-          // Tags every placeholder value in a catalog nobody has translated
-          // yet, so an untranslated string is impossible to miss on screen —
-          // the same reason a missing key renders as the key. Empty for the
-          // source catalog, whose values are the real ones.
-          mark: tag === defaultLocale ? '' : `[${tag}] `,
-        }),
+        filter((path) => !path.endsWith('__locale__.ts.template') && !loader(path)),
+        applyTemplates(shared),
         move(`/${root}`),
         onlyNew(tree),
       ]),
       MergeStrategy.Overwrite,
     ),
-  );
+    mergeWith(
+      apply(url('./files/app'), [filter(loader), applyTemplates(shared), move(`/${root}`)]),
+      MergeStrategy.Overwrite,
+    ),
+  ];
 
-  const support = mergeWith(
-    apply(url('./files/app'), [
-      filter((path) => !path.endsWith('__locale__.ts.template')),
-      applyTemplates(shared),
-      move(`/${root}`),
-      onlyNew(tree),
-    ]),
-    MergeStrategy.Overwrite,
-  );
+  return chain([...catalogs, ...support]);
+}
 
-  return chain([...catalogs, support]);
+/**
+ * A new language's catalog: the source catalog's keys and values, each value
+ * tagged `[fr] ` until somebody translates it.
+ *
+ * The source catalog is read with `readConfigLiteral`, which takes its literal
+ * alone. One that is no longer a plain object literal — built from spreads or
+ * imports — cannot be copied that way, and the error says to write the new
+ * catalog by hand: the compiler then lists every key it is missing.
+ */
+function translatedCopy(source: string, target: string, setup: I18nSetup, tag: string): Rule {
+  return (tree: Tree) => {
+    if (tree.exists(target)) {
+      return;
+    }
+    const defaultLocale = setup.defaultLocale;
+    let catalog: Record<string, unknown>;
+    try {
+      catalog = readConfigLiteral(
+        tree.read(source)!.toString('utf8'),
+        constName(defaultLocale),
+        source,
+      ) as Record<string, unknown>;
+    } catch (error) {
+      throw new SchematicsException(
+        `Could not read the source catalog to start ${target.slice(1)} from ` +
+          `(${(error as Error).message}). Write it by hand as ` +
+          `\`export const ${constName(tag)}: LocalizedCatalog = { … }\`; the compiler ` +
+          `lists every key it still needs.`,
+      );
+    }
+
+    const mark = `[${tag}] `;
+    const entries = Object.entries(catalog)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+      .map(([messageKey, value]) => `  ${quote(messageKey)}: ${quote(`${mark}${value}`)},`);
+    tree.create(
+      target,
+      `import type { LocalizedCatalog } from './messages';
+
+// The ${labelOf(setup, tag)} catalog.
+//
+// VALUES ARE PLACEHOLDERS — the ${defaultLocale}.ts strings as they were when this
+// language was added, each tagged \`${mark}\`, so the app runs before a translator
+// has seen it and so that what is still untranslated is impossible to miss on
+// screen. Drop the tag as you translate; anything still carrying one has not
+// been.
+//
+// \`LocalizedCatalog\` is \`Record<keyof typeof ${constName(defaultLocale)}, string>\`, so a key
+// added to the source catalog breaks this file until it is covered. Plural
+// categories are per language: add whichever ones it needs beyond the source's.
+export const ${constName(tag)}: LocalizedCatalog = {
+${entries.join('\n')}
+};
+`,
+    );
+  };
 }
 
 /**
@@ -463,8 +569,7 @@ function e2eSuite(
   tree: Tree,
   root: string,
   from: string,
-  locales: readonly string[],
-  defaultLocale: string,
+  design: DesignSystem,
   name: string,
 ): Rule {
   if (!tree.exists(`/${root}/playwright.config.ts`)) {
@@ -476,8 +581,9 @@ function e2eSuite(
       applyTemplates({
         ...strings,
         name,
-        defaultLocale,
-        localeList: locales.map((tag) => `'${tag}'`).join(', '),
+        // The suites read the locales from the design system's config, so a
+        // language added there is a language they test.
+        configPath: posix.relative(`${root}/e2e`, `${design.root}/src/config/i18n`),
       }),
       move(`/${root}`),
       onlyNew(tree),
@@ -529,12 +635,18 @@ function constName(tag: string): string {
  *
  * `<html lang dir>` carry the default locale's values too, for a visitor with
  * scripting off; the script replaces them.
+ *
+ * Derived from the config, and the generator's: every run rewrites the block,
+ * so a language added to the config reaches it.
  */
-function noFoucScript(locales: readonly string[], defaultLocale: string, prefix: string) {
-  const directions = locales.map((tag) => `${key(tag)}: '${localeInfo(tag).direction}'`).join(', ');
+function noFoucScript(setup: I18nSetup, prefix: string) {
+  const directions = setup.locales
+    .map((locale) => `${key(locale.tag)}: '${locale.direction}'`)
+    .join(', ');
+  const defaultLocale = setup.defaultLocale;
   return {
     id: 'i18n:no-fouc',
-    attributes: { lang: defaultLocale, dir: localeInfo(defaultLocale).direction },
+    attributes: { lang: defaultLocale, dir: directionOf(setup, defaultLocale) },
     html: `  <!-- i18n:no-fouc — set lang/dir before first paint. Mirrors
        TranslationService.initialLocale(): a stored choice wins, else the
        browser's languages, else the default. Change one, change the other. -->
@@ -574,6 +686,7 @@ function noFoucScript(locales: readonly string[], defaultLocale: string, prefix:
       document.documentElement.setAttribute('dir', dirs[locale]);
     })();
   </script>
+  <!-- /i18n:no-fouc -->
 `,
   };
 }
@@ -609,12 +722,7 @@ function loaderForShellSpec(design: DesignSystem) {
  * alternates, instead of a copy of the source language that swaps its text
  * after hydration.
  */
-function localizedSite(
-  name: string,
-  design: DesignSystem,
-  locales: readonly string[],
-  defaultLocale: string,
-): Rule {
+function localizedSite(name: string, design: DesignSystem, setup: I18nSetup): Rule {
   return (tree: Tree) => {
     const root = requireRoot(readProjects(tree), name);
     const prefix = prefixOf(tree, name);
@@ -639,10 +747,10 @@ function localizedSite(
     );
 
     return chain([
-      messages(tree, name, root, design, locales, defaultLocale, true),
+      messages(tree, name, root, design, setup, true),
       showcase(tree, root, prefix, design),
       siteFiles,
-      e2eSuite(tree, root, './files/site-e2e', locales, defaultLocale, name),
+      e2eSuite(tree, root, './files/site-e2e', design, name),
       (host: Tree) => {
         addRootProvider(host, name, {
           symbol: 'provideTranslations',
@@ -676,8 +784,8 @@ function localizedSite(
           markup: `<${prefix}-locale-links />`,
         });
         addShellTestProvider(host, name, loaderForShellSpec(design));
-        addLocaleConfigurations(host, name, locales);
-        localizeSiteScripts(host, name, locales);
+        addLocaleConfigurations(host, name, tagsOf(setup));
+        localizeSiteScripts(host, name, tagsOf(setup));
       },
     ]);
   };
@@ -741,7 +849,26 @@ function localeConfiguration(locale: string): string {
  * a directory fails the check rather than quietly shipping one language.
  */
 function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[]): void {
-  replaceSiteBuild(tree, name, {
+  replaceSiteBuild(tree, name, localizedBuild(name, locales), (verb, current) =>
+    // A build this wrote for another set of languages is the generator's too,
+    // and gives way to the config's current set.
+    new RegExp(
+      verb === 'build'
+        ? `^${escape(cli(`clean-dist ${name}`))}( && ng build ${escape(name)} --configuration locale-[a-z0-9-]+)+$`
+        : `^${escape(siteBuild(name, ['LOCALES']).postbuild).replace(/LOCALES/g, '[A-Za-z0-9,-]+')}$`,
+    ).test(current),
+  );
+
+  documentProjectScripts(tree, projectScripts(tree, name), {
+    build:
+      `prerenders \`${name}\` once per language into \`dist/${name}/<locale>\`, writes one ` +
+      `sitemap with hreflang alternates, and fails on any page a crawler could not use`,
+  });
+}
+
+/** A site's build and postbuild for these languages. */
+function localizedBuild(name: string, locales: readonly string[]) {
+  return {
     build: [
       // Once, before the first language: the locale configurations turn
       // Angular's own output cleaning off, because it would delete the shared
@@ -752,13 +879,11 @@ function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[
     // Told which languages to expect, so a build whose second language failed
     // to produce a directory fails the check rather than quietly shipping one.
     postbuild: siteBuild(name, locales).postbuild,
-  });
+  };
+}
 
-  documentProjectScripts(tree, projectScripts(tree, name), {
-    build:
-      `prerenders \`${name}\` once per language into \`dist/${name}/<locale>\`, writes one ` +
-      `sitemap with hreflang alternates, and fails on any page a crawler could not use`,
-  });
+function escape(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ── Documentation ────────────────────────────────────────────────────────────
@@ -766,12 +891,12 @@ function localizeSiteScripts(tree: Tree, name: string, locales: readonly string[
 function documentI18n(
   tree: Tree,
   design: DesignSystem,
-  locales: readonly string[],
-  defaultLocale: string,
+  setup: I18nSetup,
   sites: readonly string[],
 ): void {
-  const others = locales.filter((tag) => tag !== defaultLocale);
-  const rtl = locales.filter((tag) => localeInfo(tag).direction === 'rtl');
+  const defaultLocale = setup.defaultLocale;
+  const others = tagsOf(setup).filter((tag) => tag !== defaultLocale);
+  const rtl = tagsOf(setup).filter((tag) => directionOf(setup, tag) === 'rtl');
 
   const body = `The apps translate at runtime: every locale is in one build and switches
 without a reload. That is deliberate, and it is a Capacitor constraint —
@@ -799,10 +924,18 @@ compiler will not let you forget, because a translated catalog is typed
       : ''
   }.
 
-Add a locale: one entry in \`LOCALES\` and one line in each of the two maps beside
-it, in \`${design.name}\`. Both maps are exhaustive \`Record<Locale, …>\`, so the
-compiler then points at the loader, the picker and every catalog that is now
-missing.
+Add a locale: an entry in \`${design.root}/${I18N_CONFIG}\`, the one place a language
+is named, then
+
+\`\`\`bash
+ng generate angular-capacitor-workspace:i18n
+\`\`\`
+
+which writes each app's and site's catalog for it — a copy of the source one,
+every value tagged until it is translated — and updates their loaders, the
+script that sets \`<html lang dir>\` before the first paint, and each site's
+per-language builds. Those are the generator's: leave them to it, and change
+the config instead.
 
 Plurals come from \`Intl.PluralRules\`, not from a \`count === 1\` test. Write
 \`key.one\` and \`key.other\` and pass \`{ count }\`; a locale that needs \`zero\`,
@@ -814,7 +947,7 @@ not through Angular's \`DecimalPipe\` or \`DatePipe\`: those read the build-time
 ${
   rtl.length > 0
     ? `
-**${rtl.map((tag) => localeInfo(tag).label).join(' and ')} ${rtl.length > 1 ? 'are' : 'is'} right-to-left**, so the layout mirrors. Write
+**${rtl.map((tag) => labelOf(setup, tag)).join(' and ')} ${rtl.length > 1 ? 'are' : 'is'} right-to-left**, so the layout mirrors. Write
 CSS logical properties only — \`margin-inline-start\`, \`inset-inline-end\`,
 \`text-align: start\` — and never \`left\` or \`right\`. The browser does the rest from
 \`<html dir>\`. The two things logical properties cannot do, mirroring a
@@ -876,12 +1009,16 @@ language, so each has its own crawlable URL — but this workspace has none.`
 function houseRules(
   tree: Tree,
   design: DesignSystem,
-  locales: readonly string[],
+  setup: I18nSetup,
   sites: readonly string[],
 ): void {
-  const rtl = locales.filter((tag) => localeInfo(tag).direction === 'rtl');
+  const rtl = tagsOf(setup).filter((tag) => directionOf(setup, tag) === 'rtl');
 
   const rules = [
+    `- **A language is added in \`${design.root}/${I18N_CONFIG}\`**, then with` +
+      `\n  \`ng generate angular-capacitor-workspace:i18n\`. Each app's catalog loader,` +
+      `\n  the script in its \`index.html\` and each site's builds are derived from the` +
+      `\n  config and rewritten by that command, so an edit to them is lost.`,
     `- **\`${design.name}\` ships no user-visible strings.** Components take their copy` +
       `\n  as inputs. A string baked into a design-system component is a string every` +
       `\n  consumer of that component is stuck with, in one language.`,
@@ -917,7 +1054,7 @@ function houseRules(
   if (rtl.length > 0) {
     rules.push(
       `- **Never \`left\` or \`right\` in CSS. Only \`start\` and \`end\`.** ` +
-        `${rtl.map((tag) => localeInfo(tag).label).join(' and ')} ${rtl.length > 1 ? 'are' : 'is'}` +
+        `${rtl.map((tag) => labelOf(setup, tag)).join(' and ')} ${rtl.length > 1 ? 'are' : 'is'}` +
         `\n  right-to-left, and the layout mirrors from \`<html dir>\` alone — but only for` +
         `\n  properties that have a logical form: \`margin-inline-start\`,` +
         `\n  \`inset-inline-end\`, \`text-align: start\`, \`border-start-start-radius\`. The` +

@@ -214,6 +214,7 @@ function applyBeforePaint(design: DesignSystem) {
       }
     })();
   </script>
+  <!-- /theming:before-paint -->
 `,
   };
 }
@@ -241,9 +242,9 @@ Marketing sites have neither the toggle nor that script, on purpose: their
 pages are prerendered once and served to everyone, so nothing may bake one
 visitor's choice into the HTML.
 
-A palette added to \`${design.root}/src/styles/_ref.scss\` also goes in the
-\`PALETTES\` array in \`${design.root}/src/lib/theme/theme.ts\`, which is the list
-the toggle offers. \`npm run check:contrast\` fails while the two disagree.
+The toggle offers the palettes in \`${design.root}/src/config/palettes.ts\`, the
+design system's own list, so adding one is the two steps under Theming above;
+nothing in \`${design.root}/src/lib/theme/\` needs editing.
 
 An app generated later gets the toggle too. To give it to an app that predates
 it, or to one you left out:
@@ -271,8 +272,10 @@ Apps let the visitor choose a colour scheme and a palette. \`ThemeService\` in
   \`THEME_PALETTE_KEY\` in \`theme.ts\`, and the inline script in every app's
   \`index.html\` that applies them before the first paint. Change both, or the
   theme arrives a moment late, as a flash.
-- **A palette is added in two places**: \`$palettes\` in \`_ref.scss\` and
-  \`PALETTES\` in \`theme.ts\`. \`npm run check:contrast\` fails until they agree.
+- **Configure, don't edit the service.** Palettes are
+  \`src/config/palettes.ts\` (with their colours in \`_ref.scss\`); \`ThemeService\`
+  and the toggle in \`src/lib/theme/\` read it. \`npm run check:contrast\` fails
+  until the config and the stylesheet agree.
 `,
   );
 }

@@ -105,8 +105,10 @@ the stylesheet up front, so switching either is an attribute write: no
 re-render, and no component that has to know a theme exists. Storybook's
 toolbar drives them for the stories.
 
-The `theming` plugin lets visitors choose, and `create` adds it with the
-library unless you pass `--no-theming`. `ThemeService` owns the two attributes
+The palettes are the design system's `src/config/palettes.ts` — an id and a
+label each, with their colours in `_ref.scss` — and the Storybook toolbar is
+built from it. The `theming` plugin lets visitors choose, and `create` adds it
+with the library unless you pass `--no-theming`. `ThemeService` owns the two attributes
 and the stored preference; `<ui-theme-toggle>` is the control, in every app's
 header; and each app's `index.html` carries a small inline script that applies
 the stored value before the first paint. Without it, apps follow the system
@@ -164,11 +166,21 @@ checked against: a translated catalog is `Record<keyof typeof en, string>`, so a
 key added to the source breaks every locale that has not covered it, at build
 time rather than in front of a user.
 
-`LOCALES`, `LOCALE_DIRECTION` and `LOCALE_LABELS` are exhaustive
-`Record<Locale, …>` maps, so adding a locale is one entry and one line in each
-map, and the compiler then points at the loader, the picker and every catalog
-that is now missing. Labels are endonyms — العربية, not "Arabic" — because a
-visitor looking for their language cannot necessarily read the active one.
+The locales are the design system's `src/config/i18n.ts` — the default, and
+each language's label and direction — and `LOCALES`, `LOCALE_DIRECTION` and
+`LOCALE_LABELS` are derived from it, as exhaustive `Record<Locale, …>` maps.
+Adding a language is an entry there and one command:
+
+```bash
+ng generate angular-capacitor-workspace:i18n
+```
+
+It gives every app and site a catalog for it, copied from the source catalog
+as it stands with every value tagged, and rewrites what is derived from the
+config: each app's `catalog.loader.ts`, the script that sets `<html lang dir>`
+before the first paint, and each site's per-language builds. Labels are
+endonyms — العربية, not "Arabic" — because a visitor looking for their language
+cannot necessarily read the active one.
 
 Plurals come from `Intl.PluralRules`, not from a `count === 1` test: Arabic has
 six categories and a hand-rolled ternary is simply wrong there. Numbers and dates
@@ -414,19 +426,19 @@ A generated workspace's npm scripts run these rather than scripts copied into
 it, so an update of the package updates them, and nothing in the workspace is a
 copy someone has to keep in step:
 
-| Command                                  | Run by                                                            |
-| ---------------------------------------- | ----------------------------------------------------------------- |
-| `run <verb> [<project>]`                 | the root `start`, `watch`, `build`, `test` and `e2e`              |
-| `clean-dist <site>`                      | a translated site's `build`, before its per-language builds       |
-| `sitemap <site> [--locales en,fr]`       | a site's `postbuild`                                              |
-| `verify-prerender <site> [--locales …]`  | a site's `postbuild`, after the sitemap                           |
-| `codegen [--optional] [--spec-env NAME]` | `codegen`, and `codegen:optional` from the `pre*` hooks           |
-| `check-contrast <library>`               | `check:contrast`, against the library's own `contrast.config.mjs` |
-| `preflight [android] [ios]`              | a mobile shell's `preflight`                                      |
+| Command                                  | Run by                                                      |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `run <verb> [<project>]`                 | the root `start`, `watch`, `build`, `test` and `e2e`        |
+| `clean-dist <site>`                      | a translated site's `build`, before its per-language builds |
+| `sitemap <site> [--locales en,fr]`       | a site's `postbuild`                                        |
+| `verify-prerender <site> [--locales …]`  | a site's `postbuild`, after the sitemap                     |
+| `codegen [--optional] [--spec-env NAME]` | `codegen`, and `codegen:optional` from the `pre*` hooks     |
+| `check-contrast <library>`               | `check:contrast`, against the library's own `src/config/`   |
+| `preflight [android] [ios]`              | a mobile shell's `preflight`                                |
 
-What a workspace tunes is in files it owns: the pairings the contrast check
-holds to WCAG are the design system's `contrast.config.mjs`, and orval's
-configuration is `orval.config.ts`.
+What a workspace tunes is in files it owns: the pairings and palettes the
+contrast check holds to WCAG are the design system's `src/config/contrast.ts`
+and `palettes.ts`, and orval's configuration is `orval.config.ts`.
 
 ### `audit`
 

@@ -250,17 +250,24 @@ describe('the shell extension points', () => {
     const tree = shell({
       'index.html': '<!doctype html>\n<html lang="en">\n<head>\n</head>\n<body></body>\n</html>\n',
     });
-    const script = {
+    const script = (body: string) => ({
       id: 'x:boot',
-      html: '  <!-- x:boot -->\n',
+      html: `  <!-- x:boot -->\n  ${body}\n  <!-- /x:boot -->\n`,
       attributes: { lang: 'fr', dir: 'ltr' },
-    };
-    addBootScript(tree, 'shop', script);
-    addBootScript(tree, 'shop', script);
+    });
+    addBootScript(tree, 'shop', script('<script>one</script>'));
+    addBootScript(tree, 'shop', script('<script>one</script>'));
 
-    const html = tree.readText('/projects/shop/src/index.html');
+    let html = tree.readText('/projects/shop/src/index.html');
     expect(html).toContain('<html lang="fr" dir="ltr">');
-    expect(html.split('x:boot').length - 1).toBe(1);
+    expect(html.split('<!-- x:boot').length - 1).toBe(1);
     expect(html.indexOf('x:boot')).toBeLessThan(html.indexOf('</head>'));
+
+    // The generator's block: a later run replaces it whole.
+    addBootScript(tree, 'shop', script('<script>two</script>'));
+    html = tree.readText('/projects/shop/src/index.html');
+    expect(html).toContain('<script>two</script>');
+    expect(html).not.toContain('<script>one</script>');
+    expect(html.split('<!-- x:boot').length - 1).toBe(1);
   });
 });

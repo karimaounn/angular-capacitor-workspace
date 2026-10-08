@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { ConfigError, readConfigLiteral } from '../utils/config-file';
 import { fail, workspaceRoot } from './command';
 
-/** The library's own table of pairings, beside its `package.json`. */
-export const CONTRAST_CONFIG = 'contrast.config.mjs';
+/** The design system's own config, which this reads and never writes. */
+export const CONTRAST_CONFIG = 'src/config/contrast.ts';
+export const PALETTES_CONFIG = 'src/config/palettes.ts';
 
 interface Pairing {
   fg: string;
@@ -33,12 +34,12 @@ const MODES = [
  * ships, and the disagreement surfaces as a bug report about text nobody can
  * read.
  *
- * The pairings are the library's, in its `contrast.config.mjs`; the palettes
- * are whatever `$palettes` in its `_ref.scss` declares. Sass is the
+ * The pairings and the palettes are the library's, in its `src/config/`; the
+ * colours are whatever `$palettes` in its `_ref.scss` declares. Sass is the
  * workspace's, resolved from its root, so this package does not carry a second
  * copy of it.
  */
-export async function checkContrast(args: readonly string[], cwd: string): Promise<number> {
+export function checkContrast(args: readonly string[], cwd: string): number {
   const library = args[0];
   if (!library) {
     fail('usage: angular-capacitor-workspace check-contrast <library>', 2);
@@ -56,11 +57,11 @@ export async function checkContrast(args: readonly string[], cwd: string): Promi
     fail(`check-contrast: there is no project "${library}" in angular.json.`, 2);
   }
   const stylesDir = join(root, libRoot, 'src', 'styles');
-  const pairings = await readPairings(join(root, libRoot, CONTRAST_CONFIG));
+  const pairings = readPairings(join(root, libRoot, CONTRAST_CONFIG));
   const sass = loadSass(root);
 
   const palettes = paletteNames(stylesDir);
-  assertPickerAgrees(join(root, libRoot), palettes);
+  assertConfigAgrees(join(root, libRoot, PALETTES_CONFIG), palettes);
 
   const failures: string[] = [];
   const skipped: string[] = [];
@@ -127,16 +128,12 @@ export async function checkContrast(args: readonly string[], cwd: string): Promi
 }
 
 /** The pairings in the library's config, checked for shape before anything is compiled. */
-async function readPairings(file: string): Promise<Pairing[]> {
-  if (!existsSync(file)) {
-    fail(
-      `check-contrast: ${file} does not exist. It holds the pairings to check: ` +
-        '`export default { pairings: [{ fg, bg, min, label }] }`.',
-      2,
-    );
-  }
-  const config = ((await import(pathToFileURL(file).href)) as { default?: { pairings?: unknown } })
-    .default;
+function readPairings(file: string): Pairing[] {
+  const config = readConfig(
+    file,
+    'CONTRAST',
+    '`export const CONTRAST = { pairings: [{ fg, bg, min, label }] }`',
+  ) as { pairings?: unknown } | undefined;
   const pairings = config?.pairings;
   const valid = (entry: unknown): entry is Pairing => {
     const pairing = entry as Partial<Pairing>;
@@ -149,11 +146,26 @@ async function readPairings(file: string): Promise<Pairing[]> {
   };
   if (!Array.isArray(pairings) || !pairings.every(valid)) {
     fail(
-      `check-contrast: ${file} must export \`default { pairings: [{ fg, bg, min, label }] }\`.`,
+      `check-contrast: CONTRAST in ${file} must be \`{ pairings: [{ fg, bg, min, label }] }\`.`,
       2,
     );
   }
   return pairings;
+}
+
+/** A literal from one of the library's config files, or a failure that says what it has to be. */
+function readConfig(file: string, name: string, shape: string): unknown {
+  if (!existsSync(file)) {
+    fail(`check-contrast: ${file} does not exist. It holds ${shape}.`, 2);
+  }
+  try {
+    return readConfigLiteral(readFileSync(file, 'utf8'), name, file);
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      fail(`check-contrast: ${error.message}`, 2);
+    }
+    throw error;
+  }
 }
 
 function loadSass(root: string): Sass {
@@ -202,39 +214,30 @@ function paletteNames(stylesDir: string): string[] {
 }
 
 /**
- * The palette list `ThemeService` offers must be the palette list the styles
- * emit, in a library that has one.
+ * The palettes the config lists must be the palettes the styles declare.
  *
  * Two sources of truth, one of them Sass and one of them TypeScript, and
  * nothing in the type system connects them. The failure is quiet in the worst
- * way: a palette in the picker with no `[data-palette]` block behind it looks
- * like a toggle that does nothing, and a palette in the styles that the picker
- * never offers is a theme nobody can reach. This is the cheapest place to
- * notice, because this already has to parse the map.
- *
- * A library without theme switching has no picker to disagree with: the
- * palettes are still there, chosen by a `data-palette` someone writes on
- * `<html>` by hand, and every one of them is still checked.
+ * way: a palette in the Storybook toolbar or the theme toggle with no
+ * `[data-palette]` block behind it looks like a control that does nothing, and
+ * a palette in the styles that the config never lists is one nobody can reach.
+ * This is the cheapest place to notice, because this already has to parse the
+ * map.
  */
-function assertPickerAgrees(libRoot: string, names: readonly string[]): void {
-  const path = join(libRoot, 'src', 'lib', 'theme', 'theme.ts');
-  if (!existsSync(path)) {
-    return;
-  }
-  const block = readFileSync(path, 'utf8').match(/PALETTES\s*=\s*\[([\s\S]*?)\]\s*as const;/);
-  if (!block) {
-    fail(
-      `check-contrast: could not find the PALETTES array in ${path}. The two lists ` +
-        'drifting apart is exactly what this check prevents.',
-    );
+function assertConfigAgrees(file: string, names: readonly string[]): void {
+  const config = readConfig(file, 'PALETTES', '`export const PALETTES = [{ id, label }]`');
+  const listed = Array.isArray(config)
+    ? config.map((entry) => (entry as { id?: unknown }).id)
+    : undefined;
+  if (!listed?.every((id): id is string => typeof id === 'string')) {
+    fail(`check-contrast: PALETTES in ${file} must be \`[{ id, label }]\`.`, 2);
   }
 
-  const offered = [...block[1]!.matchAll(/id:\s*'([^']+)'/g)].map(([, id]) => id!);
-  const missing = names.filter((name) => !offered.includes(name));
-  const extra = offered.filter((id) => !names.includes(id));
+  const missing = names.filter((name) => !listed.includes(name));
+  const extra = listed.filter((id) => !names.includes(id));
   if (missing.length > 0 || extra.length > 0) {
     fail(
-      'FAIL  the theme picker and the stylesheet disagree about which palettes exist\n' +
+      'FAIL  src/config/palettes.ts and the stylesheet disagree about which palettes exist\n' +
         `      in _ref.scss but not in PALETTES: ${missing.join(', ') || 'none'}\n` +
         `      in PALETTES but not in _ref.scss: ${extra.join(', ') || 'none'}`,
     );

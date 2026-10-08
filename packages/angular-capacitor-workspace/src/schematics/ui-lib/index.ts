@@ -148,6 +148,7 @@ function publicApi(name: string, root: string): Rule {
 
 export * from './lib/button/button';
 export * from './lib/field/field';
+export * from './config/palettes';
 `,
     );
   };
@@ -286,8 +287,8 @@ function libraryScripts(name: string, storybook: boolean): Rule {
     const testScript = runner ? `npm test ${name}` : `npm run test:${name}`;
     addScripts(tree, {
       'watch:libs': `ng build ${name} --watch --configuration development`,
-      // The checker is this package's; the pairings it checks are the
-      // library's own, in `contrast.config.mjs`.
+      // The checker is this package's; the pairings and palettes it checks
+      // are the library's own, in `src/config/`.
       'check:contrast': cli(`check-contrast ${name}`),
       ...(runner ? {} : { [`test:${name}`]: `ng test ${name}` }),
 

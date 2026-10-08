@@ -38,7 +38,7 @@ ${CONTINUED}${dim('Both take --locales en,fr for a translated site.')}
 ${option('codegen', 'Run orval. --optional skips when the spec is unset;')}
 ${CONTINUED}${dim('--spec-env <NAME> names the variable that holds it.')}
 ${option('check-contrast <lib>', '')}
-${CONTINUED}${dim("Check the library's contrast.config.mjs against WCAG.")}
+${CONTINUED}${dim("Check the library's src/config/contrast.ts against WCAG.")}
 ${option('preflight [<platform>]', '')}
 ${CONTINUED}${dim('Check for what a Capacitor build of android or ios needs.')}
 

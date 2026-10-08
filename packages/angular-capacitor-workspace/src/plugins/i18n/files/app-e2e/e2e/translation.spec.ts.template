@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { I18N } from '<%= configPath %>';
+
 /**
  * Translation, checked where it actually runs.
  *
@@ -14,7 +16,8 @@ import { expect, test, type Page } from '@playwright/test';
  *   • that a locale switch actually repaints, which depends on an impure pipe
  *     subscribing the host view under zoneless change detection.
  */
-const LOCALES = [<%= localeList %>];
+// The design system's config, so a language added there is a language tested.
+const LOCALES = Object.keys(I18N.locales);
 
 const htmlAttr = (page: Page, name: string) => page.locator('html').getAttribute(name);
 

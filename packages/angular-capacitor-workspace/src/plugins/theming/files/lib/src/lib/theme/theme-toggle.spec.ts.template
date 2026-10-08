@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PALETTES, THEME_MODE_KEY, THEME_PALETTE_KEY, ThemeService } from './theme';
+import { PALETTES } from '../../config/palettes';
+import { THEME_MODE_KEY, THEME_PALETTE_KEY, ThemeService } from './theme';
 import { ThemeToggle } from './theme-toggle';
 
 describe('ThemeToggle', () => {

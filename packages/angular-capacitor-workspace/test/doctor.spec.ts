@@ -134,8 +134,8 @@ describe('inferFeatures', () => {
     expect(inferFeatures(cwd, {})).not.toContain('i18n');
 
     writeText(
-      'projects/ui/src/lib/i18n/i18n.tokens.ts',
-      "export const LOCALES = ['en'] as const;\n",
+      'projects/ui/src/config/i18n.ts',
+      "export const I18N = { defaultLocale: 'en', locales: {} } as const;\n",
     );
     expect(inferFeatures(cwd, {})).toContain('i18n');
   });

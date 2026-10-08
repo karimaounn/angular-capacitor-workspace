@@ -69,10 +69,14 @@ describe('theming', () => {
       // workspace, asserted here so a template edit cannot ship broken.
       const ref = tree.readContent('/projects/ui/src/styles/_ref.scss');
       const declared = [...ref.matchAll(/^\s{2}'([^']+)': \($/gm)].map(([, name]) => name);
+      // The design system's own config, which the service and the toggle read.
       const offered = [
-        ...tree.readContent('/projects/ui/src/lib/theme/theme.ts').matchAll(/id: '([^']+)'/g),
+        ...tree.readContent('/projects/ui/src/config/palettes.ts').matchAll(/id: '([^']+)'/g),
       ].map(([, id]) => id);
       expect(offered).toEqual(declared);
+      expect(tree.readContent('/projects/ui/src/lib/theme/theme.ts')).toContain(
+        "import { PALETTES, type PaletteId } from '../../config/palettes';",
+      );
       // `angular-capacitor-workspace check-contrast` compares the two in the
       // generated workspace, when there is a picker; see cli.spec.ts.
     });
@@ -163,7 +167,7 @@ describe('theming', () => {
     const twice = await runner().runSchematic('theming', {}, tree);
     for (const [path, text] of [
       ['/projects/shop/web/src/app/app.html', '<ui-theme-toggle />'],
-      ['/projects/shop/web/src/index.html', 'theming:before-paint'],
+      ['/projects/shop/web/src/index.html', '<!-- theming:before-paint'],
       ['/projects/shop/web/src/app/pages/home.page.html', '<app-theme-showcase />'],
       ['/projects/ui/src/public-api.ts', "'./lib/theme/theme'"],
       ['/README.md', '## Theme switching'],

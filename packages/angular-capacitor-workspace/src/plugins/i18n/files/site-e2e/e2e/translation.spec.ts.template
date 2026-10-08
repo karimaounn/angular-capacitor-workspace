@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { I18N } from '<%= configPath %>';
+
 /**
  * A prerendered site's translation and theming, in a browser.
  *
@@ -22,8 +24,9 @@ import { expect, test } from '@playwright/test';
  * source locale. That is why these tests do not follow a language link — the
  * destination only exists in a build.
  */
-const LOCALES = [<%= localeList %>];
-const DEFAULT_LOCALE = '<%= defaultLocale %>';
+// The design system's config, so a language added there is a language tested.
+const LOCALES = Object.keys(I18N.locales);
+const DEFAULT_LOCALE = I18N.defaultLocale;
 
 test('the page renders translated text, not message keys', async ({ page }) => {
   await page.goto('/');

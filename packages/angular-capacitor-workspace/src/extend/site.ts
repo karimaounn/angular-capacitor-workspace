@@ -42,12 +42,22 @@ export interface SiteBuild {
 /**
  * Replaces a site's build: one `ng build` per language, say.
  *
- * Only where the scripts are still the host's, and idempotent: a site already
- * built the new way is left alone. A script someone has changed is theirs, so
- * that is a failure naming the command to put in by hand, rather than an
- * overwrite.
+ * Only where the scripts are still the host's, or ones the plugin wrote, and
+ * idempotent: a site already built the new way is left alone. A script
+ * someone has changed is theirs, so that is a failure naming the command to
+ * put in by hand, rather than an overwrite.
  */
-export function replaceSiteBuild(tree: Tree, name: string, after: SiteBuild): void {
+export function replaceSiteBuild(
+  tree: Tree,
+  name: string,
+  after: SiteBuild,
+  /**
+   * Recognises a build the plugin itself wrote earlier, which gives way to the
+   * new one as the host's does: a site built for two languages, say, when the
+   * config now lists three.
+   */
+  ours: (verb: keyof SiteBuild, current: string) => boolean = () => false,
+): void {
   const scripts = projectScripts(tree, name);
   const before = siteBuild(name);
   updateJson(tree, scripts.manifest, (file) => {
@@ -57,7 +67,7 @@ export function replaceSiteBuild(tree: Tree, name: string, after: SiteBuild): vo
       if (current === after[verb]) {
         continue;
       }
-      if (current !== undefined && current !== before[verb]) {
+      if (current !== undefined && current !== before[verb] && !ours(verb, current)) {
         throw new SchematicsException(
           `\`${key}\` in ${scripts.manifest.slice(1)} is not the command the marketing ` +
             `schematic wrote. Expected "${before[verb]}", found "${current}". ` +

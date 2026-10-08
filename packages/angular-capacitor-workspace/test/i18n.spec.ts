@@ -198,20 +198,22 @@ describe('i18n', () => {
     }
   });
 
-  it('writes an exhaustive direction map, with Arabic right-to-left', () => {
-    const tokens = tree.readContent('/projects/ui/src/lib/i18n/i18n.tokens.ts');
+  it("writes the locales into the design system's config, with Arabic right-to-left", () => {
+    const config = tree.readContent('/projects/ui/src/config/i18n.ts');
 
-    expect(tokens).toContain("export const LOCALES = ['en', 'fr', 'ar'] as const");
-    expect(tokens).toContain("ar: 'rtl'");
-    expect(tokens).toContain("en: 'ltr'");
-    expect(tokens).toContain("fr: 'ltr'");
+    expect(config).toContain("defaultLocale: 'en',");
+    expect(config).toContain("en: { label: 'English', direction: 'ltr' },");
+    expect(config).toContain("fr: { label: 'Français', direction: 'ltr' },");
+    // "Arabic" is useless to a reader who needs العربية.
+    expect(config).toContain("ar: { label: 'العربية', direction: 'rtl' },");
+    expect(config).toContain('} as const satisfies I18nConfig;');
   });
 
-  it('labels each locale with its own endonym', () => {
-    // "Arabic" is useless to a reader who needs العربية.
+  it('derives every locale table from the config, so none needs editing', () => {
     const tokens = tree.readContent('/projects/ui/src/lib/i18n/i18n.tokens.ts');
-    expect(tokens).toContain('العربية');
-    expect(tokens).toContain('Français');
+    expect(tokens).toContain("import { I18N } from '../../config/i18n';");
+    expect(tokens).toContain('export type Locale = keyof typeof I18N.locales & string;');
+    expect(tokens).not.toMatch(/'(en|fr|ar)'/);
   });
 
   it('tags every untranslated value, so a placeholder is visible on screen', () => {
@@ -412,7 +414,9 @@ describe('i18n', () => {
 
     it('covers the site, including that the tokens reach it', () => {
       const spec = withE2e.readContent('/projects/site/web/e2e/translation.spec.ts');
-      expect(spec).toContain("const LOCALES = ['en', 'fr']");
+      // From the config, so a language added there is a language tested.
+      expect(spec).toContain("import { I18N } from '../../../ui/src/config/i18n';");
+      expect(spec).toContain('const LOCALES = Object.keys(I18N.locales);');
       expect(spec).toContain('--surface');
       // A prerendered page must never pin a colour scheme.
       expect(spec).toContain("not.toHaveAttribute('data-theme'");
@@ -428,7 +432,7 @@ describe('i18n', () => {
       // `fr,en` the last locale is the one already on screen, and a fixed pick
       // would "switch" to it and fail. One locale has nothing to switch to.
       const spec = withE2e.readContent('/projects/shop/web/e2e/translation.spec.ts');
-      expect(spec).toContain("const LOCALES = ['en', 'fr'];");
+      expect(spec).toContain('const LOCALES = Object.keys(I18N.locales);');
       expect(spec).toContain('LOCALES.find((locale) => locale !== current)');
       expect(spec).toContain('test.skip(LOCALES.length < 2');
       expect(spec).not.toContain('options.length - 1');
@@ -675,8 +679,8 @@ describe('i18n', () => {
       await workspaceWithApp(),
     );
 
-    expect(explicit.readContent('/projects/ui/src/lib/i18n/i18n.tokens.ts')).toContain(
-      "export const DEFAULT_LOCALE: Locale = 'fr'",
+    expect(explicit.readContent('/projects/ui/src/config/i18n.ts')).toContain(
+      "defaultLocale: 'fr',",
     );
     // The source catalog is the one the others are typed against, so it is the
     // one without the annotation.
@@ -726,9 +730,14 @@ describe('i18n', () => {
       { locales: ['en', 'xx'] },
       await workspaceWithApp(),
     );
-    const tokens = '/projects/ui/src/lib/i18n/i18n.tokens.ts';
+    const tokens = '/projects/ui/src/config/i18n.ts';
     const catalog = '/projects/shop/web/src/app/i18n/xx.ts';
-    const labelled = localized.readContent(tokens).replace(/'xx',\s*\/\/ TODO[^\n]*/, "'Xxish',");
+    const labelled = localized
+      .readContent(tokens)
+      .replace(
+        /label: 'xx', direction: 'ltr' \},\s*\/\/ TODO[^\n]*/,
+        "label: 'Xxish', direction: 'ltr' },",
+      );
     expect(labelled).toContain("'Xxish'");
     localized.overwrite(tokens, labelled);
     localized.overwrite(catalog, '// translated by hand\n');
@@ -744,8 +753,8 @@ describe('i18n', () => {
   });
 
   it('refuses a different set of locales once the library has its own', async () => {
-    // Its tables are not rewritten, so catalogs for a locale it does not know
-    // would not compile. Adding one is a hand edit the README describes.
+    // The config is the one place a locale lives, so a second way to change
+    // the set is refused, naming the first.
     const localized = await runner().runSchematic(
       'i18n',
       { locales: ['en', 'fr'] },
@@ -754,6 +763,104 @@ describe('i18n', () => {
     await expect(
       runner().runSchematic('i18n', { locales: ['en', 'fr', 'de'] }, localized),
     ).rejects.toThrow(/already translates into en, fr/);
+    await expect(
+      runner().runSchematic('i18n', { locales: ['en', 'fr', 'de'] }, localized),
+    ).rejects.toThrow(/projects\/ui\/src\/config\/i18n\.ts: change them there/);
+  });
+
+  describe('a language added to the config', () => {
+    let synced: UnitTestTree;
+
+    beforeAll(async () => {
+      const localized = await runner().runSchematic(
+        'i18n',
+        { locales: ['en', 'fr'] },
+        await workspaceWithSite(),
+      );
+      // The source catalog has grown since the first run, as it does.
+      const source = '/projects/shop/web/src/app/i18n/en.ts';
+      localized.overwrite(
+        source,
+        localized
+          .readContent(source)
+          .replace('} as const;', "  'cart.empty': 'Your basket is empty',\n} as const;"),
+      );
+      const config = '/projects/ui/src/config/i18n.ts';
+      localized.overwrite(
+        config,
+        localized
+          .readContent(config)
+          .replace('    fr: {', "    he: { label: 'עברית', direction: 'rtl' },\n    fr: {"),
+      );
+      synced = await runner().runSchematic('i18n', {}, localized);
+    });
+
+    it('gets a catalog in every app, copied from the source as it stands', () => {
+      const catalog = synced.readContent('/projects/shop/web/src/app/i18n/he.ts');
+      expect(catalog).toContain('export const he: LocalizedCatalog = {');
+      expect(catalog).toContain("'cart.empty': '[he] Your basket is empty',");
+      expect(catalog).toContain("'language.label': '[he] Language',");
+      expect(synced.exists('/projects/site/web/src/app/i18n/he.ts')).toBe(true);
+    });
+
+    it('reaches the generated loader and the script that runs before the first paint', () => {
+      expect(synced.readContent('/projects/shop/web/src/app/i18n/catalog.loader.ts')).toContain(
+        "case 'he':\n      return (await import('./he')).he;",
+      );
+      const html = synced.readContent('/projects/shop/web/src/index.html');
+      expect(html).toContain("var dirs = { en: 'ltr', he: 'rtl', fr: 'ltr' };");
+      expect(html.match(/<!-- i18n:no-fouc/g)).toHaveLength(1);
+    });
+
+    it("reaches every site's per-language builds", () => {
+      const build = JSON.parse(synced.readContent('/angular.json')).projects.site.architect.build;
+      expect(build.configurations['locale-he'].baseHref).toBe('/he/');
+      const scripts = JSON.parse(synced.readContent('/projects/site/web/package.json')).scripts;
+      expect(scripts['build']).toContain('--configuration locale-he');
+      expect(scripts['postbuild']).toContain('--locales en,he,fr');
+    });
+
+    it('leaves the library alone, which derives everything from the config', async () => {
+      const before = await runner().runSchematic(
+        'i18n',
+        { locales: ['en', 'fr'] },
+        await workspaceWithSite(),
+      );
+      const tokens = '/projects/ui/src/lib/i18n/i18n.tokens.ts';
+      expect(synced.readContent(tokens)).toBe(before.readContent(tokens));
+    });
+
+    it('drops a language the config no longer lists from what the generator owns', async () => {
+      const config = '/projects/ui/src/config/i18n.ts';
+      synced.overwrite(config, synced.readContent(config).replace(/\n {4}fr: \{[^\n]*/, ''));
+      const dropped = await runner().runSchematic('i18n', {}, synced);
+      expect(
+        dropped.readContent('/projects/shop/web/src/app/i18n/catalog.loader.ts'),
+      ).not.toContain("case 'fr'");
+      expect(dropped.readContent('/projects/shop/web/src/index.html')).toContain(
+        "var dirs = { en: 'ltr', he: 'rtl' };",
+      );
+      const scripts = JSON.parse(dropped.readContent('/projects/site/web/package.json')).scripts;
+      expect(scripts['build']).not.toContain('locale-fr');
+      // The catalog itself was somebody's work, and stays.
+      expect(dropped.exists('/projects/shop/web/src/app/i18n/fr.ts')).toBe(true);
+    });
+  });
+
+  it('refuses a config it cannot read, saying what it has to be', async () => {
+    const localized = await runner().runSchematic(
+      'i18n',
+      { locales: ['en'] },
+      await workspaceWithApp(),
+    );
+    const config = '/projects/ui/src/config/i18n.ts';
+    localized.overwrite(
+      config,
+      localized.readContent(config).replace("direction: 'ltr'", "direction: 'up'"),
+    );
+    await expect(runner().runSchematic('i18n', {}, localized)).rejects.toThrow(
+      /must be `\{ label: string, direction: 'ltr' \| 'rtl' \}`/,
+    );
   });
 
   it('reaches a project generated after it', async () => {
@@ -797,7 +904,7 @@ describe('i18n', () => {
     expect(config.match(/provideTranslations\(loadCatalog\)/g)).toHaveLength(1);
 
     const html = twice.readContent('/projects/shop/web/src/index.html');
-    expect(html.match(/i18n:no-fouc/g)).toHaveLength(1);
+    expect(html.match(/<!-- i18n:no-fouc/g)).toHaveLength(1);
 
     expect(
       twice.readContent('/projects/ui/src/styles/index.scss').match(/@use 'direction';/g),
@@ -818,7 +925,9 @@ describe('i18n', () => {
       'export const ptBR',
     );
     // Quoted, because `{ pt-BR: 'ltr' }` is a subtraction.
-    expect(out.readContent('/projects/ui/src/lib/i18n/i18n.tokens.ts')).toContain("'pt-BR': 'ltr'");
+    expect(out.readContent('/projects/ui/src/config/i18n.ts')).toContain(
+      "'pt-BR': { label: 'Português', direction: 'ltr' },",
+    );
     expect(out.readContent('/projects/shop/web/src/index.html')).toContain("'pt-BR': 'ltr'");
   });
 });

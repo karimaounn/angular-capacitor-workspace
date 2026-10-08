@@ -10,24 +10,13 @@ import {
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 
+// The palettes on offer are the design system's to configure, in
+// `src/config/palettes.ts`, which the public API exports. Nothing here needs
+// editing to add one.
+import { PALETTES, type PaletteId } from '../../config/palettes';
+
 /** `system` follows the OS; the other two override it in both directions. */
 export type ThemeMode = 'system' | 'light' | 'dark';
-
-/**
- * The palettes on offer.
- *
- * This list and the `$palettes` map in `src/styles/_ref.scss` are two halves of
- * one fact, and nothing in the type system ties them together —
- * `npm run check:contrast` compares them and fails when they drift. Add a
- * palette in both places, or in neither.
- */
-export const PALETTES = [
-  { id: 'default', label: 'Slate' },
-  { id: 'sand', label: 'Sand' },
-  { id: 'indigo', label: 'Indigo' },
-] as const;
-
-export type PaletteId = (typeof PALETTES)[number]['id'];
 
 export const THEME_MODE_KEY = '<%= prefix %>.theme-mode';
 export const THEME_PALETTE_KEY = '<%= prefix %>.theme-palette';

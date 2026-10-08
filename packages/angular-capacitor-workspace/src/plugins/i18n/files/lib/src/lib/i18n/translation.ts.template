@@ -244,7 +244,7 @@ export class TranslationService {
     }
 
     // Fall back to the source locale: a key the translator has not covered yet
-    // renders in <%= defaultLabel %> rather than leaking a dotted key into the UI.
+    // renders in the source language rather than leaking a dotted key into the UI.
     const fallback = this.fallback();
     if (plural) {
       const match = this.selectPlural(fallback, key, DEFAULT_LOCALE, count);

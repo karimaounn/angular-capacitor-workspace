@@ -177,6 +177,10 @@ A feature that extends the projects a workspace has, rather than creating one.
   reads a `WorkspaceView`, so the same function answers the schematics and
   `doctor`. Add the plugin to `EVERYTHING` in `test/plugins.spec.ts`, which
   checks the two agree.
+- Settings in a `src/config/` file of the design system, read with
+  `readConfigLiteral`, rather than in a generated file someone would have to
+  edit. Files derived from them are rewritten on every run (see "How code is
+  written here").
 - `forProject` if a project generated later needs the per-project half. Return
   options for the plugin's own schematic; the registry runs it through
   `schematic()`. Make the schematic idempotent, because it re-runs for every
@@ -339,10 +343,13 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **The locale key and negotiation** live in two places: `<prefix>.locale` and
   `initialLocale()` in `i18n/files/lib/src/lib/i18n/translation.ts.template`,
   and the no-FOUC script in `noFoucScript` (`plugins/i18n/index.ts`).
-- **The shape of the `LOCALES` and `DEFAULT_LOCALE` declarations** in
-  `i18n.tokens.ts.template` is parsed by regex in `installedLocales`
-  (`plugins/i18n/plugin.ts`). If the shape changes, projects generated later
-  silently get no i18n.
+- **A design system's `src/config/` files** (`i18n.ts`, `palettes.ts`,
+  `contrast.ts`) are read by `readConfigLiteral` (`src/utils/config-file.ts`),
+  which evaluates the literal after `export const <NAME> =` and nothing else.
+  Their templates must keep that shape and plain values, and say so at their
+  top; `installedI18n` (`plugins/i18n/plugin.ts`) and `check-contrast` name
+  `I18N`, `PALETTES` and `CONTRAST`. A config that cannot be read fails with
+  what it has to be (_tested_ in `i18n.spec.ts` and `cli.spec.ts`).
 - **The anchors of the extension points** live in the host templates:
   `</header>` in each shell's `app.html`, `providers: [` in its `app.spec.ts`,
   `</head>` in `index.html`, the app starter page as `<section>`s at column 0
@@ -357,11 +364,11 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **`EXPECTED_PROVIDERS`** in `schematics/marketing/index.ts` must match
   `marketing/files/site/src/app/app.config.ts.template` and Angular's SSR output
   (_tested_).
-- **The palettes are listed three times**: `$palettes` in the `ui-lib`
-  template's `_ref.scss`, the palette toolbar in its `.storybook/preview.ts`,
-  and `PALETTES` in the theming plugin's `theme.ts`. `check:contrast` in a
-  generated workspace compares the first and last when the plugin is there
-  (_tested_ in `theming.spec.ts`); the toolbar is checked by eye.
+- **The palettes are listed twice**: their colours in `$palettes` in the
+  `ui-lib` template's `_ref.scss`, and their ids and labels in its
+  `src/config/palettes.ts`, which Storybook's toolbar and the theme toggle read.
+  `check:contrast` in a generated workspace fails while the two disagree
+  (_tested_ in `theming.spec.ts`).
 - **The `ngsw-config.json` content** in `plugins/packages/index.ts` must match
   Angular's own default (_tested_).
 - **A migration's `version`** must be the release whose CHANGELOG section first
@@ -397,7 +404,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   - key every insertion on a symbol, heading or marker
   - `addScripts` never overwrites a script that differs
   - files handed to the user (translation catalogs, `api-client.ts`,
-    `orval.config.ts`, `ngsw-config.json`, `contrast.config.mjs`) are written
+    `orval.config.ts`, `ngsw-config.json`, a design system's `src/config/`) are written
     only when missing (`onlyNew`, or a `!tree.exists(path)` filter)
   - a shared file that gains an entry per project adds the missing entry and
     leaves the rest alone (`addOrvalEntries`, `appendToScript`)
@@ -426,11 +433,18 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   for the runner first (`addToBuild`, `addToE2e`, `claimDefaultStart`). Document each script
   with `documentScripts` or `documentProjectScripts`, and hook library builds
   with `hookLibraryBuild` once the script exists.
+- **Configuration is the workspace's; machinery is the generator's.** What a
+  workspace configures — locales, palettes, contrast pairings — is a
+  plain-value literal in its design system's `src/config/`, read with
+  `readConfigLiteral`. Generated machinery reads the config and is never where
+  a setting changes, so no one has a reason to edit it. A file derived from the
+  config — an app's `catalog.loader.ts`, a boot script — is rewritten on every
+  run, says so at its top, and never holds anything a person wrote.
 - **Ship tools, never copy them.** A script a generated workspace runs is a
   command of this package's CLI (`src/cli/`), named in the npm script through
   `cli()` (`src/utils/commands.ts`). A script templated into the workspace is
   a copy no update can reach. What a workspace may tune goes in a config file
-  it owns, which the command reads (the design system's `contrast.config.mjs`).
+  it owns, which the command reads (the design system's `src/config/contrast.ts`).
   A command must not load the schematics engine: `src/cli/index.ts` requires
   each one when it runs, because `run` is behind every `npm start`.
 - **No new runtime dependencies without a reason.** `create-*` has exactly one,

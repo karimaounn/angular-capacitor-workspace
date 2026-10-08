@@ -1,0 +1,31 @@
+import type { I18nConfig } from '../lib/i18n/i18n.tokens';
+
+/**
+ * The languages this workspace ships.
+ *
+ * This file is the design system's to edit, like everything in `src/config/`.
+ * Every locale table the translation layer has — `LOCALES`, `DEFAULT_LOCALE`,
+ * the directions and the picker's labels — is derived from it, so a language
+ * is added or removed here and nowhere else in the library.
+ *
+ * Then run `ng generate angular-capacitor-workspace:i18n`. It brings every app
+ * and site in line with this file: a catalog for each new language (a copy of
+ * the source catalog, each value tagged so an untranslated string shows), each
+ * app's catalog loader and the script that sets `<html lang dir>` before the
+ * first paint, and each site's per-language builds.
+ *
+ * Plain values only: the generator reads the literal below without compiling
+ * this file.
+ */
+export const I18N = {
+  /** The source language: what every untranslated key falls back to. */
+  defaultLocale: '<%= defaultLocale %>',
+  /**
+   * In the order the language picker offers them. `label` is the language's
+   * name in that language — someone who cannot read the active one still has
+   * to find their own — and `direction` is how it is written.
+   */
+  locales: {
+<%= localeEntries %>
+  },
+} as const satisfies I18nConfig;

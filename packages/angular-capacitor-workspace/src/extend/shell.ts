@@ -66,11 +66,21 @@ export interface TestProvider {
   readonly imports: readonly string[];
 }
 
-/** An inline script that has to run before Angular does. */
+/**
+ * An inline script that has to run before Angular does.
+ *
+ * The generator's, not the workspace's: it is derived from configuration —
+ * the theme's storage keys, the config's locales — and rewritten whole on every
+ * run, so a change to what it is derived from reaches every app. It sits
+ * between `<!-- id … -->` and `<!-- /id -->`, and those two lines are how it is
+ * found again.
+ */
 export interface BootScript {
-  /** The idempotency key. Must appear in `html`, conventionally in its leading comment. */
   readonly id: string;
-  /** The markup, indented for `<head>`, ending in a newline. */
+  /**
+   * The markup, indented for `<head>`: opening with a comment that starts
+   * `<!-- id`, closing with the line `<!-- /id -->`, and ending in a newline.
+   */
   readonly html: string;
   /** Attributes for `<html>`, the values a page gets with scripting off. Replaced if present. */
   readonly attributes?: Readonly<Record<string, string>>;
@@ -215,32 +225,49 @@ export function addShellTestProvider(tree: Tree, project: string, provider: Test
 }
 
 /**
- * Adds an inline script to `<head>`, and sets attributes on `<html>`.
+ * Adds an inline script to `<head>`, or replaces the one already there, and
+ * sets attributes on `<html>`.
  *
  * For what has to happen before the first paint, which no Angular code can
  * reach: by the time the framework runs, the first frame is on screen. Last in
  * `<head>`, in the order the plugins run.
+ *
+ * A block whose opening comment is there without its closing one was not
+ * written this way — an earlier release's, or someone's own — and is left
+ * alone, since there is no telling where it ends.
  */
 export function addBootScript(tree: Tree, project: string, script: BootScript): void {
-  if (!script.html.includes(script.id)) {
-    throw new Error(`A boot script must contain its own id, "${script.id}".`);
+  const open = `<!-- ${script.id}`;
+  const close = `<!-- /${script.id} -->`;
+  if (!script.html.trimStart().startsWith(open) || !script.html.trimEnd().endsWith(close)) {
+    throw new Error(`A boot script must open with "${open}" and close with "${close}".`);
   }
   const path = `/${projectRoot(tree, project)}/src/index.html`;
   const source = read(tree, path);
   if (source === undefined) {
     throw new SchematicsException(`Expected Angular to have written ${path}.`);
   }
-  if (mentions(source, script.id)) {
-    return;
-  }
-  const head = source.indexOf('</head>');
-  if (head === -1) {
-    throw new SchematicsException(
-      `${path} has no </head> to put the ${script.id} script before. Add it by hand:\n\n${script.html}`,
-    );
+
+  let next: string;
+  const start = source.indexOf(open);
+  if (start !== -1) {
+    const end = source.indexOf(close, start);
+    if (end === -1) {
+      return;
+    }
+    const from = source.lastIndexOf('\n', start) + 1;
+    const to = source.indexOf('\n', end) + 1 || source.length;
+    next = `${source.slice(0, from)}${script.html}${source.slice(to)}`;
+  } else {
+    const head = source.indexOf('</head>');
+    if (head === -1) {
+      throw new SchematicsException(
+        `${path} has no </head> to put the ${script.id} script before. Add it by hand:\n\n${script.html}`,
+      );
+    }
+    next = `${source.slice(0, head)}${script.html}${source.slice(head)}`;
   }
 
-  let next = `${source.slice(0, head)}${script.html}${source.slice(head)}`;
   for (const [name, value] of Object.entries(script.attributes ?? {})) {
     next = next.replace(/<html([^>]*)>/, (tag, attrs: string) =>
       new RegExp(`\\b${name}="`).test(attrs)
@@ -248,7 +275,9 @@ export function addBootScript(tree: Tree, project: string, script: BootScript): 
         : `<html${attrs} ${name}="${value}">`,
     );
   }
-  tree.overwrite(path, next);
+  if (next !== source) {
+    tree.overwrite(path, next);
+  }
 }
 
 /**

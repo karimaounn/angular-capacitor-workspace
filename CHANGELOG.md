@@ -42,6 +42,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **What a design system is configured with is in its `src/config/`, and
+  nothing generated needs editing to change it.** The locales are
+  `src/config/i18n.ts` (the default, and each language's label and direction),
+  the palettes `src/config/palettes.ts` (ids and labels; the colours stay in
+  `_ref.scss`), and the contrast pairings `src/config/contrast.ts`. The
+  translation and theme machinery, the Storybook toolbar and
+  `check:contrast` all read them. Before, adding a language meant editing
+  `LOCALES` and two maps in `i18n.tokens.ts`, then each app's loader, each
+  `index.html` and each site's builds by hand, and a palette was listed three
+  times. Now a language is an entry in the config and a run of
+  `ng generate angular-capacitor-workspace:i18n`, which copies the source
+  catalog into a tagged catalog for it in every app and site and rewrites
+  everything derived from the config. That schematic refuses `--locales` once
+  a workspace is translated, pointing at the config instead.
+
+  Existing workspaces are left as they are. An earlier 22.x workspace keeps its
+  locale table in `i18n.tokens.ts`, which `ng generate` no longer reads: to
+  move it, write `src/config/i18n.ts` from the template's shape, make
+  `i18n.tokens.ts` derive from it as the template's does, and do the same for
+  `PALETTES`.
+
 - **Generated workspaces no longer get a `scripts/` directory: the scripts
   their npm scripts ran are commands of the installed package.** The project
   runner, a site's sitemap and prerender checks, `clean-dist`, codegen, the
@@ -51,7 +72,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   could not be updated once someone had touched it, and every fix to one
   reached only new workspaces; now an update of the package updates them all.
   What a workspace tunes moves to a file it owns: the design system's contrast
-  pairings are `projects/<lib>/contrast.config.mjs`, which
+  pairings are `projects/<lib>/src/config/contrast.ts`, which
   `check-contrast` reads. The preflight is no longer a bash script, so it runs
   on Windows too.
 
@@ -61,8 +82,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `node ../../../scripts/generate-sitemap.mjs <site>` with
   `angular-capacitor-workspace sitemap <site>`, and the same for the others —
   move the `PAIRINGS` table out of `check-contrast.mjs` into
-  `contrast.config.mjs` as `export default { pairings: [...] }`, and delete
-  `scripts/`.
+  `src/config/contrast.ts` as `export const CONTRAST = { pairings: [...] }`,
+  and delete `scripts/`.
 
 - **Theming, translation, codegen and the curated packages are plugins.** Each
   extends every project already in the workspace and every project generated

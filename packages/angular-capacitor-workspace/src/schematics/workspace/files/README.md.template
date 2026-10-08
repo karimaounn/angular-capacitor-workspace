@@ -69,15 +69,22 @@ the stories, and a fixed `data-palette` on `<html>` in an app's `index.html`
 picks that app's brand. To let visitors choose, the `theming` schematic puts a
 toggle in every app's header (see "Adding to this workspace").
 
+What you configure is in `<%= libRoot %>/src/config/`: the palettes, the
+colour pairings held to WCAG, and the locales when the workspace is translated.
+Those files are yours to edit; the code that reads them is the generator's.
+
 To add a palette:
 
-1. Declare it in `<%= libRoot %>/src/styles/_ref.scss`, and in the palette
-   toolbar in `<%= libRoot %>/.storybook/preview.ts`.
+1. Declare its colours in `$palettes` in `<%= libRoot %>/src/styles/_ref.scss`,
+   and its id and label in `<%= libRoot %>/src/config/palettes.ts`, which
+   Storybook's toolbar and the theme toggle are built from.
 2. Check it against WCAG, in light and dark:
 
    ```bash
    npm run check:contrast
    ```
+
+   It fails if the two lists disagree.
 <% } %>
 <!-- angular-capacitor-workspace:mobile -->
 <!-- /angular-capacitor-workspace:mobile -->

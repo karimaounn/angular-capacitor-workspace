@@ -2,6 +2,8 @@ import { DocsContainer, type DocsContainerProps } from '@storybook/addon-docs/bl
 import type { Preview } from '@storybook/angular-vite';
 import { themes } from 'storybook/theming';
 
+import { PALETTES } from '../src/config/palettes';
+
 // The design tokens are not imported here: the Storybook targets in
 // angular.json load them as a global stylesheet, the same way an application's
 // build does.
@@ -66,11 +68,9 @@ const preview: Preview = {
   // same way: by removing `data-theme` so the stylesheet's
   // `prefers-color-scheme` block governs.
   //
-  // The palette list is repeated here rather than read from `_ref.scss`, or
-  // from `theme.ts` where theme switching adds one: the Storybook config is
-  // loaded outside the Angular compilation. `check:contrast` compares
-  // `theme.ts` against the stylesheet, and this list is checked by eye against
-  // the same place.
+  // The palettes come from the design system's own config, which is plain
+  // data, so this stays one list with the stylesheet: `check:contrast` fails
+  // while `src/config/palettes.ts` and `$palettes` disagree.
   globalTypes: {
     theme: {
       description: 'Colour scheme',
@@ -90,11 +90,7 @@ const preview: Preview = {
       defaultValue: 'default',
       toolbar: {
         icon: 'paintbrush',
-        items: [
-          { value: 'default', title: 'Slate' },
-          { value: 'sand', title: 'Sand' },
-          { value: 'indigo', title: 'Indigo' },
-        ],
+        items: PALETTES.map((palette) => ({ value: palette.id, title: palette.label })),
         dynamicTitle: true,
       },
     },

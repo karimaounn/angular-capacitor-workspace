@@ -6,10 +6,9 @@
   "properties": {
     "locales": {
       "type": "array",
-      "description": "BCP-47 locale tags to ship, e.g. [\"en\", \"fr\", \"ar\"]. The first is the source locale unless --default-locale says otherwise.",
+      "description": "BCP-47 locale tags to ship, e.g. [\"en\", \"fr\", \"ar\"], on the first run, which writes them into the design system's src/config/i18n.ts. The first is the source locale unless --default-locale says otherwise. Defaults to [\"en\"]. Later runs read the config: change the locales there, then run without this.",
       "items": { "type": "string" },
-      "minItems": 1,
-      "default": ["en"]
+      "minItems": 1
     },
     "defaultLocale": {
       "type": "string",

@@ -6,11 +6,11 @@ import { LOCALE_KEY, TranslationService } from './translation';
 
 describe('locale negotiation', () => {
   it('matches an exact tag', () => {
-    expect(matchLocale('<%= defaultLocale %>')).toBe('<%= defaultLocale %>');
+    expect(matchLocale(DEFAULT_LOCALE)).toBe(DEFAULT_LOCALE);
   });
 
   it('falls back from a region subtag to its base language', () => {
-    expect(matchLocale('<%= defaultLocale %>-ZZ')).toBe('<%= defaultLocale %>');
+    expect(matchLocale(`${DEFAULT_LOCALE}-ZZ`)).toBe(DEFAULT_LOCALE);
   });
 
   it('returns null for a locale this workspace does not ship', () => {
@@ -19,7 +19,7 @@ describe('locale negotiation', () => {
   });
 
   it('takes the first supported entry of a preference list', () => {
-    expect(negotiateLocale(['xx', 'yy', '<%= defaultLocale %>'])).toBe('<%= defaultLocale %>');
+    expect(negotiateLocale(['xx', 'yy', DEFAULT_LOCALE])).toBe(DEFAULT_LOCALE);
     expect(negotiateLocale(['xx'])).toBeNull();
   });
 });
@@ -30,7 +30,7 @@ describe('TranslationService', () => {
   // A synchronous loader: the catalogs are the unit under test, not the chunk
   // splitting. `ready()` still awaits it, so the async path is exercised.
   const catalogs: Record<string, Record<string, string>> = {
-    '<%= defaultLocale %>': {
+    [DEFAULT_LOCALE]: {
       'app.title': 'Title',
       'home.greeting': 'Hello, {name}!',
       'cart.items.one': '{count} item',

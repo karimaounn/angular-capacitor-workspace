@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
-import { PALETTES, ThemeService, type ThemeMode } from './theme';
+import { PALETTES } from '../../config/palettes';
+import { ThemeService, type ThemeMode } from './theme';
 
 let nextId = 0;
 

@@ -215,15 +215,29 @@ describe('check-contrast', () => {
     write('angular.json', JSON.stringify({ projects: { ui: { root: 'projects/ui' } } }));
     const check = run(['check-contrast', 'ui']);
     expect(check.status).toBe(2);
-    expect(check.stderr).toContain('contrast.config.mjs does not exist');
+    expect(check.stderr).toContain('src/config/contrast.ts does not exist');
   });
 
   it('refuses a config that is not a table of pairings', () => {
     write('angular.json', JSON.stringify({ projects: { ui: { root: 'projects/ui' } } }));
-    write('projects/ui/contrast.config.mjs', "export default { pairings: [{ fg: 'text' }] };\n");
+    write(
+      'projects/ui/src/config/contrast.ts',
+      "export const CONTRAST = { pairings: [{ fg: 'text' }] } as const;\n",
+    );
     const check = run(['check-contrast', 'ui']);
     expect(check.status).toBe(2);
-    expect(check.stderr).toContain('must export `default { pairings: [{ fg, bg, min, label }] }`');
+    expect(check.stderr).toContain('must be `{ pairings: [{ fg, bg, min, label }] }`');
+  });
+
+  it('refuses a config that is not plain values, without running it', () => {
+    write('angular.json', JSON.stringify({ projects: { ui: { root: 'projects/ui' } } }));
+    write(
+      'projects/ui/src/config/contrast.ts',
+      "import { table } from './elsewhere';\nexport const CONTRAST = { pairings: table } as const;\n",
+    );
+    const check = run(['check-contrast', 'ui']);
+    expect(check.status).toBe(2);
+    expect(check.stderr).toContain('has to be plain values');
   });
 });
 

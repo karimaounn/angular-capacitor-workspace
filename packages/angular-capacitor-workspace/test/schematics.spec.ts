@@ -1278,7 +1278,7 @@ describe('ui-lib', () => {
     );
 
     // The pairings are the library's own config; the checker is the CLI's.
-    const check = tree.readContent('/projects/ui/contrast.config.mjs');
+    const check = tree.readContent('/projects/ui/src/config/contrast.ts');
     expect(check).toContain("fg: 'danger-strong', bg: 'surface'");
     expect(check).toContain("fg: 'accent-strong', bg: 'surface'");
     expect(rootScripts(tree)['check:contrast']).toBe(

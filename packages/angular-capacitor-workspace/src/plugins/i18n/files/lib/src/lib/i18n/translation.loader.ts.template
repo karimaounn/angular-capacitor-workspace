@@ -4,7 +4,7 @@ import type { Locale, TranslationCatalog } from './i18n.tokens';
 /**
  * Supplies the messages for one locale. Returning a promise is the normal case:
  * a `() => import('./fr')` loader gives every locale its own lazily fetched
- * chunk, so a user who only ever reads <%= defaultLabel %> never downloads the rest.
+ * chunk, so a user who only ever reads one language never downloads the rest.
  *
  * Sync returns are allowed for tests and for tiny embedded catalogs.
  */

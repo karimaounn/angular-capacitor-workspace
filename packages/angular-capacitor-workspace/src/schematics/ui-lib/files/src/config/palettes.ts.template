@@ -1,0 +1,23 @@
+/**
+ * The palettes this design system offers: the name `$palettes` in
+ * `src/styles/_ref.scss` gives each one, and the label a person picks it by.
+ *
+ * This file is the design system's to edit, like everything in `src/config/`.
+ * A palette is two things: its colours, in `_ref.scss`, and its entry here.
+ * `npm run check:contrast` fails while the two lists disagree, and checks
+ * every palette listed in both modes. Storybook's palette toolbar is built
+ * from this list, and so is the theme toggle's, where there is one.
+ *
+ * `default` is the palette `:root` carries before anything sets
+ * `data-palette` on `<html>`, so keep one by that name.
+ *
+ * Plain values only: the contrast check reads the literal below without
+ * compiling this file.
+ */
+export const PALETTES = [
+  { id: 'default', label: 'Slate' },
+  { id: 'sand', label: 'Sand' },
+  { id: 'indigo', label: 'Indigo' },
+] as const;
+
+export type PaletteId = (typeof PALETTES)[number]['id'];

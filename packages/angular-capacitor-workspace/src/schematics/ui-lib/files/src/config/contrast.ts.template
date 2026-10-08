@@ -1,13 +1,13 @@
 /**
  * The colour pairings `npm run check:contrast` holds to WCAG, in every palette
- * and in both light and dark mode.
+ * of `palettes.ts` and in both light and dark mode.
  *
- * This file is the library's: the checker is
- * `angular-capacitor-workspace check-contrast`, which an update of the package
- * improves, and this is what it checks. It compiles the real Sass for every
- * palette in `src/styles/_ref.scss` and reads each token below off the result,
- * so the names here are the custom properties `src/styles/_semantic.scss`
- * emits, without their `--`.
+ * This file is the design system's to edit, like everything in `src/config/`.
+ * The checker is `angular-capacitor-workspace check-contrast`, which an update
+ * of the package improves; this is what it checks. It compiles the real Sass
+ * for every palette and reads each token below off the result, so the names
+ * here are the custom properties `src/styles/_semantic.scss` emits, without
+ * their `--`.
  *
  * Extend the table when you add a token pair that carries meaning. A token
  * that never appears here is a token whose contrast nobody has checked.
@@ -15,8 +15,11 @@
  * Levels come from WCAG 2.2:
  *   4.5  normal body text (AA)
  *   3.0  large text (>= 24px, or >= 18.66px bold) and UI component boundaries
+ *
+ * Plain values only: the checker reads the literal below without compiling
+ * this file.
  */
-export default {
+export const CONTRAST = {
   pairings: [
     { fg: 'text', bg: 'surface', min: 4.5, label: 'body text on the page' },
     { fg: 'text', bg: 'surface-raised', min: 4.5, label: 'body text on a card' },
@@ -55,4 +58,4 @@ export default {
     // this table. If a border ever *is* the affordance, it should use
     // `border-strong`, which is checked.
   ],
-};
+} as const;
