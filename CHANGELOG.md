@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.9.0] — 2026-10-09
+
 ### Changed
 
 - **The interactive locale question is a checklist.** `create` used to ask for
@@ -945,7 +947,8 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.8.0...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.9.0...HEAD
+[22.9.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.8.0...v22.9.0
 [22.8.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.7.0...v22.8.0
 [22.7.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.6.0...v22.7.0
 [22.6.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.5.0...v22.6.0

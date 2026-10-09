@@ -1,6 +1,6 @@
 {
   "name": "@angular-capacitor-workspace/theming",
-  "version": "22.8.0",
+  "version": "22.9.0",
   "description": "Theme switching for an angular-capacitor-workspace: a colour scheme and a palette, as signals, written onto <html> and remembered.",
   "keywords": [
     "angular",
