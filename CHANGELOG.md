@@ -21,6 +21,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   This only changes the questions `create` asks, so existing workspaces are
   unaffected.
 
+### Fixed
+
+- **The language picker visibly translates a new workspace.** Every catalog but
+  the source one used to be the source's strings tagged `[fr]`, and most of the
+  starter page was hard-coded English, so switching language seemed to do
+  nothing. The starter strings now come translated into the 12 languages
+  `create` lists (English, Spanish, French, German, Italian, Portuguese, Arabic,
+  Hebrew, Hindi, Japanese, Korean and Chinese), each plural in that language's
+  own CLDR categories. These are a machine draft, to be read before release. The
+  app's starter page takes its text from a new `STARTER_COPY` token in
+  `pages/starter-copy.ts`, which the i18n plugin provides from the catalogs, so
+  the whole page switches. Any other language is still a tagged copy. A language
+  added to the config later gets the draft for every starter string still as
+  the generator wrote it.
+
+  This is starter content, so existing workspaces are left as they are. Their
+  catalogs and starter pages are theirs, and an app whose page has no
+  `STARTER_COPY` keeps its English page.
+
 ### Added
 
 - **`KNOWN_LOCALES` is exported from `@angular-capacitor-workspace/cli`**, so

@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Button, Field } from '<%= libName %>';
+import { STARTER_COPY } from './starter-copy';
 
 /** One swatch in the token strip: a custom property and the text that sits on it. */
 interface Swatch {
@@ -18,8 +19,9 @@ interface Swatch {
  * one.
  *
  * Plugins add sections of their own above the last one — theme switching and
- * translation each bring one. Replace the whole page with your own home route
- * in `app.routes.ts`.
+ * translation each bring one. Its text is in `starter-copy.ts`, which the i18n
+ * plugin translates. Replace the whole page with your own home route in
+ * `app.routes.ts`.
  */
 @Component({
   selector: '<%= prefix %>-home-page',
@@ -29,6 +31,7 @@ interface Swatch {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HomePage {
+  protected readonly copy = inject(STARTER_COPY);
   protected readonly email = signal('');
   protected readonly submitting = signal(false);
 
@@ -38,7 +41,7 @@ export class HomePage {
     if (value.length === 0 || value.includes('@')) {
       return undefined;
     }
-    return 'That does not look like an email address.';
+    return this.copy().emailError;
   });
 
   protected readonly swatches: readonly Swatch[] = [

@@ -423,11 +423,19 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 - **The anchors of the extension points** live in the host templates:
   `</header>` in each shell's `app.html`, `providers: [` in its `app.spec.ts`,
   `</head>` in `index.html`, the app starter page as `<section>`s at column 0
-  ending in "Next", `PAGE_META_EXTENSIONS` in the site's `seo/page-meta.ts` and
+  ending in "Next", the `STARTER_COPY` token in its `pages/starter-copy.ts`,
+  `PAGE_META_EXTENSIONS` in the site's `seo/page-meta.ts` and
   the `PageMetaStrategy` import beside it in `app.config.ts`, and `siteBuild()`
   as the site's `build`/`postbuild`. A plugin skips a header or starter page it
   cannot find, so a lost anchor is silent there. _Tested_ by the "keeps the
   anchors the plugins extend it through" tests in `schematics.spec.ts`.
+- **The starter strings** are listed twice: the app starter page's fields in
+  `STARTER_TEXT` (`schematics/app/files/shell/src/app/pages/starter-copy.ts.template`)
+  and their `starter.*` keys in `plugins/i18n/starter-messages.ts`, beside every
+  other string the catalogs start with, once per language it drafts. Every
+  language there needs every key, or its catalog falls back to tagged English
+  for the missing one. A field without a key fails the generated app's build in
+  `i18n/starter-copy.ts` (_tested_ in `i18n.spec.ts`).
 - **The order of `PLUGINS`** is the order of the controls in an app's header,
   the providers in its `app.config.ts` and the scripts in its `<head>`
   (_tested_ in `plugins.spec.ts`, against a workspace grown in another order).

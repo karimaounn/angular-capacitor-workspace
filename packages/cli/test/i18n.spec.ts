@@ -266,18 +266,80 @@ describe('i18n', () => {
     );
   });
 
-  it('tags every untranslated value, so a placeholder is visible on screen', () => {
-    // Without this the generated catalogs are verbatim copies of the source and
-    // switching language changes nothing — the showcase would demonstrate a
-    // switch that appears not to work, and a real untranslated string would be
-    // invisible.
+  it('writes the starter strings in a language it knows, so switching visibly translates', () => {
+    // Tagged copies of the source made the picker look broken: `[fr] Translation`
+    // reads as a switch that did nothing.
     const source = tree.readContent('/projects/shop/web/src/app/i18n/en.ts');
-    const translated = tree.readContent('/projects/shop/web/src/app/i18n/fr.ts');
+    const french = tree.readContent('/projects/shop/web/src/app/i18n/fr.ts');
 
     expect(source).not.toContain('[en]');
-    expect(translated).toContain("'showcase.plain.value': '[fr] ");
+    expect(french).not.toContain("'[fr] ");
+    expect(french).toContain("'showcase.plain.value': 'Rien à substituer ici.',");
+    expect(french).toContain("'starter.nextHeading': 'Et ensuite',");
     // The app's own name is not a string anyone translates.
-    expect(translated).toContain("'app.title': 'Shop'");
+    expect(french).toContain("'app.title': 'Shop'");
+  });
+
+  it("gives a plural the language's own CLDR categories", () => {
+    const arabic = tree.readContent('/projects/shop/web/src/app/i18n/ar.ts');
+    for (const category of ['zero', 'one', 'two', 'few', 'many', 'other']) {
+      expect(arabic, category).toContain(`'showcase.items.${category}':`);
+    }
+    expect(tree.readContent('/projects/shop/web/src/app/i18n/en.ts')).not.toContain(
+      "'showcase.items.few'",
+    );
+  });
+
+  it('tags every value in a language it has no starter strings for', async () => {
+    // So an untranslated string is visible on screen rather than passing for
+    // the source language.
+    const swedish = await runner().runSchematic(
+      'i18n',
+      { locales: ['en', 'sv'] },
+      await workspaceWithApp(),
+    );
+    const catalog = swedish.readContent('/projects/shop/web/src/app/i18n/sv.ts');
+    expect(catalog).toContain("'showcase.plain.value': '[sv] Nothing to substitute here.',");
+    expect(catalog).toContain("'starter.nextHeading': '[sv] Next',");
+    expect(catalog).toContain('VALUES ARE PLACEHOLDERS');
+  });
+
+  it("translates the starter page's own text through STARTER_COPY", () => {
+    const config = tree.readContent('/projects/shop/web/src/app/app.config.ts');
+    expect(config).toContain('{ provide: STARTER_COPY, useFactory: translatedStarterCopy },');
+    expect(config).toContain("import { STARTER_COPY } from './pages/starter-copy';");
+    expect(config).toContain("import { translatedStarterCopy } from './i18n/starter-copy';");
+
+    // Every field of the page's text has its key, or the typed lookup in
+    // i18n/starter-copy.ts fails to compile.
+    const page = tree.readContent('/projects/shop/web/src/app/pages/starter-copy.ts');
+    const text = page.slice(page.indexOf('STARTER_TEXT = {'), page.indexOf('\n};'));
+    const fields = [...text.matchAll(/^ {2}(\w+):/gm)].map((match) => match[1]);
+    expect(fields.length).toBeGreaterThan(10);
+    for (const locale of ['en', 'fr', 'ar']) {
+      const catalog = tree.readContent(`/projects/shop/web/src/app/i18n/${locale}.ts`);
+      for (const field of fields) {
+        expect(catalog, `${locale}: ${field}`).toContain(`'starter.${field}':`);
+      }
+    }
+    expect(tree.readContent('/projects/shop/web/src/app/i18n/starter-copy.ts')).toContain(
+      'const key: MessageKey = `starter.${field}`;',
+    );
+  });
+
+  it('leaves a starter page without STARTER_COPY in English', async () => {
+    // The page an earlier release wrote, or one someone has replaced.
+    const older = await workspaceWithApp();
+    older.delete('/projects/shop/web/src/app/pages/starter-copy.ts');
+    const localized = await runner().runSchematic('i18n', { locales: ['en', 'fr'] }, older);
+
+    expect(localized.readContent('/projects/shop/web/src/app/app.config.ts')).not.toContain(
+      'STARTER_COPY',
+    );
+    expect(localized.exists('/projects/shop/web/src/app/i18n/starter-copy.ts')).toBe(false);
+    expect(localized.readContent('/projects/shop/web/src/app/i18n/en.ts')).not.toContain(
+      "'starter.",
+    );
   });
 
   it('types the translated catalogs against the source one', () => {
@@ -744,6 +806,13 @@ describe('i18n', () => {
     expect(explicit.readContent('/projects/shop/web/src/app/i18n/en.ts')).toContain(
       'export const en: LocalizedCatalog = {',
     );
+    // In the source language, untagged, and the other language drafted in its own.
+    expect(explicit.readContent('/projects/shop/web/src/app/i18n/fr.ts')).toContain(
+      "'showcase.heading': 'Traduction',",
+    );
+    expect(explicit.readContent('/projects/shop/web/src/app/i18n/en.ts')).toContain(
+      "'showcase.heading': 'Translation',",
+    );
   });
 
   it('refuses a default locale that is not being generated', async () => {
@@ -853,7 +922,9 @@ describe('i18n', () => {
       const catalog = synced.readContent('/projects/shop/web/src/app/i18n/he.ts');
       expect(catalog).toContain('export const he: LocalizedCatalog = {');
       expect(catalog).toContain("'cart.empty': '[he] Your basket is empty',");
-      expect(catalog).toContain("'language.label': '[he] Language',");
+      // A starter string still as the generator wrote it gets the draft.
+      expect(catalog).toContain("'language.label': 'שפה',");
+      expect(catalog).toContain("'showcase.items.two': 'שני פריטים בסל',");
       expect(synced.exists('/projects/site/web/src/app/i18n/he.ts')).toBe(true);
     });
 

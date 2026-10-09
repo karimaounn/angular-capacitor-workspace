@@ -28,6 +28,8 @@ import {
   addRootProvider,
   addShellTestProvider,
   addStarterSection,
+  hasStarterCopy,
+  STARTER_COPY,
 } from '../../extend/shell';
 import { addPageMetaExtension, replaceSiteBuild, siteBuild } from '../../extend/site';
 import { cli } from '../../utils/commands';
@@ -45,6 +47,7 @@ import {
 } from '../../utils/workspace';
 import { isPrerendered, treeView } from '../../utils/workspace-view';
 import { I18N_CONFIG, installedI18n, type I18nSetup } from './plugin';
+import { starterMessages, type Messages } from './starter-messages';
 
 export interface I18nOptions {
   locales?: string[];
@@ -377,9 +380,10 @@ function application(name: string, design: DesignSystem, setup: I18nSetup): Rule
     const root = requireRoot(readProjects(tree), name);
     const prefix = prefixOf(tree, name);
     const starterPage = tree.exists(`/${root}/src/app/pages/home.page.html`);
+    const starterCopy = hasStarterCopy(tree, name);
 
     return chain([
-      messages(tree, name, root, design, setup, false),
+      messages(tree, name, root, design, setup, { isSite: false, starter: starterCopy }),
       starterPage ? showcase(tree, root, prefix, design) : noop(),
       e2eSuite(tree, root, './files/app-e2e', design, name),
       (host: Tree) => {
@@ -406,6 +410,7 @@ function application(name: string, design: DesignSystem, setup: I18nSetup): Rule
           addShellTestProvider(host, name, loaderForShellSpec(design));
         }
       },
+      starterCopy ? translatedStarterCopy(name, root, design, setup) : noop(),
     ]);
   };
 }
@@ -429,16 +434,18 @@ function messages(
   root: string,
   design: DesignSystem,
   setup: I18nSetup,
-  isSite: boolean,
+  sections: { isSite: boolean; starter: boolean },
 ): Rule {
+  const { isSite } = sections;
   const defaultLocale = setup.defaultLocale;
+  const title = titleFromName(name);
   const defaultConstName = constName(defaultLocale);
   const source = `/${root}/src/app/i18n/${defaultLocale}.ts`;
   const shared = {
     ...strings,
     importName: design.name,
     configFile: `${design.root}/${I18N_CONFIG}`,
-    title: titleFromName(name),
+    title,
     defaultLocale,
     defaultConstName,
     defaultLabel: labelOf(setup, defaultLocale),
@@ -456,7 +463,7 @@ function messages(
   // templating pass cannot produce both.
   const catalogs = tagsOf(setup).map((tag) =>
     tag !== defaultLocale && tree.exists(source)
-      ? translatedCopy(source, `/${root}/src/app/i18n/${tag}.ts`, setup, tag)
+      ? translatedCopy(source, `/${root}/src/app/i18n/${tag}.ts`, setup, tag, title)
       : mergeWith(
           apply(url('./files/app'), [
             filter((path) => path.endsWith('__locale__.ts.template')),
@@ -466,11 +473,9 @@ function messages(
               constName: constName(tag),
               localeLabel: labelOf(setup, tag),
               isDefault: tag === defaultLocale,
-              // Tags every placeholder value in a catalog nobody has translated
-              // yet, so an untranslated string is impossible to miss on screen —
-              // the same reason a missing key renders as the key. Empty for the
-              // source catalog, whose values are the real ones.
-              mark: tag === defaultLocale ? '' : `[${tag}] `,
+              drafted: starterMessages(tag) !== undefined,
+              mark: `[${tag}] `,
+              body: catalogBody(tag, defaultLocale, title, sections),
             }),
             move(`/${root}`),
             onlyNew(tree),
@@ -508,7 +513,13 @@ function messages(
  * imports — cannot be copied that way, and the error says to write the new
  * catalog by hand: the compiler then lists every key it is missing.
  */
-function translatedCopy(source: string, target: string, setup: I18nSetup, tag: string): Rule {
+function translatedCopy(
+  source: string,
+  target: string,
+  setup: I18nSetup,
+  tag: string,
+  title: string,
+): Rule {
   return (tree: Tree) => {
     if (tree.exists(target)) {
       return;
@@ -531,9 +542,43 @@ function translatedCopy(source: string, target: string, setup: I18nSetup, tag: s
     }
 
     const mark = `[${tag}] `;
-    const entries = Object.entries(catalog)
-      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-      .map(([messageKey, value]) => `  ${quote(messageKey)}: ${quote(`${mark}${value}`)},`);
+    const starter = starterSource(defaultLocale);
+    const draft = starterMessages(tag);
+    const values = Object.entries(catalog).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    );
+    // A starter string still as the generator wrote it gets the draft
+    // translation; anything a person wrote, or rewrote, is tagged.
+    const untouched = (key: string, value: string) =>
+      starter[key] !== undefined && withTitle(starter[key], title) === value;
+
+    const entries: string[] = [];
+    const pluralsDone = new Set<string>();
+    for (const [messageKey, value] of values) {
+      const base = pluralBase(messageKey);
+      if (base !== undefined && draft) {
+        // A plural is replaced whole or not at all: the draft's categories are
+        // the language's own, which need not be the source's.
+        const forms = values.filter(([key]) => pluralBase(key) === base);
+        const draftForms = Object.keys(draft).filter((key) => pluralBase(key) === base);
+        if (draftForms.length > 0 && forms.every(([key, text]) => untouched(key, text))) {
+          if (!pluralsDone.has(base)) {
+            pluralsDone.add(base);
+            entries.push(...draftForms.map((key) => entry(key, withTitle(draft[key]!, title))));
+          }
+          continue;
+        }
+      }
+      const translated = draft?.[messageKey];
+      entries.push(
+        entry(
+          messageKey,
+          translated !== undefined && untouched(messageKey, value)
+            ? withTitle(translated, title)
+            : `${mark}${value}`,
+        ),
+      );
+    }
     tree.create(
       target,
       `import type { LocalizedCatalog } from './messages';
@@ -544,7 +589,7 @@ function translatedCopy(source: string, target: string, setup: I18nSetup, tag: s
 // language was added, each tagged \`${mark}\`, so the app runs before a translator
 // has seen it and so that what is still untranslated is impossible to miss on
 // screen. Drop the tag as you translate; anything still carrying one has not
-// been.
+// been.${draft ? ` The starter strings the generator could translate are untagged: a\n// first draft, to be read by someone who speaks ${labelOf(setup, tag)}.` : ''}
 //
 // \`LocalizedCatalog\` is \`Record<keyof typeof ${constName(defaultLocale)}, string>\`, so a key
 // added to the source catalog breaks this file until it is covered. Plural
@@ -554,6 +599,146 @@ ${entries.join('\n')}
 };
 `,
     );
+  };
+}
+
+// ── The starter strings ──────────────────────────────────────────────────────
+
+/** A plural key's base: `showcase.items.one` → `showcase.items`. */
+const PLURAL = /^(.+)\.(zero|one|two|few|many|other)$/;
+
+function pluralBase(key: string): string | undefined {
+  return PLURAL.exec(key)?.[1];
+}
+
+/**
+ * The source language's starter strings: its own where the generator has
+ * them, English otherwise, which is what an unknown source locale always got.
+ */
+function starterSource(defaultLocale: string): Messages {
+  return starterMessages(defaultLocale) ?? starterMessages('en')!;
+}
+
+function withTitle(text: string, title: string): string {
+  return text.replaceAll('%title%', title);
+}
+
+/**
+ * One catalog line, as Prettier would write it: wrapped past 100 columns, and
+ * double-quoted when that saves escaping an apostrophe.
+ */
+function entry(key: string, value: string): string {
+  const literal =
+    value.includes("'") && !value.includes('"')
+      ? `"${value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n')}"`
+      : quote(value);
+  const line = `  ${quote(key)}: ${literal},`;
+  return line.length <= 100 ? line : `  ${quote(key)}:\n    ${literal},`;
+}
+
+/**
+ * The body of a catalog the first run writes: its language's starter strings
+ * where the generator has them, else the source's, tagged.
+ *
+ * Built here rather than in the template because which keys a catalog holds is
+ * per language — Arabic's plural has six forms, Japanese's one — and which
+ * sections it holds is per project: a site carries what a crawler reads, and
+ * an app whose starter page takes its text from `STARTER_COPY` carries that.
+ */
+function catalogBody(
+  tag: string,
+  defaultLocale: string,
+  title: string,
+  sections: { isSite: boolean; starter: boolean },
+): string {
+  const source = starterSource(defaultLocale);
+  const own = starterMessages(tag);
+  const isDefault = tag === defaultLocale;
+  // Tags every placeholder value in a catalog nobody has translated yet, so an
+  // untranslated string is impossible to miss on screen — the same reason a
+  // missing key renders as the key. Never in the source catalog, whose values
+  // are the real ones.
+  const value = (key: string) =>
+    withTitle(own?.[key] ?? (isDefault ? source[key]! : `[${tag}] ${source[key]!}`), title);
+
+  const group = (prefix: string) => {
+    const lines: string[] = [];
+    const plurals = new Set<string>();
+    for (const key of Object.keys(source).filter((key) => key.startsWith(prefix))) {
+      const base = pluralBase(key);
+      if (base === undefined) {
+        lines.push(entry(key, value(key)));
+      } else if (!plurals.has(base)) {
+        // The language's own plural categories, when the generator has them.
+        plurals.add(base);
+        const forms = Object.keys(own ?? source).filter((form) => pluralBase(form) === base);
+        lines.push(...forms.map((form) => entry(form, value(form))));
+      }
+    }
+    return lines.join('\n');
+  };
+
+  const blocks = [
+    entry('app.title', title),
+    entry('language.label', value('language.label')),
+    `  // ── The starter screen. Delete with it. ${'─'.repeat(37)}\n${group('showcase.')}`,
+  ];
+  if (sections.starter) {
+    blocks.push(
+      `  // ── The starter page's own text (pages/starter-copy.ts). Delete with it. ──\n` +
+        group('starter.'),
+    );
+  }
+  if (sections.isSite) {
+    blocks.push(
+      `  // ── What a crawler reads. ${'─'.repeat(51)}\n` +
+        `  // Each page's title and description, per language. An untranslated <title>\n` +
+        `  // on a French page is the single most visible thing a search result can get\n` +
+        `  // wrong, which is why these are keys and not literals in app.routes.ts.\n` +
+        `${entry('seo.home.title', title)}\n${group('seo.')}`,
+      `  // ── The site's locale links. ${'─'.repeat(48)}\n${group('site.')}`,
+    );
+  }
+  return `${blocks.join('\n\n')}\n`;
+}
+
+/**
+ * The provider that translates the starter page: `STARTER_COPY` from the
+ * active locale's `starter.*` keys.
+ *
+ * Only once the source catalog has those keys. A catalog written before the
+ * page took its text from the token has none, and a provider reading keys it
+ * lacks would fail the build; that app keeps its English page.
+ */
+function translatedStarterCopy(
+  name: string,
+  root: string,
+  design: DesignSystem,
+  setup: I18nSetup,
+): Rule {
+  return (tree: Tree) => {
+    const source = tree.read(`/${root}/src/app/i18n/${setup.defaultLocale}.ts`)?.toString('utf8');
+    if (source === undefined || !source.includes("'starter.")) {
+      return noop();
+    }
+    return chain([
+      mergeWith(
+        apply(url('./files/starter-copy'), [
+          applyTemplates({ ...strings, importName: design.name }),
+          move(`/${root}`),
+        ]),
+        MergeStrategy.Overwrite,
+      ),
+      (host: Tree) =>
+        addRootProvider(host, name, {
+          symbol: 'translatedStarterCopy',
+          expression: `{ provide: ${STARTER_COPY.token}, useFactory: translatedStarterCopy }`,
+          imports: [
+            `import { ${STARTER_COPY.token} } from './pages/starter-copy';`,
+            "import { translatedStarterCopy } from './i18n/starter-copy';",
+          ],
+        }),
+    ]);
   };
 }
 
@@ -751,7 +936,7 @@ function localizedSite(name: string, design: DesignSystem, setup: I18nSetup): Ru
     );
 
     return chain([
-      messages(tree, name, root, design, setup, true),
+      messages(tree, name, root, design, setup, { isSite: true, starter: false }),
       showcase(tree, root, prefix, design),
       siteFiles,
       e2eSuite(tree, root, './files/site-e2e', design, name),
@@ -940,7 +1125,8 @@ ng generate @angular-capacitor-workspace/cli:i18n
 \`\`\`
 
 which writes each app's and site's catalog for it — a copy of the source one,
-every value tagged until it is translated — and updates their loaders, the
+every value tagged until it is translated, except the starter strings the
+generator has a draft translation of — and updates their loaders, the
 script that sets \`<html lang dir>\` before the first paint, and each site's
 per-language builds. Those are the generator's: leave them to it, and change
 the config instead.
@@ -1040,10 +1226,11 @@ function houseRules(
     `- **Plurals are \`key.one\` / \`key.other\` plus \`{ count }\`**, never a` +
       `\n  \`count === 1\` ternary. The category comes from \`Intl.PluralRules\` for the` +
       `\n  active locale.`,
-    `- **A value tagged \`[fr]\` has not been translated.** The generated catalogs` +
-      `\n  start as tagged copies of the source so the app runs; drop the tag as you` +
-      `\n  translate. Anything still carrying one on screen is a string nobody has` +
-      `\n  looked at.`,
+    `- **A value tagged \`[fr]\` has not been translated.** A language the generator` +
+      `\n  has no starter strings for starts as a tagged copy of the source so the app` +
+      `\n  runs; drop the tag as you translate. Tag a string you add the same way.` +
+      `\n  Anything still carrying one on screen is a string nobody has looked at. The` +
+      `\n  untagged starter strings are a machine draft: have them read before release.`,
   ];
 
   if (sites.length > 0) {

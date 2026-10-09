@@ -12,18 +12,23 @@
 // `0` correctly resolves to `other` ("0 items"). Arabic adds four more of its
 // own, which is exactly why the selection is delegated to `Intl`.
 //
-// Everything under `showcase.` belongs to the starter screen and goes when it
-// does.
+// Everything under `showcase.` and `starter.` belongs to the starter screen and
+// goes when it does.
 export const <%= constName %> = {
 <% } else { %>import type { LocalizedCatalog } from './messages';
 
 // The <%= localeLabel %> catalog.
 //
-// VALUES ARE PLACEHOLDERS — the <%= defaultLocale %>.ts strings, each tagged `<%= mark %>`, so the
+<% if (drafted) { %>// The starter strings are the generator's own translation: a first draft, to
+// be read by someone who speaks <%= localeLabel %> before anything ships. A key you
+// add to <%= defaultLocale %>.ts has to be added here too, and the compiler says so;
+// tag its value `<%= mark %>` until it is translated, so that what is not is
+// impossible to miss on screen.
+<% } else { %>// VALUES ARE PLACEHOLDERS — the <%= defaultLocale %>.ts strings, each tagged `<%= mark %>`, so the
 // app runs before a translator has seen it and so that what is still
 // untranslated is impossible to miss on screen. Drop the tag as you translate;
 // anything still carrying one has not been.
-//
+<% } %>//
 // The `LocalizedCatalog` annotation is what makes this safe to hand out: it is
 // `Record<keyof typeof <%= defaultConstName %>, string>`, so a key added to the source catalog
 // breaks this file until it is covered, and a typo'd key is a compile error
@@ -33,58 +38,6 @@ export const <%= constName %> = {
 // whichever ones it needs — the intersection with `TranslationCatalog` is what
 // allows keys the source catalog does not have.
 export const <%= constName %>: LocalizedCatalog = {
-<% } %>  'app.title': '<%= title %>',
-
-  'language.label': '<%= mark %>Language',
-
-  // ── The starter screen. Delete with it. ───────────────────────────────────
-  'showcase.heading': '<%= mark %>Translation',
-  'showcase.intro': '<%= mark %>Every string below is looked up at runtime.',
-  'showcase.active': '<%= mark %>Active: {locale}, written {direction}.',
-
-  'showcase.plain.label': '<%= mark %>Plain key',
-  'showcase.plain.value': '<%= mark %>Nothing to substitute here.',
-
-  'showcase.interpolated.label': '<%= mark %>Placeholder',
-  'showcase.greeting': '<%= mark %>Hello, {name}!',
-
-  'showcase.plural.label': '<%= mark %>Plural',
-  // Two categories, because <%= defaultLabel %> has two. `0` resolves to `other`.
-  'showcase.items.one': '<%= mark %>{count} item in the basket',
-  'showcase.items.other': '<%= mark %>{count} items in the basket',
-  'showcase.fewer': '<%= mark %>One fewer',
-  'showcase.more': '<%= mark %>One more',
-
-  'showcase.number.label': '<%= mark %>Number',
-  'showcase.currency.label': '<%= mark %>Currency',
-  'showcase.date.label': '<%= mark %>Date',
-  'showcase.relative.label': '<%= mark %>Relative time',
-
-  'showcase.direction.label': '<%= mark %>Direction',
-  'showcase.direction.ltr': '<%= mark %>Left to right',
-  'showcase.direction.rtl': '<%= mark %>Right to left',
-
-  'showcase.footnote':
-    '<%= mark %>Numbers and dates go through TranslationService, not DatePipe or DecimalPipe: ' +
-    'those read the build-time LOCALE_ID and cannot follow a runtime switch.',
-<% if (isSite) { %>
-  // ── What a crawler reads. ─────────────────────────────────────────────────
-  // Each page's title and description, per language. An untranslated <title>
-  // on a French page is the single most visible thing a search result can get
-  // wrong, which is why these are keys and not literals in app.routes.ts.
-  'seo.home.title': '<%= mark %><%= title %>',
-  'seo.home.description':
-    '<%= mark %><%= title %>: replace this with a sentence or two about the site. ' +
-    'It is what search results show under the title.',
-  'seo.notFound.title': '<%= mark %>Page not found',
-  'seo.notFound.description':
-    '<%= mark %>There is no page at this address. The link may be out of date.',
-
-  // ── The site's locale links. ──────────────────────────────────────────────
-  'site.languages': '<%= mark %>Languages',
-  'site.prerendered':
-    '<%= mark %>This page is prerendered once per language. The links above are real URLs, ' +
-    'so a crawler indexes each language separately.',
-<% } %><% if (isDefault) { %>} as const;
+<% } %><%= body %><% if (isDefault) { %>} as const;
 <% } else { %>};
 <% } %>

@@ -657,6 +657,14 @@ describe('app, in a workspace that already has a design system', () => {
     expect(page.lastIndexOf('\n<section')).toBe(
       page.indexOf('\n<section aria-labelledby="next-heading"'),
     );
+    // And its text behind STARTER_COPY, which the i18n plugin provides.
+    expect(tree.readContent('/projects/shop/web/src/app/pages/starter-copy.ts')).toContain(
+      'export const STARTER_COPY = new InjectionToken',
+    );
+    expect(tree.readContent('/projects/shop/web/src/app/pages/home.page.ts')).toContain(
+      'protected readonly copy = inject(STARTER_COPY);',
+    );
+    expect(page).toContain('{{ copy().nextHeading }}');
   });
 
   it('demonstrates the library on the starter page', () => {

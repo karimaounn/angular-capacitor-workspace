@@ -1,0 +1,46 @@
+import { InjectionToken, signal, type Signal } from '@angular/core';
+
+/**
+ * The starter page's text, in one place and behind a token.
+ *
+ * Behind a token so the page can be translated without being rewritten: the
+ * i18n plugin provides `STARTER_COPY` from the active locale's catalog, and
+ * every string below follows the language picker. Without it, this English is
+ * what the page shows.
+ *
+ * Code samples are not here: they read the same in every language, so the page
+ * puts each one after the label that introduces it. Goes with the page.
+ */
+export const STARTER_TEXT = {
+  lead:
+    "Everything below is drawn from the design system's tokens, which declare light " +
+    "and dark in one stylesheet. Switch your system's colour scheme and the whole " +
+    'page follows without a re-render.',
+  tokensHeading: 'Tokens',
+  tokensNote:
+    'Every pairing above meets WCAG contrast in both modes and every palette. The check:',
+  componentsHeading: 'Components',
+  primary: 'Primary',
+  secondary: 'Secondary',
+  ghost: 'Ghost',
+  danger: 'Danger',
+  disabled: 'Disabled',
+  emailLabel: 'Email address',
+  emailHint: 'Type something without an @ to see the error state.',
+  emailError: 'That does not look like an email address.',
+  componentsSource: 'Their source:',
+  componentsStories: 'Their stories, in Storybook:',
+  nextHeading: 'Next',
+  nextReplace: 'Replace this page:',
+  nextRules: 'House rules for this workspace:',
+  nextScripts: 'Every script, with a line on each:',
+  nextPalette: 'Add a palette:',
+};
+
+export type StarterCopy = Readonly<Record<keyof typeof STARTER_TEXT, string>>;
+
+/** The page's text, as a signal so a provider can change it at runtime. */
+export const STARTER_COPY = new InjectionToken<Signal<StarterCopy>>('STARTER_COPY', {
+  providedIn: 'root',
+  factory: () => signal(STARTER_TEXT),
+});

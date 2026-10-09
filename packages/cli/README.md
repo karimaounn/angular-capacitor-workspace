@@ -175,10 +175,15 @@ an extraction step.
 {{ 'home.items' | t: { count: items().length } }}
 ```
 
-Every catalog but the source one starts as a copy of it with each value tagged
-`[fr]`, so the app runs before a translator has seen it and so that what is
-still untranslated is impossible to miss on screen. Drop the tag as you
-translate.
+The starter strings come translated into English, Spanish, French, German,
+Italian, Portuguese, Arabic, Hebrew, Hindi, Japanese, Korean and Chinese, so the
+language picker visibly works on a new workspace. They are a machine draft, to be
+read before anything ships. That includes the starter page's own text, which an
+app takes from its `STARTER_COPY` token and the plugin provides from the
+catalogs. A catalog in any other language starts as a copy of the source with
+each value tagged `[sv]`, so the app runs before a translator has seen it and so
+that what is still untranslated is impossible to miss on screen. Drop the tag as
+you translate.
 
 Each app gets `src/app/i18n/<locale>.ts` — one catalog per locale, plus a
 `catalog.loader.ts` whose literal `import()` per locale is what actually gives
@@ -197,7 +202,8 @@ ng generate @angular-capacitor-workspace/cli:i18n
 ```
 
 It gives every app and site a catalog for it, copied from the source catalog
-as it stands with every value tagged, and rewrites what is derived from the
+as it stands with every value tagged (apart from starter strings it has a draft
+of), and rewrites what is derived from the
 config: each app's `catalog.loader.ts`, the script that sets `<html lang dir>`
 before the first paint, and each site's per-language builds. Labels are
 endonyms — العربية, not "Arabic" — because a visitor looking for their language

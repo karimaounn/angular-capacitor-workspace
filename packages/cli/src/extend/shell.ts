@@ -171,6 +171,22 @@ export function addStarterSection(tree: Tree, project: string, component: ShellC
   );
 }
 
+/** The starter page's text, and the DI token that supplies it. */
+export const STARTER_COPY = { file: 'src/app/pages/starter-copy.ts', token: 'STARTER_COPY' };
+
+/**
+ * Whether the starter page takes its text from `STARTER_COPY`, so a plugin
+ * can supply that text by providing the token rather than by editing the page.
+ *
+ * Keyed on the file declaring the token. A page an earlier release wrote has
+ * none, and neither does an app without a design system or one whose page someone
+ * has replaced and deleted the file with it: each is left alone.
+ */
+export function hasStarterCopy(tree: Tree, project: string): boolean {
+  const source = read(tree, `/${projectRoot(tree, project)}/${STARTER_COPY.file}`);
+  return source !== undefined && mentions(source, STARTER_COPY.token);
+}
+
 /**
  * Adds a provider to the application's root `providers`.
  *
