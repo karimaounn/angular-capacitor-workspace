@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROOT_PREREQUISITES } from '../utils/commands';
+import { PREPARED_ENV } from '../utils/commands';
 import { Exit, fail, workspaceRoot } from './command';
+import { runPrerequisites } from './prepare';
 
 /**
  * `run <verb> [<project>] [flags]` — one project's script, or every project's,
@@ -22,7 +23,9 @@ import { Exit, fail, workspaceRoot } from './command';
  * workspace member, and this finds that from angular.json. So the root
  * package.json names no project, nothing changes when one is added, and nothing
  * is a default: serving needs a name. The project's own `pre*` and `post*`
- * hooks still run, because its script is run through npm.
+ * hooks still run, because its script is run through npm, but codegen and the
+ * library build run once, here, however many projects there are: the hooks'
+ * `prepare` skips them under the runner.
  *
  * A project without a manifest of its own, such as a library or an app Angular
  * generated before the workspace adopted the generator, is run with `ng`.
@@ -109,6 +112,11 @@ class Runner {
   /** Runs the verb for one project: its own script when it has one, `ng` otherwise. */
   private runProject(project: string): void {
     const { verb, flags } = this;
+    // Every app and site imports the libraries from dist/, whether its hooks
+    // would build them or nothing would.
+    if (this.projects[project]!.projectType === 'application') {
+      this.prepare();
+    }
     const manifest = this.ownScript(project, verb);
     if (manifest) {
       const npmVerb = verb === 'start' || verb === 'test' ? [verb] : ['run', verb];
@@ -122,10 +130,6 @@ class Runner {
     }
     if (verb === 'e2e') {
       fail(`"${project}" has no e2e suite.`);
-    }
-    // An app without hooks of its own still imports the libraries from dist/.
-    if (this.projects[project]!.projectType === 'application') {
-      this.prepare();
     }
     const ng = {
       start: ['serve', project],
@@ -146,22 +150,25 @@ class Runner {
     return manifest.scripts?.[script] ? manifest : undefined;
   }
 
-  /** What the projects' own `pre*` hooks would run, once. */
+  /**
+   * What the projects' own `pre*` hooks would run, once. Everything spawned
+   * after it carries `PREPARED_ENV`, which turns those hooks into no-ops.
+   */
   private prepare(): void {
     if (this.prepared) {
       return;
     }
     this.prepared = true;
-    for (const script of ROOT_PREREQUISITES) {
-      if (this.rootManifest.scripts?.[script]) {
-        this.spawn('npm', ['run', script]);
-      }
+    // A runner under another one, which has prepared already.
+    if (!process.env[PREPARED_ENV]) {
+      runPrerequisites(this.root);
     }
   }
 
   private spawn(command: string, args: readonly string[]): void {
     const result = spawnSync(command, args, {
       cwd: this.root,
+      env: this.prepared ? { ...process.env, [PREPARED_ENV]: '1' } : process.env,
       stdio: 'inherit',
       // `npm` and `ng` are .cmd shims on Windows, which only a shell runs.
       shell: process.platform === 'win32',

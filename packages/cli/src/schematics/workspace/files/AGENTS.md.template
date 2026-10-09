@@ -51,10 +51,12 @@ source path.
 
 The cost is one extra step: **`ng serve` does not build workspace libraries.**
 A fresh clone must run `npm run build:libs` once. Every app's own `start`,
-`watch`, `build`, `test` and `e2e` run it first through their `pre*` hooks, so
-the npm entry points cover it, from the root or with `-w`; a bare `ng serve` or
-`ng test` bypasses them and will fail to resolve library imports until you have
-built once.
+`watch`, `build`, `test` and `e2e` run it first through their `pre*` hooks
+(`angular-capacitor-workspace prepare`), so the npm entry points cover it, from
+the root or with `-w`; a bare `ng serve` or `ng test` bypasses them and will
+fail to resolve library imports until you have built once. Keep `prepare` as
+the hook rather than `npm run build:libs`: the root `npm run build` and
+`npm run e2e` prepare once for every project, and `prepare` skips under them.
 
 ## Testing
 

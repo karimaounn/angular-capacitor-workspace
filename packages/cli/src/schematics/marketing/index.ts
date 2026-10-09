@@ -35,7 +35,7 @@ import {
   claimDefaultStart,
   documentProjectScripts,
   ensureProjectManifest,
-  hookLibraryBuild,
+  hookPrerequisites,
   projectScripts,
 } from '../../utils/project-scripts';
 import { extendWithPlugins } from '../../plugins/registry';
@@ -119,7 +119,7 @@ export function marketing(options: MarketingOptions): Rule {
 
       // After every script this site owns exists, because the hooks are named
       // after them.
-      (host: Tree) => hookLibraryBuild(host, name),
+      (host: Tree) => hookPrerequisites(host, name),
 
       // Last, as in the app schematic: a site generated after `--i18n`, or
       // after a catalog package was added, still needs their per-project

@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`npm run build` and `npm run e2e` build the libraries once, not once per
+  app and site.** The project runner runs every project's own `build` or
+  `e2e`, and each of those ran `codegen:optional` and `build:libs` again from
+  its `pre*` hook, so a workspace with an app and a site built its design
+  system twice. A project's hooks are now `angular-capacitor-workspace prepare`,
+  a new command that runs both in order and does nothing under the runner,
+  which runs them once itself. `npm run build -w <package>` and
+  `npm start <app>` still build the libraries first. The two hooks also no
+  longer run in the order their schematics did: codegen always comes first.
+
+  Existing workspaces from 22.6.0 and 22.7.0 get it from
+  `ng update @angular-capacitor-workspace/cli@22`, whose `prepare-once`
+  migration rewrites each app's and site's hooks where they are still the
+  ones the generator wrote; a hook you have edited is left alone, with the
+  change to make printed. Workspaces from earlier releases, whose project
+  scripts live in the root `package.json`, are left as they are.
+
 ## [22.7.0] — 2026-10-09
 
 ### Changed

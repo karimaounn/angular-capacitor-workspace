@@ -173,3 +173,93 @@ describe('replaceGeneratedValue', () => {
     expect(warnings).toHaveLength(1);
   });
 });
+
+describe('prepare-once', () => {
+  const runner = new SchematicTestRunner('acw-migrations', migrations);
+  const codegen = 'npm run codegen:optional --prefix ../../..';
+  const libs = 'npm run build:libs --prefix ../../..';
+  const prepare = 'angular-capacitor-workspace prepare';
+
+  /** A workspace as 22.6 or 22.7 wrote it, with `shop`'s hooks as given. */
+  function workspace(hooks: Record<string, string>): HostTree {
+    const tree = new HostTree();
+    tree.create(
+      '/angular.json',
+      JSON.stringify({
+        projects: {
+          ui: { projectType: 'library', root: 'projects/ui' },
+          shop: { projectType: 'application', root: 'projects/shop/web' },
+          // An app from before 22.6, whose scripts are in the root manifest.
+          admin: { projectType: 'application', root: 'projects/admin' },
+        },
+      }),
+    );
+    tree.create(
+      '/projects/shop/web/package.json',
+      JSON.stringify({ name: '@ws/shop', scripts: { build: 'ng build shop', ...hooks } }, null, 2),
+    );
+    return tree;
+  }
+
+  async function migrate(
+    tree: HostTree,
+  ): Promise<{ hooks: Record<string, string>; warnings: string[] }> {
+    const warnings: string[] = [];
+    const subscription = runner.logger.subscribe((entry) => {
+      if (entry.level === 'warn') {
+        warnings.push(entry.message);
+      }
+    });
+    const result = await runner.runSchematic('prepare-once', {}, tree);
+    subscription.unsubscribe();
+    return {
+      hooks: JSON.parse(result.readContent('/projects/shop/web/package.json')).scripts,
+      warnings,
+    };
+  }
+
+  // Codegen's hook comes first when the design system was generated with the
+  // workspace, and last when it was added to a workspace that had codegen.
+  it.each([
+    ['the library build', libs],
+    ['codegen', codegen],
+    ['codegen, then the library build', `${codegen} && ${libs}`],
+    ['the library build, then codegen', `${libs} && ${codegen}`],
+  ])('replaces a hook running %s with prepare', async (_, hook) => {
+    const { hooks, warnings } = await migrate(
+      workspace({ prestart: hook, prebuild: hook, pree2e: hook }),
+    );
+    expect(hooks).toEqual({
+      build: 'ng build shop',
+      prestart: prepare,
+      prebuild: prepare,
+      pree2e: prepare,
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  it('changes nothing on a second run', async () => {
+    const once = workspace({ prebuild: `${codegen} && ${libs}` });
+    await runner.runSchematic('prepare-once', {}, once);
+    const before = once.readText('/projects/shop/web/package.json');
+    const { warnings } = await migrate(once);
+    expect(once.readText('/projects/shop/web/package.json')).toBe(before);
+    expect(warnings).toEqual([]);
+  });
+
+  it('leaves an edited hook alone and logs the manual step', async () => {
+    const edited = `${libs} && echo built`;
+    const { hooks, warnings } = await migrate(workspace({ prebuild: edited, prestart: libs }));
+    expect(hooks['prebuild']).toBe(edited);
+    expect(hooks['prestart']).toBe(prepare);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('scripts.prebuild');
+    expect(warnings[0]).toContain(prepare);
+  });
+
+  it('leaves a project without hooks, or without a manifest of its own, alone', async () => {
+    const { hooks, warnings } = await migrate(workspace({}));
+    expect(hooks).toEqual({ build: 'ng build shop' });
+    expect(warnings).toEqual([]);
+  });
+});

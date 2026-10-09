@@ -1,6 +1,6 @@
 import { strings } from '@angular-devkit/core';
 import type { Tree } from '@angular-devkit/schematics';
-import { isProjectRunner, projectRunner, ROOT_PREREQUISITES } from './commands';
+import { isProjectRunner, PREPARE, projectRunner, ROOT_PREREQUISITES } from './commands';
 import { JsonFile, updateJson } from './json-file';
 import {
   addScripts,
@@ -9,7 +9,6 @@ import {
   documentCommands,
   documentScripts,
   PACKAGE_JSON,
-  prependHook,
   readProject,
   readProjects,
 } from './workspace';
@@ -192,58 +191,62 @@ export function documentProjectScripts(
 const ENTRY_POINTS = ['start', 'watch', 'build', 'test', 'e2e'] as const;
 
 /**
- * Runs a root script before each of a project's entry points.
+ * Makes a project's own entry points run codegen and build the libraries
+ * first, through `PREPARE`.
  *
- * npm hooks each script under its own `pre` name, so every entry point a
- * project has needs one, whether it is run from the root through the project
- * runner or with `-w`. Only the scripts the project actually has: a hook for a
- * script nobody can run is dead weight.
+ * In a workspace that imports libraries from `dist/`, each of them fails on a
+ * fresh clone: `start` and `e2e` cannot resolve the import, `test` the same,
+ * `build` and `watch` die in Sass on a path nothing has created yet. npm hooks
+ * each script under its own `pre` name, so every entry point a project has
+ * needs one, whether it is run from the root through the project runner or
+ * with `-w`. Only the scripts the project actually has: a hook for a script
+ * nobody can run is dead weight.
+ *
+ * One command rather than a `npm run <prerequisite>` each, so the runner can
+ * run them once for every project it runs, and the order is always
+ * `ROOT_PREREQUISITES`'s. The commands 22.6 and 22.7 wrote in their place, and
+ * earlier releases' root `pre<verb>:<project>`, are replaced.
+ *
+ * Only once a prerequisite exists: a hook with nothing to run is noise, and
+ * `PREPARE` would have nothing to do.
  */
-export function hookProjectEntryPoints(tree: Tree, projectName: string, rootScript: string): void {
+export function hookPrerequisites(tree: Tree, projectName: string): void {
+  const root = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
+  if (!ROOT_PREREQUISITES.some((script) => root[script])) {
+    return;
+  }
   const scripts = projectScripts(tree, projectName);
   if (!tree.exists(scripts.manifest)) {
     return;
   }
-  const existing =
-    new JsonFile(tree, scripts.manifest).get<Record<string, string>>(['scripts']) ?? {};
-  for (const verb of ENTRY_POINTS) {
-    if (existing[scripts.key(verb)]) {
-      prependHook(
-        tree,
-        `pre${scripts.key(verb)}`,
-        scripts.rootScript(rootScript),
-        scripts.manifest,
-      );
+  const replaced = new Set<string>(ROOT_PREREQUISITES.map((script) => scripts.rootScript(script)));
+  updateJson(tree, scripts.manifest, (file) => {
+    for (const verb of ENTRY_POINTS) {
+      if (!file.get<string>(['scripts', scripts.key(verb)])) {
+        continue;
+      }
+      const hook = ['scripts', `pre${scripts.key(verb)}`];
+      const parts = (file.get<string>(hook) ?? '')
+        .split('&&')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      const rest = parts.filter((part) => !replaced.has(part));
+      const wanted = (rest.includes(PREPARE) ? rest : [PREPARE, ...rest]).join(' && ');
+      if (wanted !== parts.join(' && ')) {
+        file.modify(hook, wanted);
+      }
     }
-  }
-}
-
-/**
- * Makes a project's own entry points build the libraries first.
- *
- * In a workspace that imports libraries from `dist/`, each of them fails on a
- * fresh clone: `start` and `e2e` cannot resolve the import, `test` the same,
- * `build` and `watch` die in Sass on a path nothing has created yet.
- *
- * Only once `build:libs` exists: a hook calling a script that does not exist
- * fails on first use.
- */
-export function hookLibraryBuild(tree: Tree, projectName: string): void {
-  const scripts = new JsonFile(tree, PACKAGE_JSON).get<Record<string, string>>(['scripts']) ?? {};
-  if (scripts['build:libs']) {
-    hookProjectEntryPoints(tree, projectName, 'build:libs');
-  }
+  });
 }
 
 /**
  * Keeps the root `prestart`, `prebuild` and `pretest` hooks only where
  * something needs them.
  *
- * The project runner (`angular-capacitor-workspace run`) runs codegen and the library
- * build itself, once, where a project has no hooks of its own to do it, so
- * with it in `start`, `build` and `test` a root hook would only run them
- * again. The same goes for a root script that only calls project scripts with
- * `-w`, each of which has its own hooks. A root hook is still needed when the
+ * The project runner (`angular-capacitor-workspace run`) runs codegen and the
+ * library build itself, once, so with it in `start`, `build` and `test` a root
+ * hook would only run them again. The same goes for a root script that only
+ * calls project scripts with `-w`, each of which has its own hooks. A root hook is still needed when the
  * script runs anything else: Angular's project-less `ng serve`, `ng build` or
  * `ng test`, or an earlier release's chain of root scripts.
  *

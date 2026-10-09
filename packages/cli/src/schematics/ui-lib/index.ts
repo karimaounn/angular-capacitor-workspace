@@ -28,7 +28,7 @@ import {
   readProjects,
 } from '../../utils/workspace';
 import { cli, isProjectRunner } from '../../utils/commands';
-import { hookLibraryBuild, syncRootHooks } from '../../utils/project-scripts';
+import { hookPrerequisites, syncRootHooks } from '../../utils/project-scripts';
 import { extendWithPlugins } from '../../plugins/registry';
 
 export interface UiLibOptions {
@@ -321,7 +321,7 @@ function libraryScripts(name: string, storybook: boolean): Rule {
     // nothing else to do it.
     for (const [projectName, project] of Object.entries(readProjects(tree))) {
       if (project.projectType !== 'library') {
-        hookLibraryBuild(tree, projectName);
+        hookPrerequisites(tree, projectName);
       }
     }
 

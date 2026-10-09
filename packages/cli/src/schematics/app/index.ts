@@ -32,7 +32,7 @@ import {
   claimDefaultStart,
   documentProjectScripts,
   ensureProjectManifest,
-  hookLibraryBuild,
+  hookPrerequisites,
 } from '../../utils/project-scripts';
 import type { MobilePlatform } from '../../api';
 import { extendWithPlugins } from '../../plugins/registry';
@@ -101,7 +101,7 @@ export function app(options: AppOptions): Rule {
 
       // After every script this app owns exists, because the hooks are named
       // after them.
-      (host: Tree) => hookLibraryBuild(host, name),
+      (host: Tree) => hookPrerequisites(host, name),
 
       // Last: every plugin the workspace already carries has a per-project
       // half this app has not had yet — the theme toggle, translation, a

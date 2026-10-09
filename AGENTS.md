@@ -270,7 +270,7 @@ To change one:
 - Rows in the package README's schematic table, in the generated README's
   "Adding to this workspace" block and in the root README's "Grow it".
 - Per-project wiring has to reach the projects that existed before it: see
-  `adoptExistingApps` and `hookLibraryBuild` in `ui-lib`.
+  `adoptExistingApps` and `hookPrerequisites` in `ui-lib`.
 - A rule that compiles but quietly breaks the feature belongs in the generated
   AGENTS.md: `appendSection(tree, '/AGENTS.md', …)` from the schematic that owns
   the feature.
@@ -319,7 +319,7 @@ Storybook move to Vite is the precedent.
 ### Migration schematics (`ng update`)
 
 `src/migrations.json` is the collection `ng update` runs, named by `ng-update`
-in the package manifest. It is empty: no fix has needed a migration yet. The
+in the package manifest. The
 documented upgrade is `ng update @angular-capacitor-workspace/cli@22`, then
 `npx @angular-capacitor-workspace/cli doctor --fix`. A plain `npm install` runs no
 migrations; `ng update @angular-capacitor-workspace/cli --migrate-only --from=<old>`
@@ -443,12 +443,13 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   Angular's own default (_tested_).
 - **A migration's `version`** must be the release whose CHANGELOG section first
   names it in backticks (_tested_). `npm run bump` sets it.
-- **The generated scripts name CLI commands by string**: `cli()` and
-  `projectRunner()` in `src/utils/commands.ts` write them, and the switch in
+- **The generated scripts name CLI commands by string**: `cli()`,
+  `projectRunner()` and `PREPARE` in `src/utils/commands.ts` write them, and the switch in
   `src/cli/index.ts` dispatches them. Renaming a command, or changing its
   arguments, breaks every workspace generated before the change until it is
   regenerated; keep the old name working. The runner is _tested_ against
-  stubbed `npm` and `ng` (`schematics.spec.ts`), and the rest in `cli.spec.ts`.
+  stubbed `npm` and `ng` (`schematics.spec.ts`), with the projects' real
+  `pre*` hooks run through `prepare`, and the rest in `cli.spec.ts`.
 - **The generator's own name** is `OWN_PACKAGE` in `src/utils/own-package.ts`,
   which a generated workspace depends on, and its binary is `CLI` in
   `src/utils/commands.ts`, which the generated scripts call. Both match
@@ -505,8 +506,13 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   manifests, so anything that patches an existing project's scripts goes
   through `projectScripts()`, and anything that edits a root aggregate checks
   for the runner first (`addToBuild`, `addToE2e`, `claimDefaultStart`). Document each script
-  with `documentScripts` or `documentProjectScripts`, and hook library builds
-  with `hookLibraryBuild` once the script exists.
+  with `documentScripts` or `documentProjectScripts`, and hook codegen and
+  library builds with `hookPrerequisites` once the script exists. A project's
+  `pre*` hook is `angular-capacitor-workspace prepare`, never
+  `npm run build:libs`: the runner prepares once and sets `PREPARED_ENV`
+  (`src/utils/commands.ts`) so the hooks under it skip, which is how
+  `npm run build` builds the libraries once for every app and site (_tested_
+  in the runner's tests in `schematics.spec.ts`).
 - **Configuration is the workspace's; machinery is the generator's.** What a
   workspace configures — locales, palettes, contrast pairings — is a
   plain-value literal in its design system's `src/config/`, read with

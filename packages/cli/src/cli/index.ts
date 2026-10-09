@@ -30,6 +30,8 @@ ${option('policy', 'Print the policy this version ships.')}
 ${bold('Workspace scripts')} ${dim('— what the generated npm scripts run')}
 ${option('run <verb> [<p>]', 'start | watch | build | test | e2e one project, or')}
 ${CONTINUED}${dim('every one: the root npm start, build and friends.')}
+${option('prepare', "Run codegen and build the libraries: each project's")}
+${CONTINUED}${dim('pre* hooks. Skipped under run, which does it once.')}
 ${option('clean-dist <site>', "Empty a site's dist/ before its per-language builds.")}
 ${option('sitemap <site>', "Write a prerendered site's sitemap.xml.")}
 ${option('verify-prerender <site>', '')}
@@ -62,6 +64,8 @@ async function workspaceScript(
   switch (command) {
     case 'run':
       return (require('./run') as typeof import('./run')).run(args, cwd);
+    case 'prepare':
+      return (require('./prepare') as typeof import('./prepare')).prepare(args, cwd);
     case 'clean-dist':
       return (require('./prerender') as typeof import('./prerender')).cleanDist(args, cwd);
     case 'sitemap':

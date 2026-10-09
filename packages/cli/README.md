@@ -450,10 +450,11 @@ copy someone has to keep in step:
 | Command                                  | Run by                                                      |
 | ---------------------------------------- | ----------------------------------------------------------- |
 | `run <verb> [<project>]`                 | the root `start`, `watch`, `build`, `test` and `e2e`        |
+| `prepare`                                | each app's and site's `pre*` hooks; skipped under `run`     |
 | `clean-dist <site>`                      | a translated site's `build`, before its per-language builds |
 | `sitemap <site> [--locales en,fr]`       | a site's `postbuild`                                        |
 | `verify-prerender <site> [--locales …]`  | a site's `postbuild`, after the sitemap                     |
-| `codegen [--optional] [--spec-env NAME]` | `codegen`, and `codegen:optional` from the `pre*` hooks     |
+| `codegen [--optional] [--spec-env NAME]` | `codegen`, and `codegen:optional` through `prepare`         |
 | `check-contrast <library>`               | `check:contrast`, against the library's own `src/config/`   |
 | `preflight [android] [ios]`              | a mobile shell's `preflight`                                |
 

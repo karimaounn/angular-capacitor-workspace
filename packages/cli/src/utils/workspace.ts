@@ -139,31 +139,6 @@ export function appendToScript(
   });
 }
 
-/**
- * Chains a script onto an npm `pre*` hook, preserving anything already there.
- *
- * Codegen needs to run before every build, serve and test entry point, and the
- * hooks are shared with whatever else the workspace has bolted on.
- */
-export function prependHook(
-  tree: Tree,
-  hookName: string,
-  command: string,
-  manifest = PACKAGE_JSON,
-): void {
-  updateJson(tree, manifest, (file) => {
-    const existing = file.get<string>(['scripts', hookName]);
-    if (existing === undefined) {
-      file.modify(['scripts', hookName], command);
-      return;
-    }
-    if (existing.includes(command)) {
-      return;
-    }
-    file.modify(['scripts', hookName], `${command} && ${existing}`);
-  });
-}
-
 /** Registers a directory as an npm workspace member. */
 export function addWorkspaceMember(tree: Tree, pattern: string): void {
   updateJson(tree, PACKAGE_JSON, (file) => {

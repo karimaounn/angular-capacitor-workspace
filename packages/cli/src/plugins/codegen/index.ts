@@ -22,7 +22,7 @@ import {
   readProjects,
 } from '../../utils/workspace';
 import { cli, DEFAULT_SPEC_ENV } from '../../utils/commands';
-import { hookProjectEntryPoints, syncRootHooks } from '../../utils/project-scripts';
+import { hookPrerequisites, syncRootHooks } from '../../utils/project-scripts';
 
 export interface CodegenOptions {
   apps?: string[];
@@ -233,9 +233,9 @@ function codegenScripts(apps: string[], specEnvVar: string): Rule {
     });
 
     // Each app's own entry points too, since npm hooks each under its own
-    // `pre` name — and only the ones the app has, as `hookLibraryBuild` does.
+    // `pre` name — and only the ones the app has.
     for (const app of apps) {
-      hookProjectEntryPoints(tree, app, 'codegen:optional');
+      hookPrerequisites(tree, app);
     }
 
     // And the root `npm start`, `npm run build` and `npm test`, while they run

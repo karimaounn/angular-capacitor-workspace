@@ -42,7 +42,17 @@ export const DEFAULT_SPEC_ENV = 'OPENAPI_SPEC';
 /**
  * The root scripts that run before a project's entry points, in the order they
  * run: codegen first, since a library can import the client. Each project's
- * `pre*` hooks run them, and the project runner runs the same list for a
- * project without hooks of its own.
+ * `pre*` hooks run them through `PREPARE`, and the project runner runs them
+ * itself, once, however many projects it runs.
  */
 export const ROOT_PREREQUISITES = ['codegen:optional', 'build:libs'] as const;
+
+/** The command in each project's `pre*` hooks, which runs `ROOT_PREREQUISITES`. */
+export const PREPARE = cli('prepare');
+
+/**
+ * Set by the project runner for what it spawns once it has run
+ * `ROOT_PREREQUISITES`, so the projects' own hooks below it skip them.
+ * Without it `npm run build` built the libraries once per app and site.
+ */
+export const PREPARED_ENV = 'ANGULAR_CAPACITOR_WORKSPACE_PREPARED';

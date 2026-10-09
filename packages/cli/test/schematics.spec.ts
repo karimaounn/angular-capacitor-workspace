@@ -587,7 +587,7 @@ describe('app, in a workspace that already has a design system', () => {
     // reaches the root script through --prefix.
     const scripts = ownScripts(tree, 'shop');
     for (const hook of ['prestart', 'prewatch', 'prebuild', 'pretest']) {
-      expect(scripts[hook]).toBe('npm run build:libs --prefix ../../..');
+      expect(scripts[hook]).toBe('angular-capacitor-workspace prepare');
     }
     // This app has no e2e suite, and a hook for a script nobody can run is a
     // key that only ever has to be explained.
@@ -606,7 +606,7 @@ describe('app, in a workspace that already has a design system', () => {
       { name: 'shop', e2e: 'playwright' },
       withLib,
     );
-    expect(ownScripts(withApp, 'shop')['pree2e']).toBe('npm run build:libs --prefix ../../..');
+    expect(ownScripts(withApp, 'shop')['pree2e']).toBe('angular-capacitor-workspace prepare');
   });
 
   it('adds no library hooks to a workspace that has no libraries', async () => {
@@ -621,7 +621,7 @@ describe('app, in a workspace that already has a design system', () => {
     const base = await runner().runSchematic('workspace', {}, await baseWorkspace());
     const withApp = await runner().runSchematic('app', { name: 'shop' }, base);
     const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, withApp);
-    expect(ownScripts(withLib, 'shop')['prestart']).toBe('npm run build:libs --prefix ../../..');
+    expect(ownScripts(withLib, 'shop')['prestart']).toBe('angular-capacitor-workspace prepare');
   });
 
   it('retrofits the hooks onto apps that keep their scripts at the root', async () => {
@@ -634,8 +634,8 @@ describe('app, in a workspace that already has a design system', () => {
     const withLib = await runner().runSchematic('ui-lib', { name: 'ui' }, legacy);
 
     expect(withLib.exists('/projects/shop/web/package.json')).toBe(false);
-    expect(rootScripts(withLib)['prestart:shop']).toBe('npm run build:libs');
-    expect(rootScripts(withLib)['prebuild:shop']).toBe('npm run build:libs');
+    expect(rootScripts(withLib)['prestart:shop']).toBe('angular-capacitor-workspace prepare');
+    expect(rootScripts(withLib)['prebuild:shop']).toBe('angular-capacitor-workspace prepare');
   });
 
   it('leaves theme switching to the theming plugin', () => {
@@ -1213,7 +1213,7 @@ describe('ui-lib', () => {
     // build them again.
     expect(rootScripts(tree)['prebuild']).toBeUndefined();
     expect(rootScripts(tree)['prestart']).toBeUndefined();
-    expect(ownScripts(tree, 'shop')['prebuild']).toBe('npm run build:libs --prefix ../../..');
+    expect(ownScripts(tree, 'shop')['prebuild']).toBe('angular-capacitor-workspace prepare');
   });
 
   it('leaves the root hooks to the project runner, which builds the libraries itself', async () => {
@@ -1298,7 +1298,7 @@ describe('ui-lib', () => {
     expect(scripts['build:libs']).toContain('ng build ui');
     // `npm start shop` reaches it through the app's own prestart. The runner
     // runs it itself before a project-less `npm test`, so the root has no hook.
-    expect(ownScripts(tree, 'shop')['prestart']).toBe('npm run build:libs --prefix ../../..');
+    expect(ownScripts(tree, 'shop')['prestart']).toBe('angular-capacitor-workspace prepare');
     expect(scripts['pretest']).toBeUndefined();
   });
 
@@ -1421,9 +1421,46 @@ describe('codegen', () => {
     // only the ones it has.
     const own = ownScripts(tree, 'shop');
     for (const hook of ['prebuild', 'prestart', 'prewatch', 'pretest']) {
-      expect(own[hook]).toContain('npm run codegen:optional --prefix ../../..');
+      expect(own[hook]).toBe('angular-capacitor-workspace prepare');
     }
     expect(own['pree2e']).toBeUndefined();
+  });
+
+  it('shares one hook with the library build, whichever came first', async () => {
+    // `prepare` runs codegen before the library build in either case, which
+    // two hooks prepended in the order the schematics ran did not.
+    const withApp = async () =>
+      runner().runSchematic(
+        'app',
+        { name: 'shop' },
+        await runner().runSchematic('workspace', {}, await baseWorkspace()),
+      );
+    const libFirst = await runner().runSchematic(
+      'codegen',
+      { apps: ['shop'] },
+      await runner().runSchematic('ui-lib', { name: 'ui' }, await withApp()),
+    );
+    const codegenFirst = await runner().runSchematic(
+      'ui-lib',
+      { name: 'ui' },
+      await runner().runSchematic('codegen', { apps: ['shop'] }, await withApp()),
+    );
+    for (const grown of [libFirst, codegenFirst]) {
+      expect(ownScripts(grown, 'shop')['prebuild']).toBe('angular-capacitor-workspace prepare');
+    }
+  });
+
+  it('replaces the hooks 22.6 and 22.7 wrote when it runs again', async () => {
+    const withApp = await codegenOnce();
+    const manifest = '/projects/shop/web/package.json';
+    const old = JSON.parse(withApp.readContent(manifest));
+    old.scripts.prebuild = 'npm run codegen:optional --prefix ../../.. && echo kept';
+    withApp.overwrite(manifest, JSON.stringify(old, null, 2));
+
+    const again = await runner().runSchematic('codegen', { apps: ['shop'] }, withApp);
+    expect(ownScripts(again, 'shop')['prebuild']).toBe(
+      'angular-capacitor-workspace prepare && echo kept',
+    );
   });
 
   it('says in the README where the spec comes from', () => {
@@ -1837,8 +1874,11 @@ describe('the project runner', () => {
   let dir: string;
 
   /**
-   * The generated workspace's manifests and runner on disk, with `npm` and
-   * `ng` replaced by stubs that log what they were asked to run.
+   * The generated workspace's manifests and runner on disk, with `ng` replaced
+   * by a stub that logs what it was asked to run, and `npm` by one that logs it
+   * and runs a project's `pre*` hook, as npm would, but not the script itself.
+   * The hooks call this build's CLI, so what they run is what a workspace's
+   * would.
    */
   beforeAll(async () => {
     const base = await runner().runSchematic(
@@ -1852,11 +1892,12 @@ describe('the project runner', () => {
       { name: 'shop', e2e: 'playwright' },
       withLib,
     );
-    const tree = await runner().runSchematic(
+    const withSite = await runner().runSchematic(
       'marketing',
       { name: 'site', e2e: 'playwright' },
       withApp,
     );
+    const tree = await runner().runSchematic('codegen', { apps: ['shop', 'site'] }, withSite);
 
     dir = mkdtempSync(join(tmpdir(), 'acw-runner-'));
     for (const file of [
@@ -1869,9 +1910,28 @@ describe('the project runner', () => {
       writeFileSync(join(dir, file), tree.readContent(file));
     }
     mkdirSync(join(dir, 'bin'));
-    for (const stub of ['npm', 'ng']) {
-      writeFileSync(join(dir, 'bin', stub), `#!/bin/sh\necho "${stub} $*" >> "$RUNNER_LOG"\n`);
-      chmodSync(join(dir, 'bin', stub), 0o755);
+    const stubs: Record<string, string> = {
+      ng: `#!/bin/sh\necho "ng $*" >> "$RUNNER_LOG"\n`,
+      'angular-capacitor-workspace': `#!/bin/sh\nexec node ${JSON.stringify(cli)} "$@"\n`,
+      npm: `#!/usr/bin/env node
+const { appendFileSync, readFileSync } = require('node:fs');
+const { execSync } = require('node:child_process');
+const { join } = require('node:path');
+const args = process.argv.slice(2);
+appendFileSync(process.env.RUNNER_LOG, 'npm ' + args.join(' ') + '\\n');
+const at = args.indexOf('-w');
+if (at !== -1) {
+  const script = args[0] === 'run' ? args[1] : args[0];
+  const read = (dir) => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+  const member = read('.').workspaces.find((dir) => read(dir).name === args[at + 1]);
+  const hook = read(member).scripts['pre' + script];
+  if (hook) execSync(hook, { cwd: member, stdio: 'inherit' });
+}
+`,
+    };
+    for (const [name, body] of Object.entries(stubs)) {
+      writeFileSync(join(dir, 'bin', name), body);
+      chmodSync(join(dir, 'bin', name), 0o755);
     }
   });
 
@@ -1890,8 +1950,11 @@ describe('the project runner', () => {
     };
   }
 
+  /** What a project's hooks or the runner run before it compiles, once. */
+  const PREPARED = ['npm run codegen:optional', 'npm run build:libs'];
+
   it('serves only the app it is told to, through its own scripts and hooks', () => {
-    expect(run('start', 'shop').ran).toEqual(['npm start -w @test-ws/shop']);
+    expect(run('start', 'shop').ran).toEqual([...PREPARED, 'npm start -w @test-ws/shop']);
 
     const unnamed = run('start');
     expect(unnamed.status).toBe(1);
@@ -1901,20 +1964,54 @@ describe('the project runner', () => {
 
   it('passes flags after the name to the project', () => {
     expect(run('start', 'site', '--port', '4300').ran).toEqual([
+      ...PREPARED,
       'npm start -w @test-ws/site -- --port 4300',
     ]);
   });
 
   it('builds every app and site without a name, in angular.json order', () => {
     expect(run('build').ran).toEqual([
+      ...PREPARED,
       'npm run build -w @test-ws/shop',
       'npm run build -w @test-ws/site',
     ]);
   });
 
+  // Each app's and site's own `pre*` hook builds the libraries, so running
+  // them one after another built the libraries once per project.
+  it.each([
+    ['build', []],
+    ['build', ['shop']],
+    ['test', []],
+    ['e2e', []],
+    ['start', ['shop']],
+    ['watch', ['site']],
+  ])('runs codegen and builds the libraries once for `run %s %s`', (verb, args) => {
+    const { ran, status } = run(verb, ...args);
+    expect(status).toBe(0);
+    for (const prerequisite of PREPARED) {
+      expect(ran.filter((line) => line === prerequisite)).toHaveLength(1);
+    }
+  });
+
+  it("still prepares through a project's own hooks without the runner", () => {
+    const log = join(dir, `log-${Math.random().toString(36).slice(2)}`);
+    writeFileSync(log, '');
+    const result = spawnSync(join(dir, 'bin', 'npm'), ['run', 'build', '-w', '@test-ws/site'], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { PATH: `${join(dir, 'bin')}:${dirname(process.execPath)}`, RUNNER_LOG: log },
+    });
+    expect(result.status).toBe(0);
+    expect(readFileSync(log, 'utf8').split('\n').filter(Boolean)).toEqual([
+      'npm run build -w @test-ws/site',
+      ...PREPARED,
+    ]);
+  });
+
   it('tests every project in one ng test, after the libraries are built', () => {
     // One process, not one per project, so the libraries build once.
-    expect(run('test').ran).toEqual(['npm run build:libs', 'ng test --no-watch']);
+    expect(run('test').ran).toEqual([...PREPARED, 'ng test --no-watch']);
   });
 
   it('runs a library, which has no manifest of its own, with ng', () => {
@@ -1923,6 +2020,7 @@ describe('the project runner', () => {
 
   it('runs every e2e suite, and names the projects when given one it does not know', () => {
     expect(run('e2e').ran).toEqual([
+      ...PREPARED,
       'npm run e2e -w @test-ws/shop',
       'npm run e2e -w @test-ws/site',
     ]);
