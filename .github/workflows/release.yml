@@ -60,7 +60,9 @@ jobs:
     name: Publish to npm
     needs: [guard, verify]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Room for each of the four packages to wait out the registry's slowest day
+    # (ten minutes each, below), plus the build.
+    timeout-minutes: 50
     # Holds the run for a manual approval once a required reviewer is added to
     # the `npm` environment in the repository settings. With no rules on it,
     # the job runs straight through.
@@ -110,7 +112,7 @@ jobs:
           # 404, and that miss is cacheable: without a cache buster the poll
           # afterwards is served the same stored 404 for as long as the edge
           # holds it, and a release that published perfectly well fails on a
-          # three-minute wait that was never going to see anything change.
+          # wait that was never going to see anything change.
           on_registry() {
             curl -fsS -o /dev/null \
               "https://registry.npmjs.org/${1//\//%2F}/$VERSION?t=$(date +%s)-$RANDOM"
@@ -151,10 +153,11 @@ jobs:
             #
             # Be patient about it. The registry's read path is a separate,
             # CDN-fronted system that trails its write path, and a window of
-            # seconds here fails releases that published perfectly well. Three
-            # minutes costs nothing on a run that is about to succeed anyway.
+            # seconds here fails releases that published perfectly well, and so,
+            # on a slow day, did three minutes. Ten cost nothing on a run that is
+            # about to succeed anyway.
             live=""
-            for attempt in $(seq 1 18); do
+            for attempt in $(seq 1 60); do
               if on_registry "$name"; then
                 live="$VERSION"
                 break
@@ -163,7 +166,7 @@ jobs:
             done
 
             if [ -z "$live" ]; then
-              echo "$name@$VERSION did not appear on the registry within three minutes,"
+              echo "$name@$VERSION did not appear on the registry within ten minutes,"
               echo "though publishing it reported success."
               echo
               echo "Check https://www.npmjs.com/package/$name first. If the version is"
