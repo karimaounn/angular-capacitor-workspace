@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@angular-devkit/schematics/collection-schema.json",
   "schematics": {
     "prepare-once": {
-      "version": "22.7.1",
+      "version": "22.8.0",
       "factory": "./migrations/prepare-once/index#prepareOnce",
       "description": "Builds the libraries once per npm run build, not once per app and site. Points each project's pre* hooks at `angular-capacitor-workspace prepare`, which the project runner skips once it has run codegen and the library build itself."
     }

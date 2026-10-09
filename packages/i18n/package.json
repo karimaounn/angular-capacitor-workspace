@@ -1,6 +1,6 @@
 {
   "name": "@angular-capacitor-workspace/i18n",
-  "version": "22.7.0",
+  "version": "22.8.0",
   "description": "Runtime translation for an angular-capacitor-workspace: every locale in one build, switched without a reload, with writing direction and plurals from Intl.",
   "keywords": [
     "angular",
