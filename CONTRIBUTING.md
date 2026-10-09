@@ -123,8 +123,8 @@ there.
 ## Releasing
 
 A release is a tag. With the changelog's `## [Unreleased]` section written,
-[`scripts/bump.mjs`](scripts/bump.mjs) makes the five edits a release needs —
-the version in the root manifest and in both packages, the exact
+[`scripts/bump.mjs`](scripts/bump.mjs) makes the edits a release needs — the
+version in the root manifest and in all four packages, the exact
 `@angular-capacitor-workspace/cli` pin in `@angular-capacitor-workspace/create`, and
 the changelog heading with its compare links. When the release ships an
 `ng update` migration, it also sets that migration's `version` to the release,
@@ -152,11 +152,11 @@ trusting that main was green, publishes the generator and then the `/create`
 shell with provenance, and opens the GitHub release from that changelog
 section. A `v22.2.0-rc.1` tag publishes under `next` rather than `latest`.
 
-The publish carries no npm token. Both packages name this repository,
+The publish carries no npm token. All four packages name this repository,
 `release.yml` and the `npm` environment as a trusted publisher on npmjs.com, so
 the workflow's own OIDC identity is what the registry checks — and what signs
 the provenance attestation. Renaming the workflow file or the environment
-breaks publishing until the same rename is made on both packages. Direct
+breaks publishing until the same rename is made on all four packages. Direct
 publish is a permission of its own there, separate from staging, which is
 always allowed: without it `npm publish` quietly stages the version instead,
 and the workflow fails on the check that asks the registry what went live. It

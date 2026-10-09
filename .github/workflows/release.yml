@@ -66,7 +66,7 @@ jobs:
     # the job runs straight through.
     #
     # The name is also part of what the registry checks: it appears in the OIDC
-    # claim, so renaming it here without renaming it on both packages' trusted
+    # claim, so renaming it here without renaming it on every package's trusted
     # publisher breaks the publish rather than the approval.
     environment:
       name: npm

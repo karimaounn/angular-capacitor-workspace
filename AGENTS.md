@@ -107,7 +107,7 @@ for every fix that changes generated files.
 
 Before calling a change done:
 
-1. A `## [Unreleased]` entry in `CHANGELOG.md` for anything either package
+1. A `## [Unreleased]` entry in `CHANGELOG.md` for anything any package
    ships (format under [Releases](#releases-and-versions)).
 2. The existing-workspace route chosen and stated in that entry.
 3. Tests in the right spec ([Testing](#testing)).
