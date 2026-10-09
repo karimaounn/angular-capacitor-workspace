@@ -8,6 +8,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The interactive locale question is a checklist.** `create` used to ask for
+  locales as one comma-separated line of BCP-47 tags. It now lists the common
+  languages by name (`Français (fr)`, `العربية (ar)`), with this machine's
+  language first and ticked, and an "Other" row for any other tag. When more
+  than one language is picked, it asks which is the source locale rather than
+  taking whichever was typed first. The `--i18n` and `--default-locale` flags
+  are unchanged.
+
+  This only changes the questions `create` asks, so existing workspaces are
+  unaffected.
+
+### Added
+
+- **`KNOWN_LOCALES` is exported from `@angular-capacitor-workspace/cli`**, so
+  the `create` prompt names languages from the generator's own list.
+
 ## [22.8.0] — 2026-10-09
 
 ### Fixed

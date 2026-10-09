@@ -30,6 +30,13 @@ export {
 } from './catalog';
 export type { CatalogEntry, CatalogPackage, DependencyBlock } from './catalog';
 
+/**
+ * The locales the generator knows the endonym and direction of. Exported so
+ * the `/create` prompt offers them by name rather than from a second list.
+ */
+export { KNOWN_LOCALES } from './locales';
+export type { LocaleInfo } from './locales';
+
 export { runGate } from './gate';
 export { collectDeprecations } from './gate';
 export type { Deprecation, Finding, GateResult, Severity } from './gate';

@@ -19,6 +19,13 @@ import {
   prefixProblem,
   USAGE,
 } from './args';
+import {
+  localeChoices,
+  localeLabel,
+  OTHER_LOCALE,
+  systemLanguage,
+  withSourceFirst,
+} from './locales';
 import { Prompter } from './prompts';
 
 const { bold, command, dim, heading, MARK, note, red } = style;
@@ -167,27 +174,53 @@ async function ask(
     // is where the schematic puts it. Asking otherwise would be offering
     // something the generation then refuses.
     //
-    // The source locale is not a second question: the schematic takes the first
-    // tag, and asking which of the tags just typed comes first is a question
-    // about the order they were typed in. `--default-locale` is there for the
-    // one person who wants to separate the two.
-    // Checked while the question is on screen, as the flag is checked on the
-    // first line of output: a typo should not cost the minutes `ng new` takes.
+    // A checklist rather than a typed list: the common languages are offered
+    // by the names their readers know them by, and anything else is typed as a
+    // tag behind "Other". This machine's language comes first and ticked.
+    //
+    // The source locale is a second question only when there is a choice to
+    // make: the schematic takes the first tag, and a checklist's order is the
+    // list's, not the reader's. `--default-locale` is the flag for the same.
+    // Typed tags are checked while the question is on screen, as the flag is
+    // checked on the first line of output: a typo should not cost the minutes
+    // `ng new` takes.
     let i18n: string[] | undefined;
     if (uiLib && (await prompter.confirm('Translate the apps at runtime?', false))) {
-      const tags = (value: string) =>
-        value
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter((tag) => tag !== '');
-      const answer = await prompter.text('Locales, comma-separated (BCP-47)', 'en', (value) =>
-        tags(value).length === 0
-          ? 'Name at least one locale.'
-          : tags(value)
-              .map(localeProblem)
-              .find((problem) => problem !== undefined),
-      );
-      i18n = parseLocales(tags(answer));
+      const system = systemLanguage() ?? 'en';
+      let picked: string[] = [];
+      while (picked.length === 0) {
+        picked = await prompter.multi('Which languages?', localeChoices(system), [system]);
+      }
+
+      const typed: string[] = [];
+      if (picked.includes(OTHER_LOCALE)) {
+        const tags = (value: string) =>
+          value
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter((tag) => tag !== '');
+        const answer = await prompter.text(
+          'Other locales, comma-separated (BCP-47)',
+          undefined,
+          (value) =>
+            tags(value).length === 0
+              ? 'Name at least one locale.'
+              : tags(value)
+                  .map(localeProblem)
+                  .find((problem) => problem !== undefined),
+        );
+        typed.push(...tags(answer));
+      }
+
+      i18n = parseLocales([...picked.filter((tag) => tag !== OTHER_LOCALE), ...typed]);
+      if (i18n.length > 1) {
+        const source = await prompter.select(
+          'Source locale, the fallback for an untranslated key?',
+          i18n.map((tag) => ({ value: tag, label: localeLabel(tag) })),
+          i18n.includes(system) ? system : i18n[0]!,
+        );
+        i18n = withSourceFirst(i18n, source);
+      }
     }
 
     const e2e = (await prompter.confirm('Wire up Playwright end-to-end tests?', true))
