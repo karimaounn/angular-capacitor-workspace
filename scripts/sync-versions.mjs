@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const versionsPath = join(repoRoot, 'packages/angular-capacitor-workspace/src/policy/versions.ts');
+const versionsPath = join(repoRoot, 'packages/cli/src/policy/versions.ts');
 
 const { values } = parseArgs({ options: { json: { type: 'boolean', default: false } } });
 

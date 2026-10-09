@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 # A cancelled release is the half-published state — the generator out, the
-# `create-*` shell pointing at it still unpublished. Queue instead.
+# `/create` shell pointing at it still unpublished. Queue instead.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -18,8 +18,8 @@ permissions:
   contents: read
 
 # Every package names this repository, `release.yml` and the `npm` environment
-# as a trusted publisher on npmjs.com — the generator, `create-*`, and the
-# runtime packages `@angular-capacitor-workspace/i18n` and `/theming`. That
+# as a trusted publisher on npmjs.com — `@angular-capacitor-workspace/cli`,
+# `/create`, and the runtime packages `/i18n` and `/theming`. That
 # configuration and this file are one mechanism in two places: a rename on
 # either side, or a new package nobody configured, is a failed publish.
 
@@ -70,7 +70,7 @@ jobs:
     # publisher breaks the publish rather than the approval.
     environment:
       name: npm
-      url: https://www.npmjs.com/package/angular-capacitor-workspace
+      url: https://www.npmjs.com/package/@angular-capacitor-workspace/cli
     permissions:
       contents: read
       # This is the credential. npm trusts a publish from this repository, this
@@ -123,15 +123,15 @@ jobs:
           #
           # Order is load-bearing: the generator writes the runtime packages
           # into every workspace it generates, at `^` its own version, and
-          # `create-*` depends on the generator at an exact version. Publishing
+          # `/create` depends on the generator at an exact version. Publishing
           # each after what it depends on keeps the window in which `npm create`
           # resolves something that does not exist to seconds, and on the side
           # that fails loudly.
           for entry in \
             @angular-capacitor-workspace/i18n=./packages/i18n/dist \
             @angular-capacitor-workspace/theming=./packages/theming/dist \
-            angular-capacitor-workspace=./packages/angular-capacitor-workspace \
-            create-angular-capacitor-workspace=./packages/create-angular-capacitor-workspace; do
+            @angular-capacitor-workspace/cli=./packages/cli \
+            @angular-capacitor-workspace/create=./packages/create; do
             name="${entry%%=*}"
             directory="${entry#*=}"
             # A re-run after a failure finds the first package already out.

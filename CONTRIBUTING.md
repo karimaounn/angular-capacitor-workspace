@@ -53,7 +53,7 @@ several minutes per row and runs nightly, so run it locally only when your chang
 affects a row other than `minimal`: mobile, marketing, the ui library or codegen.
 
 Schematic changes need a test in
-[`test/schematics.spec.ts`](packages/angular-capacitor-workspace/test/schematics.spec.ts),
+[`test/schematics.spec.ts`](packages/cli/test/schematics.spec.ts),
 run against real `@schematics/angular` output rather than a hand-built tree.
 If a patch cannot find what it expects, it should throw and name that thing,
 not do nothing.
@@ -61,7 +61,7 @@ not do nothing.
 ## Patching the dependency policy
 
 Most policy changes are an edit to
-[`src/policy/advisories.ts`](packages/angular-capacitor-workspace/src/policy/advisories.ts)
+[`src/policy/advisories.ts`](packages/cli/src/policy/advisories.ts)
 and nothing else. When `audit` reports an unhandled advisory, it prints a
 ready-to-paste entry at the tier it recommends. Start from that.
 
@@ -111,7 +111,7 @@ proposed entry would do to a night's reports before you add it.
 
 The major version is the Angular major the package generates for: 22.x is
 Angular 22. Both packages are released together at the same version, and
-[`test/release-line.spec.ts`](packages/angular-capacitor-workspace/test/release-line.spec.ts)
+[`test/release-line.spec.ts`](packages/cli/test/release-line.spec.ts)
 fails if they drift apart. Policy patches for an older Angular major go to its
 maintenance branch.
 
@@ -125,7 +125,7 @@ there.
 A release is a tag. With the changelog's `## [Unreleased]` section written,
 [`scripts/bump.mjs`](scripts/bump.mjs) makes the five edits a release needs —
 the version in the root manifest and in both packages, the exact
-`angular-capacitor-workspace` pin in `create-angular-capacitor-workspace`, and
+`@angular-capacitor-workspace/cli` pin in `@angular-capacitor-workspace/create`, and
 the changelog heading with its compare links. When the release ships an
 `ng update` migration, it also sets that migration's `version` to the release,
 which is the only version `ng update` runs it at:
@@ -148,7 +148,7 @@ means retargeting `ANGULAR_LINE` and the pins it feeds first.
 [`.github/workflows/release.yml`](.github/workflows/release.yml) does the rest.
 It checks that the tag names the version the tree agrees on and that the
 changelog has a section for it, runs the CI gate against the tag rather than
-trusting that main was green, publishes the generator and then the `create-*`
+trusting that main was green, publishes the generator and then the `/create`
 shell with provenance, and opens the GitHub release from that changelog
 section. A `v22.2.0-rc.1` tag publishes under `next` rather than `latest`.
 

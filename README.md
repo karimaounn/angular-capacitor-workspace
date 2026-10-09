@@ -6,15 +6,17 @@ Storybook, Vitest browser tests, Playwright, and an optional OpenAPI codegen
 step.
 
 ```bash
-npm create angular-capacitor-workspace@latest my-workspace
+npm create @angular-capacitor-workspace@latest my-workspace
 ```
 
-Two packages, one repo, following the `create-vite` / `vite` precedent:
+Four packages, one repo, all under the `@angular-capacitor-workspace` scope:
 
-| Package                                                                             | Contains                                                              | Entry                                           |
-| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------- |
-| [`angular-capacitor-workspace`](packages/angular-capacitor-workspace)               | the schematics, the dependency policy, the gate, the programmatic API | `ng add`, `ng generate`, `npx … audit\|doctor`  |
-| [`create-angular-capacitor-workspace`](packages/create-angular-capacitor-workspace) | argv, prompts, the `ng new` bootstrap                                 | `npm create angular-capacitor-workspace@latest` |
+| Package                                                    | Contains                                                              | Entry                                            |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ |
+| [`@angular-capacitor-workspace/create`](packages/create)   | argv, prompts, the `ng new` bootstrap                                 | `npm create @angular-capacitor-workspace@latest` |
+| [`@angular-capacitor-workspace/cli`](packages/cli)         | the schematics, the dependency policy, the gate, the programmatic API | `ng add`, `ng generate`, `npx … audit\|doctor`   |
+| [`@angular-capacitor-workspace/i18n`](packages/i18n)       | the translation runtime a workspace's apps import                     | installed by `--i18n`                            |
+| [`@angular-capacitor-workspace/theming`](packages/theming) | the theme-switching runtime a workspace's apps import                 | installed by `--ui-lib`                          |
 
 ## Usage
 
@@ -32,7 +34,7 @@ the form for scripts and CI. The flags go after `--`, or npm keeps them for
 itself:
 
 ```bash
-npm create angular-capacitor-workspace@latest acme -- \
+npm create @angular-capacitor-workspace@latest acme -- \
   --app storefront --mobile android,ios \
   --app admin \
   --marketing site --marketing-origin https://acme.example \
@@ -56,7 +58,7 @@ acme/
 ```
 
 Every flag is listed in the
-[create package's README](packages/create-angular-capacitor-workspace/README.md#options).
+[create package's README](packages/create/README.md#options).
 Add `--dry-run` to see the file list and the audit result without writing
 anything.
 
@@ -80,7 +82,7 @@ else a project has runs with `-w`, such as
 `npm run run:android -w @acme/storefront-mobile`. The generated README lists
 every script the workspace has. The native Android and iOS projects are added
 by hand, once per platform; see
-[Mobile](packages/angular-capacitor-workspace/README.md#mobile).
+[Mobile](packages/cli/README.md#mobile).
 
 ### Grow it
 
@@ -88,12 +90,12 @@ The schematics stay installed, so everything `create` can generate can also be
 added later:
 
 ```bash
-ng generate angular-capacitor-workspace:app back-office
-ng generate angular-capacitor-workspace:mobile admin --platforms android
-ng generate angular-capacitor-workspace:theming
-ng generate angular-capacitor-workspace:codegen
-ng generate angular-capacitor-workspace:i18n --locales en,fr
-ng generate angular-capacitor-workspace:packages cdk
+ng generate @angular-capacitor-workspace/cli:app back-office
+ng generate @angular-capacitor-workspace/cli:mobile admin --platforms android
+ng generate @angular-capacitor-workspace/cli:theming
+ng generate @angular-capacitor-workspace/cli:codegen
+ng generate @angular-capacitor-workspace/cli:i18n --locales en,fr
+ng generate @angular-capacitor-workspace/cli:packages cdk
 ```
 
 Theming, translation and the curated packages are plugins: they extend every
@@ -102,25 +104,25 @@ one `ng generate` at a time matches one generated in a single run. The code
 translation and theming run in your apps is installed, not copied —
 `@angular-capacitor-workspace/i18n` and `/theming` — so `npm update` reaches it,
 and what you configure is in the design system's `src/config/`. Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
-[API client](packages/angular-capacitor-workspace/README.md#api-client). To bring
+[API client](packages/cli/README.md#api-client). To bring
 an existing Angular workspace under the policy, run
-`ng add angular-capacitor-workspace`.
+`ng add @angular-capacitor-workspace/cli`.
 
 ### Keep it audit-clean
 
 ```bash
 npm run audit:policy                            # fail on any advisory the policy does not cover
-ng update angular-capacitor-workspace@22        # newer policy patches, and fixes to generated files
-npx angular-capacitor-workspace doctor --fix    # apply the policy to this workspace
+ng update @angular-capacitor-workspace/cli@22        # newer policy patches, and fixes to generated files
+npx @angular-capacitor-workspace/cli doctor --fix    # apply the policy to this workspace
 ```
 
 `ng update` runs the release's migrations, which fix files an earlier release
 generated and print the change to make by hand in any file you have edited. A
 plain `npm install` runs none;
-`ng update angular-capacitor-workspace --migrate-only --from=<old version>` runs
+`ng update @angular-capacitor-workspace/cli --migrate-only --from=<old version>` runs
 them afterwards.
 
-The [schematics package README](packages/angular-capacitor-workspace/README.md)
+The [schematics package README](packages/cli/README.md)
 covers every schematic, the `audit` and `doctor` output, and the programmatic
 API.
 
@@ -163,7 +165,7 @@ accepted advisory that nobody revisits is how a workspace quietly rots. An entry
 can be scoped with `onlyWhen`, so one kept for older workspaces fails only them.
 
 The whole policy is one data-only file:
-[`src/policy/advisories.ts`](packages/angular-capacitor-workspace/src/policy/advisories.ts).
+[`src/policy/advisories.ts`](packages/cli/src/policy/advisories.ts).
 Patching a new advisory is an edit there plus a release.
 
 ### What pruning cannot fix
@@ -199,7 +201,8 @@ workspaces generated before the switch still have.
 
 ```
 packages/
-  angular-capacitor-workspace/       schematics, policy, gate, CLI
+  cli/                               @angular-capacitor-workspace/cli: schematics,
+                                     policy, gate, CLI
     src/policy/advisories.ts         ← the file you patch
     src/policy/versions.ts           ← pins for what ng new does not choose
     src/catalog.ts                   ← the packages --with knows how to wire in
@@ -213,7 +216,7 @@ packages/
     src/extend/                      the extension points plugins edit hosts through
     src/cli/                         audit, doctor, and the commands the
                                      generated npm scripts run
-  create-angular-capacitor-workspace/
+  create/                            @angular-capacitor-workspace/create
     src/                             argv, prompts, bootstrap
   i18n/                              @angular-capacitor-workspace/i18n: the
                                      translation runtime a workspace installs
@@ -285,7 +288,7 @@ generator: `@angular/animations`, a required peer of `@storybook/angular-vite`,
 and two native bindings underneath `ng-packagr`. Nothing here can reach them,
 and `e2e/deprecations.mjs` has nothing to waive.
 
-A generated workspace depends on `angular-capacitor-workspace` — that is what
+A generated workspace depends on `@angular-capacitor-workspace/cli` — that is what
 keeps `audit:policy`, `doctor` and `ng generate` working after generation. Before
 publication that version does not exist on the registry, so the matrix `npm
 pack`s the local build and passes `--self-spec file:…`. It tests the tarball that
@@ -322,8 +325,10 @@ android` and `cap sync android` run and place the built bundle correctly.
 
 - **Registry.** Decided: public npm, from the public repository at
   [karimaounn/angular-capacitor-workspace](https://github.com/karimaounn/angular-capacitor-workspace).
-  Both `angular-capacitor-workspace` and `create-angular-capacitor-workspace`
-  were unclaimed on npm as of 2026-09-19.
+  Every package is published under the `@angular-capacitor-workspace` npm
+  organisation. Until 22.6.0 the generator and the `create` shell were the unscoped
+  `angular-capacitor-workspace` and `create-angular-capacitor-workspace`, now
+  deprecated in favour of `/cli` and `/create`.
 - **`auth`.** Out of scope, as instructed. Nothing in the generated tree assumes
   an identity provider.
 - **Angular 23.** Decided: branch. The package's major is the Angular major it
@@ -351,7 +356,7 @@ scripts, and generated workspaces block everything not named. Generated CI runs
 decision someone makes rather than code that quietly ran. It is the one rung
 that is preventative rather than reactive.
 
-**No prompt library.** `create-angular-capacitor-workspace` has exactly one
+**No prompt library.** `@angular-capacitor-workspace/create` has exactly one
 runtime dependency — the schematics package. The prompts, arrow-key lists
 included, are one file over `node:readline` and raw stdin. A generator arguing
 that the strongest remedy is not installing the package should take its own

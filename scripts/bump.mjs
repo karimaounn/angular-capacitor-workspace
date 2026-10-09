@@ -7,9 +7,9 @@
  *   npm run bump -- patch --dry-run
  *
  * There are seven places, and a release needs all seven: the version in each
- * of the five manifests — the root, the generator, `create-*` and the two
- * runtime packages — the exact `angular-capacitor-workspace` pin in
- * `create-*`, and the changelog's `## [Unreleased]` heading with the two link
+ * of the five manifests — the root, the generator, `/create` and the two
+ * runtime packages — the exact `@angular-capacitor-workspace/cli` pin in
+ * `/create`, and the changelog's `## [Unreleased]` heading with the two link
  * definitions at the foot of the file. A release that ships an `ng update`
  * migration has an eighth: that migration's `version`.
  *
@@ -30,12 +30,12 @@ import { parseArgs } from 'node:util';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
-const generator = 'packages/angular-capacitor-workspace/package.json';
-const create = 'packages/create-angular-capacitor-workspace/package.json';
+const generator = 'packages/cli/package.json';
+const create = 'packages/create/package.json';
 // Released with the generator at its version: a workspace depends on `^` the
 // generator's version of each, so the two cannot be told apart.
 const runtime = ['packages/i18n/package.json', 'packages/theming/package.json'];
-const migrations = 'packages/angular-capacitor-workspace/src/migrations.json';
+const migrations = 'packages/cli/src/migrations.json';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -50,7 +50,7 @@ if (!current) {
 const target = resolve(positionals[0], current);
 const date = new Date().toLocaleDateString('sv-SE'); // ISO-8601, the format the changelog uses.
 
-// Accumulated so the two edits to the `create-*` manifest compose, and so a
+// Accumulated so the two edits to the `/create` manifest compose, and so a
 // failure anywhere leaves the tree untouched rather than half-bumped.
 const edits = new Map();
 const summary = [];
@@ -61,7 +61,11 @@ pin(create, /^( {2}"version": ")[^"]+(")/m, 'version');
 for (const path of runtime) {
   pin(path, /^( {2}"version": ")[^"]+(")/m, 'version');
 }
-pin(create, /^( {4}"angular-capacitor-workspace": ")[^"]+(")/m, 'angular-capacitor-workspace pin');
+pin(
+  create,
+  /^( {4}"@angular-capacitor-workspace\/cli": ")[^"]+(")/m,
+  '@angular-capacitor-workspace/cli pin',
+);
 versionMigrations();
 promoteChangelog();
 
@@ -145,7 +149,7 @@ function resolve(requested, from) {
 
 /** Read the way `sync-versions.mjs` reads it: as text, so no build is needed. */
 function angularLine() {
-  const source = read('packages/angular-capacitor-workspace/src/policy/versions.ts');
+  const source = read('packages/cli/src/policy/versions.ts');
   const line = source.match(/ANGULAR_LINE\s*=\s*'([^']+)'/)?.[1];
   if (!line) {
     fail('No `ANGULAR_LINE` in src/policy/versions.ts.');

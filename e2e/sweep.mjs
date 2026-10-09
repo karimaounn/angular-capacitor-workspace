@@ -25,8 +25,8 @@ import { ROWS } from './rows.mjs';
 import { createArgs, packSelf } from '../scripts/pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
-const cliBin = join(repoRoot, 'packages/angular-capacitor-workspace/dist/cli/index.js');
+const createBin = join(repoRoot, 'packages/create/dist/index.js');
+const cliBin = join(repoRoot, 'packages/cli/dist/cli/index.js');
 
 const { values } = parseArgs({
   options: {
@@ -164,7 +164,7 @@ function renderIssue(findings) {
     '',
     'Add the entries above to `src/policy/advisories.ts`, verify with',
     '`npm run sweep`, and cut a release. Existing workspaces pick the remedy up',
-    'with `npx angular-capacitor-workspace doctor --fix`.',
+    'with `npx @angular-capacitor-workspace/cli doctor --fix`.',
   );
 
   return lines.join('\n');

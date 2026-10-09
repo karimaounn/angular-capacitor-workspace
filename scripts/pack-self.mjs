@@ -2,7 +2,7 @@
  * `npm pack` the packages a generated workspace installs from this repository,
  * for anything that generates one from this checkout.
  *
- * A generated workspace depends on `angular-capacitor-workspace`, and on the
+ * A generated workspace depends on `@angular-capacitor-workspace/cli`, and on the
  * runtime package of each plugin it has — `@angular-capacitor-workspace/i18n`,
  * `/theming` — at versions that do not exist on the registry until they are
  * published. So the e2e matrix, the advisory sweep and `npm run create` pack
@@ -32,7 +32,7 @@ export const RUNTIME_PACKAGES = [
  * holding the same for each runtime package, by name.
  */
 export function packSelf(destination) {
-  const self = pack('packages/angular-capacitor-workspace', destination);
+  const self = pack('packages/cli', destination);
   const runtime = RUNTIME_PACKAGES.map(({ name, dir }) => {
     if (!existsSync(join(repoRoot, dir))) {
       console.error(`${dir} does not exist. Run \`npm run build\` first.`);
@@ -43,7 +43,7 @@ export function packSelf(destination) {
   return { ...self, runtime };
 }
 
-/** The `create-*` flags that point a generated workspace at what `packSelf` packed. */
+/** The `/create` flags that point a generated workspace at what `packSelf` packed. */
 export function createArgs(packed) {
   return [
     '--self-spec',

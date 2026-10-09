@@ -11,7 +11,7 @@
  * hour to tell you the same thing.
  *
  * It deliberately does not check that the five manifests agree on a version,
- * or that `create-*` pins the generator at exactly it. That is
+ * or that `/create` pins the generator at exactly it. That is
  * `test/release-line.spec.ts`, which runs on every commit rather than only on
  * a tag. The question here is narrower — whether the tag names the version the
  * tree already settled on.

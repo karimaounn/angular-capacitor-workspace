@@ -3,7 +3,7 @@
 Instructions for coding agents changing **this repository**, the generator.
 
 > This is not the `AGENTS.md` that generated workspaces get. That one is
-> `packages/angular-capacitor-workspace/src/schematics/workspace/files/AGENTS.md.template`,
+> `packages/cli/src/schematics/workspace/files/AGENTS.md.template`,
 > plus the sections the `marketing` and `i18n` schematics append to it.
 
 [README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md) explain why the
@@ -12,8 +12,8 @@ is the list of what a change has to touch so nothing is missed.
 
 ## The system
 
-`create-angular-capacitor-workspace` (argv, prompts) calls `generateWorkspace()`
-in `packages/angular-capacitor-workspace/src/api.ts`, which runs, in this order:
+`@angular-capacitor-workspace/create` (argv, prompts) calls `generateWorkspace()`
+in `packages/cli/src/api.ts`, which runs, in this order:
 
 1. `ng new` (Angular owns the skeleton)
 2. our schematics overlay Angular's output: the hosts (`src/schematics/*`)
@@ -24,13 +24,20 @@ in `packages/angular-capacitor-workspace/src/api.ts`, which runs, in this order:
    cover (`src/gate/`)
 5. `npm install`
 
-The generated workspace keeps `angular-capacitor-workspace` as a
+The generated workspace keeps `@angular-capacitor-workspace/cli` as a
 devDependency, so `audit`, `doctor` (`src/cli/`) and
-`ng generate angular-capacitor-workspace:<schematic>` keep running there for
+`ng generate @angular-capacitor-workspace/cli:<schematic>` keep running there for
 years, against whatever version it has installed, and
-`ng update angular-capacitor-workspace@22` runs our migrations there
+`ng update @angular-capacitor-workspace/cli@22` runs our migrations there
 (`src/migrations.json`). The package's major is the Angular major it targets
 (`ANGULAR_LINE` in `src/policy/versions.ts`).
+
+Every package publishes under the `@angular-capacitor-workspace` scope, from
+the directory named after it: `packages/create`, `packages/cli` (the
+generator), `packages/i18n` and `packages/theming`. The generator's binary keeps
+the unscoped name `angular-capacitor-workspace`, because the generated npm
+scripts call it (`CLI` in `src/utils/commands.ts`). The unscoped packages that
+22.6.0 and earlier published as are deprecated: never publish to them.
 
 A plugin whose code runs in the workspace's apps ships it as a **runtime
 package** of its own, `packages/<id>` (`@angular-capacitor-workspace/i18n`,
@@ -38,7 +45,7 @@ package** of its own, `packages/<id>` (`@angular-capacitor-workspace/i18n`,
 generator's version. The generator copies no runtime code; it writes the
 config, a binding file and the parts a workspace restyles.
 
-Paths below are relative to `packages/angular-capacitor-workspace/` unless they
+Paths below are relative to `packages/cli/` unless they
 start with `packages/`, with the package name, or name a root file.
 
 ### Hosts and plugins
@@ -79,17 +86,17 @@ start with `packages/`, with the package name, or name a root file.
 schematic only fixes workspaces nobody has created yet. Pick the route that
 reaches the existing ones:
 
-| Your change                                                                                           | Existing workspaces get it via                        | What to add                                                                                                                                                                                |
-| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Stop writing a dependency                                                                             | `doctor --fix`                                        | Remove it from the schematic **and** add a `POLICY.prune` rule. Guard it with `unlessUsing` if a workspace could legitimately use it (the `animations` rule).                              |
-| Raise a dependency's minimum                                                                          | `doctor --fix`                                        | A `POLICY.floors` entry. A `versions.ts` pin alone reaches only new workspaces (`@types/node` has both).                                                                                   |
-| Pin a transitive dependency                                                                           | `doctor --fix`                                        | A `POLICY.overrides` entry, scoped under its parent, with `onlyWhen`.                                                                                                                      |
-| Stop writing an override that has shipped                                                             | `doctor --fix`                                        | Move it to `POLICY.retired`, its spec exactly as released, `lastShipped` set. To narrow its scope, change `onlyWhen` instead: `doctor` removes overrides whose scope a workspace has left. |
-| A package needs an install script                                                                     | `doctor --fix`                                        | A `POLICY.allowScripts` entry.                                                                                                                                                             |
-| A fix to a file the generator wrote (template output, `angular.json` or `tsconfig` patch, npm script) | an `ng update` migration                              | A migration schematic ([below](#migration-schematics-ng-update)). If it cannot be applied safely, put the manual steps in the CHANGELOG instead. Ask the maintainer when unsure which.     |
-| A new capability (schematic, option, catalog entry)                                                   | `ng generate angular-capacitor-workspace:<schematic>` | Make it idempotent and make it work on every shape a 22.x release produced. For example, Storybook ran on the webpack builders (`@storybook/angular:*`) before 22.5.0.                     |
-| A new default for new workspaces only (starter content, docs)                                         | nothing                                               | Say so in the CHANGELOG.                                                                                                                                                                   |
-| `GenerateOptions`, package exports, CLI flags                                                         | callers                                               | A CHANGELOG `### Changed` entry with before and after. A breaking change within a line ships as a **minor**.                                                                               |
+| Your change                                                                                           | Existing workspaces get it via                             | What to add                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Stop writing a dependency                                                                             | `doctor --fix`                                             | Remove it from the schematic **and** add a `POLICY.prune` rule. Guard it with `unlessUsing` if a workspace could legitimately use it (the `animations` rule).                              |
+| Raise a dependency's minimum                                                                          | `doctor --fix`                                             | A `POLICY.floors` entry. A `versions.ts` pin alone reaches only new workspaces (`@types/node` has both).                                                                                   |
+| Pin a transitive dependency                                                                           | `doctor --fix`                                             | A `POLICY.overrides` entry, scoped under its parent, with `onlyWhen`.                                                                                                                      |
+| Stop writing an override that has shipped                                                             | `doctor --fix`                                             | Move it to `POLICY.retired`, its spec exactly as released, `lastShipped` set. To narrow its scope, change `onlyWhen` instead: `doctor` removes overrides whose scope a workspace has left. |
+| A package needs an install script                                                                     | `doctor --fix`                                             | A `POLICY.allowScripts` entry.                                                                                                                                                             |
+| A fix to a file the generator wrote (template output, `angular.json` or `tsconfig` patch, npm script) | an `ng update` migration                                   | A migration schematic ([below](#migration-schematics-ng-update)). If it cannot be applied safely, put the manual steps in the CHANGELOG instead. Ask the maintainer when unsure which.     |
+| A new capability (schematic, option, catalog entry)                                                   | `ng generate @angular-capacitor-workspace/cli:<schematic>` | Make it idempotent and make it work on every shape a 22.x release produced. For example, Storybook ran on the webpack builders (`@storybook/angular:*`) before 22.5.0.                     |
+| A new default for new workspaces only (starter content, docs)                                         | nothing                                                    | Say so in the CHANGELOG.                                                                                                                                                                   |
+| `GenerateOptions`, package exports, CLI flags                                                         | callers                                                    | A CHANGELOG `### Changed` entry with before and after. A breaking change within a line ships as a **minor**.                                                                               |
 
 Every CHANGELOG entry that changes generated output says which route it took:
 "`doctor --fix` removes it", "existing workspaces are left as they are; run
@@ -123,7 +130,7 @@ Before calling a change done:
 `src/policy/advisories.ts` holds data only. An advisory fix is usually an edit
 there and nothing else.
 
-- Start from the snippet that `npx angular-capacitor-workspace audit` or
+- Start from the snippet that `npx @angular-capacitor-workspace/cli audit` or
   `npm run sweep` prints. It already names the tier.
 - Use the strongest rung that works: prune, then override, then floor, then accept.
 - Scope overrides under the parent (`{ parent: { child: range } }`), never at
@@ -172,13 +179,13 @@ A user-facing option usually touches all of these:
 - `GenerateOptions` in `src/api.ts`. A host's option goes into its step in
   `runOverlay()`, and into `featuresFor()` if a policy rule could care about
   it; a plugin's goes into `requested()` and `features()` in its `plugin.ts`.
-- `create-angular-capacitor-workspace/src/args.ts`: the flag, validation that
+- `packages/create/src/args.ts`: the flag, validation that
   fails before `ng new` starts, and `USAGE`.
-- `create-angular-capacitor-workspace/src/index.ts` `ask()`, if interactive
+- `packages/create/src/index.ts` `ask()`, if interactive
   runs should offer it.
 - The create README's options block, which must match `USAGE` line for line
   (tested), and the package README.
-- Tests in `create-angular-capacitor-workspace/test/args.spec.ts` and
+- Tests in `packages/create/test/args.spec.ts` and
   `test/schematics.spec.ts`.
 
 ### A new plugin
@@ -313,9 +320,9 @@ Storybook move to Vite is the precedent.
 
 `src/migrations.json` is the collection `ng update` runs, named by `ng-update`
 in the package manifest. It is empty: no fix has needed a migration yet. The
-documented upgrade is `ng update angular-capacitor-workspace@22`, then
-`npx angular-capacitor-workspace doctor --fix`. A plain `npm install` runs no
-migrations; `ng update angular-capacitor-workspace --migrate-only --from=<old>`
+documented upgrade is `ng update @angular-capacitor-workspace/cli@22`, then
+`npx @angular-capacitor-workspace/cli doctor --fix`. A plain `npm install` runs no
+migrations; `ng update @angular-capacitor-workspace/cli --migrate-only --from=<old>`
 runs them afterwards.
 
 A migration is:
@@ -388,7 +395,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 `npm test`. The rest fail only in a generated workspace, or never.
 
 - **The create README's options block** is a hand copy of `USAGE` in
-  `create-angular-capacitor-workspace/src/args.ts`, catalog bullets included
+  `packages/create/src/args.ts`, catalog bullets included
   (_tested_).
 - **Theme storage keys** are `themeStorageKeys()` in
   `packages/theming/src/config.ts`, and the generator writes them out in the
@@ -442,6 +449,10 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   arguments, breaks every workspace generated before the change until it is
   regenerated; keep the old name working. The runner is _tested_ against
   stubbed `npm` and `ng` (`schematics.spec.ts`), and the rest in `cli.spec.ts`.
+- **The generator's own name** is `OWN_PACKAGE` in `src/utils/own-package.ts`,
+  which a generated workspace depends on, and its binary is `CLI` in
+  `src/utils/commands.ts`, which the generated scripts call. Both match
+  `packages/cli/package.json` (_tested_ in `release-line.spec.ts`).
 - **The README markers** in `workspace/files/README.md.template`
   (`angular-capacitor-workspace:scripts`, `:mobile`) are matched by constants in
   `src/utils/workspace.ts`.
@@ -514,7 +525,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   it owns, which the command reads (the design system's `src/config/contrast.ts`).
   A command must not load the schematics engine: `src/cli/index.ts` requires
   each one when it runs, because `run` is behind every `npm start`.
-- **No new runtime dependencies without a reason.** `create-*` has exactly one,
+- **No new runtime dependencies without a reason.** `/create` has exactly one,
   the schematics package. There is no prompt, colour or argv library: output
   goes through `src/style.ts` and `src/spinner.ts`. An install script this
   repo's own dependencies need goes in the root `allowScripts`, with the reason.
@@ -541,7 +552,7 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 | a runtime package                           | `packages/<id>/test/`, the `angular` Vitest project                                                          |
 | manifest versions, licence copies           | `test/release-line.spec.ts`                                                                                  |
 | a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts`                                      |
-| CLI args, prompts                           | `create-angular-capacitor-workspace/test/`                                                                   |
+| CLI args, prompts                           | `packages/create/test/`                                                                                      |
 | the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                                                        |
 
 Templates are compiled only by the matrix, which uses the live registry and

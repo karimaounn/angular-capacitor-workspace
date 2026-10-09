@@ -12,8 +12,8 @@ export default defineConfig({
           // enforces is worth testing without waiting for a nightly full matrix
           // run.
           include: [
-            'packages/angular-capacitor-workspace/test/**/*.spec.ts',
-            'packages/create-angular-capacitor-workspace/test/**/*.spec.ts',
+            'packages/cli/test/**/*.spec.ts',
+            'packages/create/test/**/*.spec.ts',
             'e2e/test/**/*.spec.mjs',
           ],
           // Schematic tests spin up an in-memory Tree per case; they are fast

@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { createArgs, packSelf } from './pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
+const createBin = join(repoRoot, 'packages/create/dist/index.js');
 const localDir = join(repoRoot, '.local');
 
 const build = spawnSync('npm', ['run', 'build'], { cwd: repoRoot, stdio: 'inherit' });

@@ -33,7 +33,7 @@ import { ROWS } from './rows.mjs';
 import { createArgs, packSelf } from '../scripts/pack-self.mjs';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const createBin = join(repoRoot, 'packages/create-angular-capacitor-workspace/dist/index.js');
+const createBin = join(repoRoot, 'packages/create/dist/index.js');
 
 const { values } = parseArgs({
   options: {
@@ -48,7 +48,7 @@ const { values } = parseArgs({
 
 const selected = values.row?.length ? values.row : Object.keys(ROWS);
 
-// A generated workspace depends on `angular-capacitor-workspace` so that
+// A generated workspace depends on `@angular-capacitor-workspace/cli` so that
 // `audit:policy`, `doctor` and `ng generate` keep working after generation, and
 // on the runtime package of each plugin it has. Before publication those
 // versions do not exist on the registry, so the matrix packs the local builds

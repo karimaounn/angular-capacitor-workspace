@@ -1,12 +1,37 @@
 # Changelog
 
-Both packages are released together at the same version. The major is the
-Angular major they generate for — 22.x is Angular 22 — so a breaking change
-within a line lands as a minor. See [Versioning](CONTRIBUTING.md#versioning).
+Every package in this repository is released together at the same version. The
+major is the Angular major they generate for — 22.x is Angular 22 — so a
+breaking change within a line lands as a minor. See [Versioning](CONTRIBUTING.md#versioning).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+### Changed
+
+- **Every package is now published under the `@angular-capacitor-workspace`
+  scope.** The generator `angular-capacitor-workspace` is now
+  `@angular-capacitor-workspace/cli`, and `create-angular-capacitor-workspace`
+  is now `@angular-capacitor-workspace/create`, beside the `/i18n` and
+  `/theming` runtime packages, so one npm organisation owns and publishes all
+  four. The commands change with them:
+
+  | Before                                           | After                                                 |
+  | ------------------------------------------------ | ----------------------------------------------------- |
+  | `npm create angular-capacitor-workspace@latest`  | `npm create @angular-capacitor-workspace@latest`      |
+  | `ng add angular-capacitor-workspace`             | `ng add @angular-capacitor-workspace/cli`             |
+  | `ng generate angular-capacitor-workspace:<name>` | `ng generate @angular-capacitor-workspace/cli:<name>` |
+  | `ng update angular-capacitor-workspace@22`       | `ng update @angular-capacitor-workspace/cli@22`       |
+  | `npx angular-capacitor-workspace doctor`         | `npx @angular-capacitor-workspace/cli doctor`         |
+  | `import … from 'angular-capacitor-workspace'`    | `import … from '@angular-capacitor-workspace/cli'`    |
+
+  The binary keeps its name, `angular-capacitor-workspace`, so the npm scripts
+  a workspace runs are unchanged. The unscoped packages are deprecated at
+  22.6.0 and receive no further releases. Existing workspaces are left as they
+  are; to move one, replace `angular-capacitor-workspace` in its
+  `devDependencies` with `@angular-capacitor-workspace/cli` at the same
+  version and run `npm install`.
 
 ## [22.6.0] — 2026-10-08
 
