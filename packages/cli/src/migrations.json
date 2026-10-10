@@ -5,6 +5,11 @@
       "version": "22.8.0",
       "factory": "./migrations/prepare-once/index#prepareOnce",
       "description": "Builds the libraries once per npm run build, not once per app and site. Points each project's pre* hooks at `angular-capacitor-workspace prepare`, which the project runner skips once it has run codegen and the library build itself."
+    },
+    "theme-story-providers": {
+      "version": "22.9.1",
+      "factory": "./migrations/theme-story-providers/index#themeStoryProviders",
+      "description": "Gives the theme toggle's Storybook story the `provideTheme()` an app gives the toggle. Since 22.6 `ThemeService` throws \"ThemeService has no palettes\" without it, so the story failed to render."
     }
   }
 }

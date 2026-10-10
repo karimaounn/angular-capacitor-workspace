@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The theme toggle's Storybook story renders again.** Since 22.6.0 it failed
+  with "ThemeService has no palettes. Call provideTheme() in the application's
+  providers.": `ThemeService` moved into `@angular-capacitor-workspace/theming`,
+  which takes its palettes from `provideTheme()`, and the story rendered the
+  toggle without it. The story now provides it through `applicationConfig`.
+
+  `ng update @angular-capacitor-workspace/cli@22` fixes existing workspaces
+  with the `theme-story-providers` migration. Where the story has been edited,
+  it is left alone and the migration prints the two imports and the
+  `decorators` line to add.
+
 ## [22.9.0] — 2026-10-09
 
 ### Changed

@@ -263,3 +263,80 @@ describe('prepare-once', () => {
     expect(warnings).toEqual([]);
   });
 });
+
+describe('theme-story-providers', () => {
+  const runner = new SchematicTestRunner('acw-migrations', migrations);
+  const story = '/projects/ui/src/lib/theme/theme-toggle.stories.ts';
+  const template = readFileSync(
+    join(pkgRoot, 'src/plugins/theming/files/lib/src/lib/theme/theme-toggle.stories.ts.template'),
+    'utf8',
+  );
+
+  /** The story as 22.5 to 22.9 wrote it: the template without the decorator. */
+  const written = template
+    .replace(
+      "import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';\nimport { provideTheme } from './theme';\n",
+      "import type { Meta, StoryObj } from '@storybook/angular-vite';\n",
+    )
+    .replace(/\n {2}\/\/ `ThemeService`[^\n]*\n[^\n]*\n {2}decorators: [^\n]*/, '');
+
+  /** A design system with the story as given, bound to the runtime package or not. */
+  function workspace(content: string, binding = true): HostTree {
+    const tree = new HostTree();
+    tree.create(
+      '/angular.json',
+      JSON.stringify({ projects: { ui: { projectType: 'library', root: 'projects/ui' } } }),
+    );
+    tree.create(
+      '/projects/ui/src/lib/theme/theme.ts',
+      binding
+        ? 'export function provideTheme(): EnvironmentProviders {}\n'
+        : "@Injectable({ providedIn: 'root' })\nexport class ThemeService {}\n",
+    );
+    tree.create(story, content);
+    return tree;
+  }
+
+  async function migrate(tree: HostTree): Promise<{ story: string; warnings: string[] }> {
+    const warnings: string[] = [];
+    const subscription = runner.logger.subscribe((entry) => {
+      if (entry.level === 'warn') {
+        warnings.push(entry.message);
+      }
+    });
+    const result = await runner.runSchematic('theme-story-providers', {}, tree);
+    subscription.unsubscribe();
+    return { story: result.readContent(story), warnings };
+  }
+
+  it('starts from the story a release wrote', () => {
+    expect(written).not.toBe(template);
+    expect(written).not.toContain('provideTheme');
+  });
+
+  it('gives the story what the template now writes', async () => {
+    const { story: migrated, warnings } = await migrate(workspace(written));
+    expect(migrated).toBe(template);
+    expect(warnings).toEqual([]);
+  });
+
+  it('changes nothing on a second run, or in a workspace generated after it', async () => {
+    const { story: migrated, warnings } = await migrate(workspace(template));
+    expect(migrated).toBe(template);
+    expect(warnings).toEqual([]);
+  });
+
+  it('leaves a design system from before the runtime package alone', async () => {
+    const { story: migrated, warnings } = await migrate(workspace(written, false));
+    expect(migrated).toBe(written);
+    expect(warnings).toEqual([]);
+  });
+
+  it('leaves an edited story alone and logs the manual step', async () => {
+    const edited = written.replace("tags: ['autodocs'],", "tags: ['autodocs', 'test'],");
+    const { story: migrated, warnings } = await migrate(workspace(edited));
+    expect(migrated).toBe(edited);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('provideTheme()');
+  });
+});

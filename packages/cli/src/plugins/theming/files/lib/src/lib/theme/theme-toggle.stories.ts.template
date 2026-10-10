@@ -1,4 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/angular-vite';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
+import { provideTheme } from './theme';
 import { ThemeToggle } from './theme-toggle';
 
 /**
@@ -12,6 +13,9 @@ const meta: Meta<ThemeToggle> = {
   title: 'Primitives/Theme toggle',
   component: ThemeToggle,
   tags: ['autodocs'],
+  // `ThemeService` takes its palettes from `provideTheme()`, which an app calls
+  // in its `app.config.ts` and a story, rendered outside any app, calls here.
+  decorators: [applicationConfig({ providers: [provideTheme()] })],
 };
 
 export default meta;
