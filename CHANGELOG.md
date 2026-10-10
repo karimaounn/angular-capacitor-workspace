@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.9.1] — 2026-10-10
+
 ### Fixed
 
 - **The theme toggle's Storybook story renders again.** Since 22.6.0 it failed
@@ -960,7 +962,8 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.9.0...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.9.1...HEAD
+[22.9.1]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.9.0...v22.9.1
 [22.9.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.8.0...v22.9.0
 [22.8.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.7.0...v22.8.0
 [22.7.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.6.0...v22.7.0
