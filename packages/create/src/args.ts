@@ -1,10 +1,14 @@
 import { parseArgs } from 'node:util';
 import {
+  AUTH_PROVIDER_CHOICES,
   CATALOG,
   catalogEntry,
+  isAuthMethod,
+  isAuthProvider,
   style,
   unknownPackageMessage,
   type AppSpec,
+  type AuthMethod,
   type GenerateOptions,
   type MarketingSpec,
   type MobilePlatform,
@@ -58,6 +62,10 @@ ${CONTINUED}${dim('(repeatable, comma-separated: en,fr,ar). Needs a')}
 ${CONTINUED}${dim('design system — the mechanism lives there.')}
 ${option('--default-locale <l>', 'source locale, the fallback for an untranslated')}
 ${CONTINUED}${dim('key (default: the first --i18n tag)')}
+${option('--auth cognito', 'sign-in screens, a session and route guards, with')}
+${CONTINUED}${dim('Amazon Cognito. Needs a design system.')}
+${option('--auth-methods <m>', 'ways to sign in, comma-separated (default: password,')}
+${CONTINUED}${dim('the only one so far)')}
 ${option('--with <pkg>', 'extra package to wire in (repeatable, comma-separated)')}
 ${CATALOG.map((entry) => item(`${entry.id} — ${entry.summary}`)).join('\n')}
 ${option('--audit-level <lvl>', 'low|moderate|high|critical  (default: moderate)')}
@@ -179,6 +187,8 @@ export function parseArguments(argv: string[]): ParsedArgs {
       e2e: { type: 'string' },
       i18n: { type: 'string', multiple: true },
       'default-locale': { type: 'string' },
+      auth: { type: 'string' },
+      'auth-methods': { type: 'string', multiple: true },
       with: { type: 'string', multiple: true },
       'audit-level': { type: 'string' },
       install: { type: 'boolean', default: true },
@@ -268,6 +278,30 @@ export function parseArguments(argv: string[]): ParsedArgs {
       );
     }
     options.defaultLocale = defaultLocale;
+  }
+
+  if (values.auth !== undefined) {
+    if (!isAuthProvider(values.auth)) {
+      const known = AUTH_PROVIDER_CHOICES.map((choice) => `"${choice.id}"`).join(', ');
+      throw new ArgError(`--auth only supports ${known} (got "${values.auth}").`);
+    }
+    if (!options.uiLib) {
+      throw new ArgError(
+        '--auth configures sign-in in the design-system library, and there is no ' +
+          '--ui-lib. Write `--ui-lib --auth cognito`.',
+      );
+    }
+    options.auth = values.auth;
+  }
+
+  if (values['auth-methods'] !== undefined) {
+    if (!options.auth) {
+      throw new ArgError(
+        '--auth-methods says how people sign in, and there is no --auth. Write ' +
+          '`--auth cognito --auth-methods password`.',
+      );
+    }
+    options.authMethods = parseAuthMethods(values['auth-methods'], options.auth);
   }
 
   const wanted = parsePackages(values.with ?? []);
@@ -366,6 +400,30 @@ function parsePackages(raw: string[]): string[] {
   }
 
   return ids;
+}
+
+/**
+ * Reads `--auth-methods`: repeatable, and comma-separated within each, the way
+ * `--with` is. Each has to be one the provider implements.
+ */
+function parseAuthMethods(raw: string[], provider: string): AuthMethod[] {
+  const offered = AUTH_PROVIDER_CHOICES.find((choice) => choice.id === provider)?.methods ?? [];
+  const methods: AuthMethod[] = [];
+  for (const value of raw.flatMap((entry) => entry.split(','))) {
+    const method = value.trim();
+    if (!isAuthMethod(method) || !offered.some((choice) => choice.id === method)) {
+      const known = offered.map((choice) => `"${choice.id}"`).join(', ');
+      throw new ArgError(
+        method === ''
+          ? `--auth-methods needs a method: ${known}.`
+          : `--auth-methods: ${provider} offers ${known}, not "${method}".`,
+      );
+    }
+    if (!methods.includes(method)) {
+      methods.push(method);
+    }
+  }
+  return methods;
 }
 
 /**

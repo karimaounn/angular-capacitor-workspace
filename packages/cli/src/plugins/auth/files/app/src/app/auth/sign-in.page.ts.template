@@ -1,0 +1,111 @@
+import { ChangeDetectionStrategy, Component, inject, signal, viewChild } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import {
+  AUTH_CONFIG,
+  AuthAction,
+  AuthError,
+  Button,
+  PasswordAuthService,
+  type SignInOutcome,
+} from '<%= importName %>';
+import { NewPassword } from './new-password';
+
+/** What a screen that sent someone here wants them told. */
+const NOTICES: Readonly<Record<string, string>> = {
+  confirmed: 'Your account is confirmed. Sign in to start using it.',
+  reset: 'Your password has been changed. Sign in with the new one.',
+};
+
+/**
+ * Signing in with an email address and a password.
+ *
+ * Two failures are the wrong screen rather than errors, and send the visitor
+ * to the right one: an account whose code was never entered goes to confirm
+ * it, and one an administrator reset goes to choose a new password. An
+ * account created with a temporary password answers the challenge to replace
+ * it here, without leaving.
+ */
+@Component({
+  selector: '<%= prefix %>-sign-in-page',
+  imports: [RouterLink, Button, NewPassword],
+  templateUrl: './sign-in.page.html',
+  styleUrls: ['./auth-page.scss', './auth-form.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class SignInPage {
+  private readonly auth = inject(PasswordAuthService);
+  private readonly router = inject(Router);
+  private readonly config = inject(AUTH_CONFIG);
+  private readonly query = inject(ActivatedRoute).snapshot.queryParamMap;
+
+  protected readonly email = signal(this.query.get('email') ?? '');
+  protected readonly password = signal('');
+  protected readonly newPassword = signal('');
+  protected readonly notice = NOTICES[this.query.get('notice') ?? ''] ?? null;
+
+  protected readonly challenge = this.auth.pendingChallenge;
+  protected readonly action = new AuthAction();
+  private readonly chosen = viewChild(NewPassword);
+
+  protected signIn(event: Event): void {
+    event.preventDefault();
+    this.action.run(
+      this.auth.signIn(this.email(), this.password()),
+      (outcome) => this.continue(outcome),
+      (error) => this.redirectFor(error),
+    );
+  }
+
+  /** Answers the challenge to replace a temporary password. */
+  protected replacePassword(event: Event): void {
+    event.preventDefault();
+    if (!this.chosen()?.valid()) {
+      return;
+    }
+    this.action.run(this.auth.completeNewPassword(this.newPassword()), (outcome) =>
+      this.continue(outcome),
+    );
+  }
+
+  private continue(outcome: SignInOutcome): void {
+    if (outcome.status === 'signed-in') {
+      void this.router.navigateByUrl(this.returnUrl());
+    } else if (
+      outcome.status === 'challenge' &&
+      outcome.challenge.name !== 'NEW_PASSWORD_REQUIRED'
+    ) {
+      // A step this screen does not answer: multi-factor, say. The name is
+      // the provider's, and the place to add a step for it is here.
+      this.action.error.set(
+        new AuthError(
+          'Unknown',
+          `This account needs a step this app does not offer yet (${outcome.challenge.name}).`,
+        ),
+      );
+    }
+  }
+
+  private redirectFor(error: AuthError): boolean {
+    const email = this.email();
+    if (error.code === 'UserNotConfirmed') {
+      void this.router.navigate(['/auth/sign-up'], { queryParams: { confirm: email } });
+      return true;
+    }
+    if (error.code === 'PasswordResetRequired') {
+      void this.router.navigate(['/auth/reset-password'], { queryParams: { email } });
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Where the guard turned the visitor away, or `afterSignIn`. Only a path in
+   * this app: a `returnUrl` is the query string's, and anyone can write one.
+   */
+  private returnUrl(): string {
+    const asked = this.query.get('returnUrl');
+    return asked?.startsWith('/') && !asked.startsWith('//')
+      ? asked
+      : this.config.routes.afterSignIn;
+  }
+}

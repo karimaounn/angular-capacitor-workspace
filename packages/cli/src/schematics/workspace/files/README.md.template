@@ -102,13 +102,15 @@ ng generate @angular-capacitor-workspace/cli:theming               # a theme tog
 ng generate @angular-capacitor-workspace/cli:mobile <app>          # a Capacitor shell for an app
 ng generate @angular-capacitor-workspace/cli:codegen               # an OpenAPI client
 ng generate @angular-capacitor-workspace/cli:i18n --locales en,fr  # runtime translation
+ng generate @angular-capacitor-workspace/cli:auth                  # sign-in screens in every app
 ng generate @angular-capacitor-workspace/cli:packages cdk          # a curated package: cdk, aria, …
 ```
 
 Each one wires itself into the workspace it finds: new scripts land in the
 table below, and anything that needs explaining is written into this file.
-Theme switching, translation and the curated packages also reach every app or
-site you generate after them, so the order you add things in does not matter.
+Theme switching, translation, sign-in and the curated packages also reach every
+app or site you generate after them, so the order you add things in does not
+matter.
 
 ## Dependency policy
 

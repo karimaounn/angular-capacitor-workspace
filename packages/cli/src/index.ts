@@ -15,6 +15,14 @@ export type {
 export { PLACEHOLDER_ORIGIN } from './schematics/marketing';
 
 /**
+ * The identity providers `--auth` signs in with, and the methods each offers
+ * to `--auth-methods`. Exported so `/create` validates the flags and offers the
+ * prompts from the plugin's own lists.
+ */
+export { AUTH_PROVIDER_CHOICES, isAuthMethod, isAuthProvider } from './plugins/auth/plugin';
+export type { AuthMethod, AuthProvider, AuthProviderChoice } from './plugins/auth/plugin';
+
+/**
  * The packages `--with` knows how to wire in. Exported so the `/create` shell
  * renders its help and its prompt from the catalog rather than from a second
  * list that would fall behind it.

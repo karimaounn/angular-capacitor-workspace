@@ -1,0 +1,69 @@
+import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Router } from '@angular/router';
+import {
+  AUTH_CONFIG,
+  AccountService,
+  AuthAction,
+  AuthSession,
+  Button,
+  PasswordAuthService,
+  stringClaim,
+} from '<%= importName %>';
+import { NewPassword } from './new-password';
+
+/**
+ * The signed-in user's account: who they are signed in as, signing out here
+ * or everywhere, and changing their password.
+ *
+ * Each form has its own `AuthAction`, so changing the password and signing out
+ * everywhere never share a spinner or an error.
+ */
+@Component({
+  selector: '<%= prefix %>-account-page',
+  imports: [Button, NewPassword],
+  templateUrl: './account.page.html',
+  styleUrls: ['./auth-page.scss', './auth-form.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class AccountPage {
+  private readonly session = inject(AuthSession);
+  private readonly account = inject(AccountService);
+  private readonly passwords = inject(PasswordAuthService);
+  private readonly router = inject(Router);
+  private readonly config = inject(AUTH_CONFIG);
+
+  protected readonly email = computed(() => stringClaim(this.session.idClaims(), 'email'));
+  protected readonly hasPassword = this.passwords.supported;
+
+  protected readonly current = signal('');
+  protected readonly proposed = signal('');
+  protected readonly changing = new AuthAction();
+  protected readonly leaving = new AuthAction();
+  private readonly chosen = viewChild(NewPassword);
+
+  protected signOut(): void {
+    this.session.signOut();
+    this.toSignIn();
+  }
+
+  /** Revokes every session, on every device, this one included. */
+  protected signOutEverywhere(): void {
+    this.leaving.run(this.account.globalSignOut(), () => this.toSignIn());
+  }
+
+  protected changePassword(event: Event): void {
+    event.preventDefault();
+    if (!this.chosen()?.valid()) {
+      return;
+    }
+    this.changing.run(this.passwords.changePassword(this.current(), this.proposed()), () => {
+      this.current.set('');
+      this.chosen()?.clear();
+      this.changing.notice.set('Your password has been changed.');
+    });
+  }
+
+  private toSignIn(): void {
+    void this.router.navigateByUrl(this.config.routes.signIn);
+  }
+}

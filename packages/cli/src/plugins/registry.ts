@@ -1,6 +1,7 @@
 import { chain, noop, schematic, type Rule, type Tree } from '@angular-devkit/schematics';
 import type { GenerateOptions } from '../api';
 import { treeView, type WorkspaceView } from '../utils/workspace-view';
+import { authPlugin } from './auth/plugin';
 import { codegenPlugin } from './codegen/plugin';
 import { i18nPlugin } from './i18n/plugin';
 import { packagesPlugin } from './packages/plugin';
@@ -20,6 +21,8 @@ import type { WorkspacePlugin } from './types';
  *   • codegen before i18n, which is the order they always ran in.
  *   • i18n before packages, so `provideTranslations` lands in `app.config.ts`
  *     above `provideServiceWorker`.
+ *   • auth after i18n, so the account link is the header's last control,
+ *     where a visitor looks for it.
  *   • packages last, so every library a catalog package declares itself a peer
  *     of already exists. Nothing depends on it having run.
  */
@@ -27,6 +30,7 @@ export const PLUGINS: readonly WorkspacePlugin[] = [
   themingPlugin,
   codegenPlugin,
   i18nPlugin,
+  authPlugin,
   packagesPlugin,
 ];
 

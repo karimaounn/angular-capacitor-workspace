@@ -9,12 +9,13 @@ step.
 npm create @angular-capacitor-workspace@latest my-workspace
 ```
 
-Four packages, one repo, all under the `@angular-capacitor-workspace` scope:
+Five packages, one repo, all under the `@angular-capacitor-workspace` scope:
 
 | Package                                                    | Contains                                                              | Entry                                            |
 | ---------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ |
 | [`@angular-capacitor-workspace/create`](packages/create)   | argv, prompts, the `ng new` bootstrap                                 | `npm create @angular-capacitor-workspace@latest` |
 | [`@angular-capacitor-workspace/cli`](packages/cli)         | the schematics, the dependency policy, the gate, the programmatic API | `ng add`, `ng generate`, `npx … audit\|doctor`   |
+| [`@angular-capacitor-workspace/auth`](packages/auth)       | the sign-in runtime a workspace's apps import, with a Cognito backend | installed by `--auth`                            |
 | [`@angular-capacitor-workspace/i18n`](packages/i18n)       | the translation runtime a workspace's apps import                     | installed by `--i18n`                            |
 | [`@angular-capacitor-workspace/theming`](packages/theming) | the theme-switching runtime a workspace's apps import                 | installed by `--ui-lib`                          |
 
@@ -95,14 +96,16 @@ ng generate @angular-capacitor-workspace/cli:mobile admin --platforms android
 ng generate @angular-capacitor-workspace/cli:theming
 ng generate @angular-capacitor-workspace/cli:codegen
 ng generate @angular-capacitor-workspace/cli:i18n --locales en,fr
+ng generate @angular-capacitor-workspace/cli:auth
 ng generate @angular-capacitor-workspace/cli:packages cdk
 ```
 
-Theming, translation and the curated packages are plugins: they extend every
-project already there and every one generated after them, so a workspace grown
-one `ng generate` at a time matches one generated in a single run. The code
-translation and theming run in your apps is installed, not copied —
-`@angular-capacitor-workspace/i18n` and `/theming` — so `npm update` reaches it,
+Theming, translation, sign-in and the curated packages are plugins: they extend
+every project already there and every one generated after them, so a workspace
+grown one `ng generate` at a time matches one generated in a single run. The
+code translation, theming and sign-in run in your apps is installed, not
+copied — `@angular-capacitor-workspace/i18n`, `/theming` and `/auth` — so
+`npm update` reaches it,
 and what you configure is in the design system's `src/config/`. Codegen reads the OpenAPI document from `OPENAPI_SPEC`; see
 [API client](packages/cli/README.md#api-client). To bring
 an existing Angular workspace under the policy, run
@@ -211,13 +214,16 @@ packages/
     src/style.ts                     the terminal palette both CLIs print with
     src/schematics/                  the hosts: workspace, app, marketing,
                                      ui-lib, mobile, ng-add
-    src/plugins/                     theming, codegen, i18n, packages, and the
-                                     registry that runs them
+    src/plugins/                     theming, codegen, i18n, auth, packages, and
+                                     the registry that runs them
     src/extend/                      the extension points plugins edit hosts through
     src/cli/                         audit, doctor, and the commands the
                                      generated npm scripts run
   create/                            @angular-capacitor-workspace/create
     src/                             argv, prompts, bootstrap
+  auth/                              @angular-capacitor-workspace/auth: the
+                                     sign-in runtime, provider-neutral in src/,
+                                     the Cognito backend in cognito/
   i18n/                              @angular-capacitor-workspace/i18n: the
                                      translation runtime a workspace installs
   theming/                           @angular-capacitor-workspace/theming: the
@@ -258,12 +264,12 @@ landing three levels down. None of that is visible from an in-memory tree.
 So the load-bearing test is `e2e/matrix.mjs` — generate, install, build, test
 and audit for real, in a temp directory, against the live registry:
 
-| Row         | Apps | Mobile       | Marketing | ui  | theming | codegen |
-| ----------- | ---- | ------------ | --------- | --- | ------- | ------- |
-| `minimal`   | 1    | —            | —         | —   | —       | —       |
-| `full`      | 1    | android      | 1         | yes | yes     | yes     |
-| `multi-app` | 2    | android, ios | 2         | yes | —       | —       |
-| `lib-only`  | —    | —            | —         | yes | yes     | —       |
+| Row         | Apps | Mobile       | Marketing | ui  | theming | codegen | auth    |
+| ----------- | ---- | ------------ | --------- | --- | ------- | ------- | ------- |
+| `minimal`   | 1    | —            | —         | —   | —       | —       | —       |
+| `full`      | 1    | android      | 1         | yes | yes     | yes     | cognito |
+| `multi-app` | 2    | android, ios | 2         | yes | —       | —       | —       |
+| `lib-only`  | —    | —            | —         | yes | yes     | —       | —       |
 
 The minimal row runs on every PR; the full matrix runs nightly alongside the
 advisory sweep. Nightly rather than on-merge because the failures it catches

@@ -6,12 +6,12 @@
  *   npm run bump -- minor
  *   npm run bump -- patch --dry-run
  *
- * There are seven places, and a release needs all seven: the version in each
- * of the five manifests — the root, the generator, `/create` and the two
+ * There are eight places, and a release needs all eight: the version in each
+ * of the six manifests — the root, the generator, `/create` and the three
  * runtime packages — the exact `@angular-capacitor-workspace/cli` pin in
  * `/create`, and the changelog's `## [Unreleased]` heading with the two link
  * definitions at the foot of the file. A release that ships an `ng update`
- * migration has an eighth: that migration's `version`.
+ * migration has a ninth: that migration's `version`.
  *
  * Every one of them is already checked, but late. `test/release-line.spec.ts`
  * catches a missed manifest on the next CI run; `check-release.mjs` catches an
@@ -34,7 +34,11 @@ const generator = 'packages/cli/package.json';
 const create = 'packages/create/package.json';
 // Released with the generator at its version: a workspace depends on `^` the
 // generator's version of each, so the two cannot be told apart.
-const runtime = ['packages/i18n/package.json', 'packages/theming/package.json'];
+const runtime = [
+  'packages/auth/package.json',
+  'packages/i18n/package.json',
+  'packages/theming/package.json',
+];
 const migrations = 'packages/cli/src/migrations.json';
 
 const { values, positionals } = parseArgs({

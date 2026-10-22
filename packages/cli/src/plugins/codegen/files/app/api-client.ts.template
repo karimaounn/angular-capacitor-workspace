@@ -1,6 +1,8 @@
 import type { HttpClient, HttpContext, HttpHeaders } from '@angular/common/http';
 import type { Observable } from 'rxjs';
 
+import { environment } from '<%= environmentFrom %>';
+
 /**
  * The single seam between generated API code and this application.
  *
@@ -26,17 +28,13 @@ export interface ApiRequest {
 }
 
 /**
- * Base URL for the API.
- *
- * A literal, so it shows up in a search for configuration that still needs
- * doing. Replace it with whatever your configuration story is — an
- * `InjectionToken`, an `environment.ts`, a runtime config fetch — or leave it
- * relative and let a reverse proxy own the question.
+ * Every request goes to `api.baseUrl`, the app's one setting for where its API
+ * is, in `src/environments/environment.ts` (and `environment.development.ts`
+ * for `ng serve`). Sign-in reads the same one to decide which requests carry
+ * the session's token, so set it there rather than here.
  */
-const BASE_URL = '<%= baseUrlPlaceholder %>';
-
 export const apiClient = <TData>(request: ApiRequest, http: HttpClient): Observable<TData> => {
-  return http.request<TData>(request.method, `${BASE_URL}${request.url}`, {
+  return http.request<TData>(request.method, `${environment.api.baseUrl}${request.url}`, {
     body: request.data,
     params: request.params,
     headers: request.headers,

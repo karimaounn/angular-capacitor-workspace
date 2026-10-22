@@ -19,7 +19,7 @@ permissions:
 
 # Every package names this repository, `release.yml` and the `npm` environment
 # as a trusted publisher on npmjs.com — `@angular-capacitor-workspace/cli`,
-# `/create`, and the runtime packages `/i18n` and `/theming`. That
+# `/create`, and the runtime packages `/auth`, `/i18n` and `/theming`. That
 # configuration and this file are one mechanism in two places: a rename on
 # either side, or a new package nobody configured, is a failed publish.
 
@@ -130,6 +130,7 @@ jobs:
           # resolves something that does not exist to seconds, and on the side
           # that fails loudly.
           for entry in \
+            @angular-capacitor-workspace/auth=./packages/auth/dist \
             @angular-capacitor-workspace/i18n=./packages/i18n/dist \
             @angular-capacitor-workspace/theming=./packages/theming/dist \
             @angular-capacitor-workspace/cli=./packages/cli \

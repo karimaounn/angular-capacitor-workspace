@@ -57,6 +57,10 @@ npm create @angular-capacitor-workspace@latest <directory> -- [options]
                           design system — the mechanism lives there.
   --default-locale <l>    source locale, the fallback for an untranslated
                           key (default: the first --i18n tag)
+  --auth cognito          sign-in screens, a session and route guards, with
+                          Amazon Cognito. Needs a design system.
+  --auth-methods <m>      ways to sign in, comma-separated (default: password,
+                          the only one so far)
   --with <pkg>            extra package to wire in (repeatable, comma-separated)
                         • cdk — overlays, a11y, drag & drop, virtual scrolling
                         • aria — WAI-ARIA patterns as headless directives

@@ -10,8 +10,10 @@ import {
   url,
   SchematicsException,
   type Rule,
+  type SchematicContext,
   type Tree,
 } from '@angular-devkit/schematics';
+import { addEnvironmentGroups, API_SETTINGS, environmentFrom } from '../../extend/environment';
 import { pins } from '../../policy/versions';
 import { updateJson } from '../../utils/json-file';
 import {
@@ -73,7 +75,7 @@ export function codegen(options: CodegenOptions = {}): Rule {
     return chain([
       mergeWith(rootTemplates, MergeStrategy.Overwrite),
       (host: Tree) => addOrvalEntries(host, apps, appRoots),
-      ...apps.map((name) => apiClientFor(tree, name, appRoots[name]!)),
+      ...apps.map((name) => apiClientFor(name, appRoots[name]!)),
       codegenScripts(apps, specEnvVar),
       codegenDependencies(),
       codegenGitignore(),
@@ -192,19 +194,25 @@ function applicationNames(tree: Tree): string[] {
  * mapping configured there. Running this schematic again — for an app added
  * later, say — is regeneration too.
  */
-function apiClientFor(tree: Tree, name: string, root: string): Rule {
-  const templates = apply(url('./files/app'), [
-    applyTemplates({
-      ...strings,
-      name,
-      // Left as a literal so it shows up in a search for configuration that
-      // still needs doing, rather than silently defaulting to localhost.
-      baseUrlPlaceholder: '/api',
-    }),
-    move(`/${root}/src/api`),
-    filter((path) => !tree.exists(path)),
-  ]);
-  return mergeWith(templates, MergeStrategy.Overwrite);
+function apiClientFor(name: string, root: string): Rule {
+  return (host: Tree, context: SchematicContext) => {
+    // Only for a client being written now: one an earlier release wrote has
+    // its own base URL, and is the user's.
+    if (!host.exists(`/${root}/src/api/api-client.ts`)) {
+      const manual = addEnvironmentGroups(host, name, [API_SETTINGS]);
+      if (manual) {
+        context.logger.warn(manual);
+      }
+    }
+    return mergeWith(
+      apply(url('./files/app'), [
+        applyTemplates({ ...strings, name, environmentFrom: environmentFrom('src/api') }),
+        move(`/${root}/src/api`),
+        filter((path) => !host.exists(path)),
+      ]),
+      MergeStrategy.Overwrite,
+    );
+  };
 }
 
 /**

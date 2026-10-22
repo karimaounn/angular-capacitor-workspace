@@ -1,0 +1,61 @@
+<h1>Sign in</h1>
+
+@if (notice) {
+  <p class="notice" role="status">{{ notice }}</p>
+}
+
+@if (challenge()?.name === 'NEW_PASSWORD_REQUIRED') {
+  <form aria-labelledby="replace-heading" (submit)="replacePassword($event)">
+    <h2 id="replace-heading">Choose a new password</h2>
+    <p class="muted">
+      Your account was set up with a temporary password. Choose your own to finish signing in.
+    </p>
+
+    <<%= prefix %>-new-password label="New password" [(password)]="newPassword" />
+
+    @if (action.error(); as error) {
+      <p class="error" role="alert">{{ error.message }}</p>
+    }
+    <<%= libPrefix %>-button type="submit" [loading]="action.busy()">Save and sign in</<%= libPrefix %>-button>
+  </form>
+} @else {
+  <form (submit)="signIn($event)">
+    <div class="field">
+      <label for="sign-in-email">Email address</label>
+      <input
+        #emailBox
+        id="sign-in-email"
+        type="email"
+        autocomplete="username"
+        required
+        [value]="email()"
+        (input)="email.set(emailBox.value)"
+      />
+    </div>
+
+    <div class="field">
+      <label for="sign-in-password">Password</label>
+      <input
+        #passwordBox
+        id="sign-in-password"
+        type="password"
+        autocomplete="current-password"
+        required
+        [value]="password()"
+        (input)="password.set(passwordBox.value)"
+      />
+    </div>
+
+    @if (action.error(); as error) {
+      <p class="error" role="alert">{{ error.message }}</p>
+    }
+    <<%= libPrefix %>-button type="submit" [loading]="action.busy()">Sign in</<%= libPrefix %>-button>
+  </form>
+
+  <p class="links">
+    <a routerLink="/auth/reset-password" [queryParams]="{ email: email() || null }">
+      Forgot your password?
+    </a>
+    <a routerLink="/auth/sign-up">Create an account</a>
+  </p>
+}

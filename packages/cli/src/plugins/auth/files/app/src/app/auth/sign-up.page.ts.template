@@ -1,0 +1,72 @@
+import { ChangeDetectionStrategy, Component, inject, signal, viewChild } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { AuthAction, Button, PasswordAuthService } from '<%= importName %>';
+import { NewPassword } from './new-password';
+
+/**
+ * Creating an account, then confirming it with the code the provider sends.
+ *
+ * Two steps on one screen, because the second only makes sense straight after
+ * the first. Sign-in sends an account that was never confirmed straight to
+ * the second (`?confirm=<email>`).
+ */
+@Component({
+  selector: '<%= prefix %>-sign-up-page',
+  imports: [RouterLink, Button, NewPassword],
+  templateUrl: './sign-up.page.html',
+  styleUrls: ['./auth-page.scss', './auth-form.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class SignUpPage {
+  private readonly auth = inject(PasswordAuthService);
+  private readonly router = inject(Router);
+  private readonly confirming = inject(ActivatedRoute).snapshot.queryParamMap.get('confirm');
+
+  protected readonly step = signal<'register' | 'confirm'>(
+    this.confirming === null ? 'register' : 'confirm',
+  );
+  protected readonly email = signal(this.confirming ?? '');
+  protected readonly password = signal('');
+  protected readonly code = signal('');
+
+  protected readonly action = new AuthAction();
+  private readonly chosen = viewChild(NewPassword);
+
+  protected register(event: Event): void {
+    event.preventDefault();
+    if (!this.chosen()?.valid()) {
+      return;
+    }
+    this.action.run(this.auth.signUp(this.email(), this.password()), (result) => {
+      if (result.userConfirmed) {
+        this.signInNext();
+        return;
+      }
+      this.step.set('confirm');
+      this.action.notice.set(this.sentTo(result.destination));
+    });
+  }
+
+  protected confirm(event: Event): void {
+    event.preventDefault();
+    this.action.run(this.auth.confirmSignUp(this.email(), this.code().trim()), () =>
+      this.signInNext(),
+    );
+  }
+
+  protected resend(): void {
+    this.action.run(this.auth.resendConfirmationCode(this.email()), ({ destination }) =>
+      this.action.notice.set(this.sentTo(destination)),
+    );
+  }
+
+  private sentTo(destination: string | null): string {
+    return `We sent a code to ${destination ?? 'your email address'}.`;
+  }
+
+  private signInNext(): void {
+    void this.router.navigate(['/auth/sign-in'], {
+      queryParams: { email: this.email(), notice: 'confirmed' },
+    });
+  }
+}

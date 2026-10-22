@@ -7,6 +7,7 @@ import { resolveCatalog } from './catalog';
 import { runGate, type GateResult, type Severity } from './gate';
 import { collectDeprecations, type Deprecation } from './gate/deprecations';
 import { formatDecisions } from './gate/report';
+import type { AuthMethod, AuthProvider } from './plugins/auth/plugin';
 import { requestedFeatures, requestedPlugins } from './plugins/registry';
 import { applyPolicy, type Manifest } from './policy/apply';
 import { POLICY } from './policy/advisories';
@@ -69,6 +70,17 @@ export interface GenerateOptions {
   i18n?: string[];
   /** Source locale, the fallback for an untranslated key. Defaults to `i18n[0]`. */
   defaultLocale?: string;
+  /**
+   * Sign-in, with this identity provider: screens in every app, a session,
+   * guards and an interceptor. Requires a design system, where its settings
+   * live.
+   */
+  auth?: AuthProvider | false;
+  /**
+   * How people sign in. Defaults to the provider's first method, `password`,
+   * which is the only one so far. Ignored without `auth`.
+   */
+  authMethods?: AuthMethod[];
   auditLevel?: Severity;
   /** Run `npm install` after the gate passes. */
   install?: boolean;

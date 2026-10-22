@@ -1,0 +1,36 @@
+import type { Routes } from '@angular/router';
+import { authGuard, guestGuard } from '<%= importName %>';
+
+/**
+ * The sign-in screens, under `/auth`.
+ *
+ * The screens are yours: restyle them, reword them, drop one you do not offer.
+ * The paths `src/config/auth.ts` names in `routes` are where the guards send
+ * people, so keep those two in step with these.
+ */
+export const AUTH_ROUTES: Routes = [
+  {
+    path: 'sign-in',
+    canActivate: [guestGuard],
+    title: 'Sign in',
+    loadComponent: () => import('./sign-in.page').then((m) => m.SignInPage),
+  },
+  {
+    path: 'sign-up',
+    canActivate: [guestGuard],
+    title: 'Create an account',
+    loadComponent: () => import('./sign-up.page').then((m) => m.SignUpPage),
+  },
+  {
+    path: 'reset-password',
+    canActivate: [guestGuard],
+    title: 'Reset your password',
+    loadComponent: () => import('./reset-password.page').then((m) => m.ResetPasswordPage),
+  },
+  {
+    path: 'account',
+    canActivate: [authGuard],
+    title: 'Your account',
+    loadComponent: () => import('./account.page').then((m) => m.AccountPage),
+  },
+];

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -28,12 +29,28 @@ export default defineConfig({
           // The runtime packages a generated workspace installs: Angular code,
           // tested with TestBed in a DOM, compiled just in time.
           name: 'angular',
-          include: ['packages/i18n/test/**/*.spec.ts', 'packages/theming/test/**/*.spec.ts'],
+          include: [
+            'packages/auth/test/**/*.spec.ts',
+            'packages/i18n/test/**/*.spec.ts',
+            'packages/theming/test/**/*.spec.ts',
+          ],
           environment: 'jsdom',
           // A document with an origin, which is what gives jsdom a
           // localStorage; an opaque one has none.
           environmentOptions: { jsdom: { url: 'http://localhost/' } },
           setupFiles: ['./vitest.angular-setup.ts'],
+        },
+        // A secondary entry point imports its primary by package name, as the
+        // published package resolves it. Here that is the primary's sources.
+        resolve: {
+          alias: [
+            {
+              find: /^@angular-capacitor-workspace\/auth$/,
+              replacement: fileURLToPath(
+                new URL('./packages/auth/src/public-api.ts', import.meta.url),
+              ),
+            },
+          ],
         },
       },
     ],

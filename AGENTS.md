@@ -34,14 +34,14 @@ years, against whatever version it has installed, and
 
 Every package publishes under the `@angular-capacitor-workspace` scope, from
 the directory named after it: `packages/create`, `packages/cli` (the
-generator), `packages/i18n` and `packages/theming`. The generator's binary keeps
+generator), `packages/auth`, `packages/i18n` and `packages/theming`. The generator's binary keeps
 the unscoped name `angular-capacitor-workspace`, because the generated npm
 scripts call it (`CLI` in `src/utils/commands.ts`). The unscoped packages that
 22.6.0 and earlier published as are deprecated: never publish to them.
 
 A plugin whose code runs in the workspace's apps ships it as a **runtime
-package** of its own, `packages/<id>` (`@angular-capacitor-workspace/i18n`,
-`/theming`), which the plugin installs into the workspace at `^` the
+package** of its own, `packages/<id>` (`@angular-capacitor-workspace/auth`,
+`/i18n`, `/theming`), which the plugin installs into the workspace at `^` the
 generator's version. The generator copies no runtime code; it writes the
 config, a binding file and the parts a workspace restyles.
 
@@ -54,7 +54,7 @@ start with `packages/`, with the package name, or name a root file.
   `mobile`. They never import a plugin. `app`, `marketing` and `ui-lib` end
   with `extendWithPlugins(name)`, which gives the new project the per-project
   half of every plugin the workspace already has.
-- **Plugins** extend projects: `theming`, `codegen`, `i18n`, `packages`. Each
+- **Plugins** extend projects: `theming`, `codegen`, `i18n`, `auth`, `packages`. Each
   is a directory in `src/plugins/` with its schematic (`index.ts`, `schema.json`,
   `files/`) and its definition (`plugin.ts`, a `WorkspacePlugin` from
   `src/plugins/types.ts`): what a `create` request turns into, its feature
@@ -64,21 +64,36 @@ start with `packages/`, with the package name, or name a root file.
 - **Extension points** (`src/extend/`) are the only way a plugin edits a host's
   files: `shell.ts` for an app's or site's frame, `site.ts` for a prerendered
   site, `design-system.ts` for the library. Each anchors on structure the host
-  templates keep (the `<header>`, the `providers` array, `</head>`, a DI token),
-  never on a line of a template. When a host template changes shape, the
-  extension point changes with it and no plugin does.
-- **Runtime packages** (`packages/i18n`, `packages/theming`) are Angular
-  libraries built with ng-packagr and published from their `dist/`, in
-  lockstep with the generator. Each has no dependency but `tslib`, peers
-  `@angular/core` and `@angular/common` on the Angular line, and takes the
-  workspace's settings through a provider function (`provideI18n`,
-  `provideTheme`). The plugin installs it with `buildOn` (root dependency,
+  templates keep (the `<header>`, the `providers` array, the `Routes` array,
+  `provideHttpClient(`, `</head>`, a DI token), never on a line of a template.
+  `environment.ts` is the one for an app's settings per build configuration:
+  `addEnvironmentGroups` adds a plugin's group of settings, at its defaults
+  and documented, to the plain `export const environment = { … }` in each
+  `environment*.ts`, where it is missing. Those files are the workspace's, and
+  the generator writes nothing beside them. A group is typed by what reads it
+  (the auth binding's `AuthEnvironment`), or, where its values have a shape
+  worth checking as they are typed, its default is a call to a function the
+  design system exports (`auth: cognito({ … })`, the group's `import`), so a
+  wrong field fails on its own line and the shape is never spelled out in the
+  file. Plugins share a group rather than each keeping a copy that has to
+  agree: codegen's client and auth both read `api.baseUrl` (`API_SETTINGS`).
+  When a host template changes shape, the extension point changes with it and
+  no plugin does.
+- **Runtime packages** (`packages/auth`, `packages/i18n`, `packages/theming`)
+  are Angular libraries built with ng-packagr and published from their
+  `dist/`, in lockstep with the generator. Each has no dependency but `tslib`,
+  peers `@angular/core` and `@angular/common` on the Angular line, and takes
+  the workspace's settings through a provider function (`provideAuth`,
+  `provideI18n`, `provideTheme`). `auth` also peers `@angular/router` and
+  `rxjs`, for its guards and interceptor, and keeps each identity provider's
+  backend in an entry point of its own (`auth/cognito`) whose SDK is an
+  optional peer. The plugin installs it with `buildOn` (root dependency,
   library peer) and writes a **binding** into the design system
-  (`lib/i18n/i18n.ts`, `lib/theme/theme.ts`): generator-owned, rewritten on
-  every run, it passes the config to the provider, augments the package's
-  `Register` interface so `Locale` and `PaletteId` are the config's unions,
-  and re-exports the package under the names apps import from the design
-  system.
+  (`lib/auth/auth.ts`, `lib/i18n/i18n.ts`, `lib/theme/theme.ts`):
+  generator-owned, rewritten on every run, it passes the config to the
+  provider, augments the package's `Register` interface where it has one so
+  `Locale` and `PaletteId` are the config's unions, and re-exports the package
+  under the names apps import from the design system.
 
 ## The question every change must answer
 
@@ -221,7 +236,8 @@ A feature that extends the projects a workspace has, rather than creating one.
   "Grow it".
 - Its README section and its house rules from its own schematic, through
   `appendSection(tree, README_MD, …)` and `appendSection(tree, '/AGENTS.md', …)`.
-- Its own spec, as `test/i18n.spec.ts` and `test/theming.spec.ts` are: it
+- Its own spec, as `test/auth.spec.ts`, `test/i18n.spec.ts` and
+  `test/theming.spec.ts` are: it
   reaches a project generated after it, it is idempotent, and it keeps edits to
   the files it handed over.
 - Runtime code goes in a runtime package, never in its templates (see
@@ -241,7 +257,8 @@ Code that runs in a workspace's apps, owned by a plugin. To add one:
   `src/utils/own-package.ts` and in `scripts/pack-self.mjs`, `runtime` in
   `scripts/bump.mjs`, `RUNTIME` in `test/release-line.spec.ts`, and the
   publish loop in `.github/workflows/release.yml`, ahead of the generator. Its
-  `tsc -p` in the root `typecheck` script.
+  `tsc -p` in the root `typecheck` script, and its `test/` in the `angular`
+  project's `include` in `vitest.config.mts`.
 - On npmjs.com, a trusted publisher for it, the way the others have one: the
   first publish fails without.
 - In the plugin: `buildOn(tree, design, RUNTIME_PACKAGES.<id>, runtimeSpec)`,
@@ -252,13 +269,54 @@ To change one:
 
 - Its public API is semver: within a line, add, never rename or remove. A
   workspace's binding re-exports it by name, and an earlier binding has to
-  keep compiling against a newer package.
+  keep compiling against a newer package. The one exception is `auth`'s
+  backend contract (`packages/auth/src/backend.ts`): only the package's own
+  entry points implement it, at the same version, so it can change in any
+  minor. The services in front of it cannot.
 - A name the binding should export is a change to the binding template, which
   reaches existing workspaces on their next `ng generate …:<plugin>`; an
   `ng update` migration can rewrite it safely, since it is generator-owned.
 - Tests in `packages/<id>/test/`, through `TestBed` in jsdom (the `angular`
   Vitest project, `vitest.angular-setup.ts`). Only the `full` matrix row
   builds an app against it.
+
+### An identity provider (`--auth`)
+
+A provider is a backend in `@angular-capacitor-workspace/auth` and an entry in
+the plugin's table. Nothing else in the plugin, and nothing an app imports,
+changes.
+
+- `packages/auth/<id>/`: an `ng-package.json` (a secondary entry point) and
+  `src/public-api.ts` exporting `with<Provider>(config): AuthBackend`. It
+  provides `SESSION_BACKEND` and the token of each method the provider offers
+  (`PASSWORD_BACKEND`, `ACCOUNT_BACKEND`); a method it leaves out fails as
+  `NotSupported`. Map the SDK's failures onto `AuthErrorCode`, and keep its
+  types off the entry point's exports, and load the SDK with `import()` (see
+  "An auth backend loads its SDK" under Hidden couplings). An app with no
+  settings yet has to start signed out and fail sign-in as `NotConfigured`, as
+  Cognito's does.
+- Its SDK as an optional peer in `packages/auth/package.json`
+  (`peerDependenciesMeta`), as a dev dependency at the root, and pinned in
+  `src/policy/versions.ts`. Run the gate on it (`npm run create -- ../try
+--ui-lib --app a --auth <id> --dry-run`).
+- `packages/auth/<id>/src/**` in `tsconfig.json`'s and `tsconfig.lib.json`'s
+  `include`, and a spec in `packages/auth/test/`.
+- Its row in `AUTH_PROVIDERS` (`src/plugins/auth/plugin.ts`): the entry point,
+  the backend's factory, its settings function (which the entry point exports,
+  typed and documented, and the binding re-exports for the environments to
+  call: `auth: cognito({ … })`), that function's argument before anything is
+  set, as the plugin writes it into each environment, the SDK, and the methods
+  its backend implements. The `provider` enum in `src/plugins/auth/schema.json`.
+- `--auth`'s line in `USAGE` and the create README. `ask()` offers it by
+  itself, along with its methods.
+
+A sign-in method (`password` today) is the same list one level down: an entry
+in `AUTH_METHODS`, the `methods` enum in `src/plugins/auth/schema.json`, and
+the `methods` of each provider whose backend implements it. Add it only with
+its backend contract, its screens and the schematic writing them for
+workspaces whose `src/config/auth.ts` lists it: `create`, `--auth-methods` and
+the config offer whatever is listed, and a method offered before it works
+generates a workspace that cannot sign in by it.
 
 ### A new host schematic
 
@@ -305,7 +363,9 @@ Tokens today:
 
 - Hosts, from both: `app`, `marketing`, `ui-lib`, `storybook`,
   `e2e:playwright`, `mobile`, `mobile:<platform>`.
-- Plugins, from both: `theming`, `codegen`, `i18n`, `pkg:<id>`.
+- Plugins, from both: `theming`, `codegen`, `i18n`, `auth`, `auth:<provider>`,
+  `pkg:<id>`. `auth:<provider>` is read off the design system's
+  `src/config/auth.ts`, never off the provider's SDK in `package.json`.
 - From `inferFeatures()` only: `ssr:server`, `animations`. Generation never
   produces either.
 
@@ -407,22 +467,42 @@ None of these is caught by the compiler. The ones marked _tested_ fail
   under another name it declares a new module, and `Locale` falls back to
   `string`.
 - **A binding's exports** are the names the app and site templates import from
-  the design system (`TranslationService`, `LOCALES`, `provideTheme`, …).
-  Only the matrix compiles those imports.
+  the design system (`TranslationService`, `LOCALES`, `provideTheme`, …), and
+  the auth screens' and environments' (`AuthSession`, `AUTH_CONFIG`,
+  `provideAuthentication`, `cognito`, …). Only the matrix compiles those
+  imports.
+- **The auth routes** are named three times: `routes` in the design system's
+  `src/config/auth.ts` (where the guards send people), the paths in each app's
+  `auth/auth.routes.ts`, and the `routerLink`s in the screens and the header's
+  `account-link.ts`, which say `/auth/…`. The route the plugin adds to
+  `app.routes.ts` mounts them at `auth`.
+- **A provider's empty settings**, `emptySettings` in `AUTH_PROVIDERS`, are
+  written into each environment as the argument of its settings function
+  (`settings`, `cognito`), and must satisfy that function's parameter. Only
+  the `full` matrix row compiles them.
+- **An auth backend loads its SDK with `import()`**, never a static import
+  (`loadCognitoSdk` in `packages/auth/cognito/src/sdk.ts`). The design
+  system's binding imports the backend's entry point, so a static import would
+  put the SDK in every bundle that imports the design system, and a dev server
+  does not tree-shake it out. Cognito's SDK also needs Node's `global`, which
+  the loader defines first; a page that loaded it any other way would throw
+  before Angular starts. Only the `full` matrix row's e2e suite boots one.
 - **The locale key and negotiation** live in two places: `initialLocale()` in
   `packages/i18n/src/translation.ts`, reading the key the binding passes, and
   the no-FOUC script in `noFoucScript` (`plugins/i18n/index.ts`), which writes
   the same `<prefix>.locale`.
-- **A design system's `src/config/` files** (`i18n.ts`, `palettes.ts`,
-  `contrast.ts`) are read by `readConfigLiteral` (`src/utils/config-file.ts`),
+- **A design system's `src/config/` files** (`auth.ts`, `i18n.ts`,
+  `palettes.ts`, `contrast.ts`) are read by `readConfigLiteral` (`src/utils/config-file.ts`),
   which evaluates the literal after `export const <NAME> =` and nothing else.
   Their templates must keep that shape and plain values, and say so at their
-  top; `installedI18n` (`plugins/i18n/plugin.ts`) and `check-contrast` name
-  `I18N`, `PALETTES` and `CONTRAST`. A config that cannot be read fails with
+  top; `installedI18n` (`plugins/i18n/plugin.ts`), `installedAuth`
+  (`plugins/auth/plugin.ts`) and `check-contrast` name `I18N`, `AUTH`,
+  `PALETTES` and `CONTRAST`. A config that cannot be read fails with
   what it has to be (_tested_ in `i18n.spec.ts` and `cli.spec.ts`).
 - **The anchors of the extension points** live in the host templates:
   `</header>` in each shell's `app.html`, `providers: [` in its `app.spec.ts`,
-  `</head>` in `index.html`, the app starter page as `<section>`s at column 0
+  `routes: Routes = [` in the app's `app.routes.ts`, `</head>` in
+  `index.html`, the app starter page as `<section>`s at column 0
   ending in "Next", the `STARTER_COPY` token in its `pages/starter-copy.ts`,
   `PAGE_META_EXTENSIONS` in the site's `seo/page-meta.ts` and
   the `PageMetaStrategy` import beside it in `app.config.ts`, and `siteBuild()`
@@ -490,7 +570,9 @@ None of these is caught by the compiler. The ones marked _tested_ fail
     `orval.config.ts`, `ngsw-config.json`, a design system's `src/config/`) are written
     only when missing (`onlyNew`, or a `!tree.exists(path)` filter)
   - a shared file that gains an entry per project adds the missing entry and
-    leaves the rest alone (`addOrvalEntries`, `appendToScript`)
+    leaves the rest alone (`addOrvalEntries`, `appendToScript`), and so does
+    an app's environment, which gains a group per plugin that needs settings,
+    at its defaults (`addEnvironmentGroups`)
 - **Plugins go through `src/extend/`.** A plugin never reads or rewrites a line
   of a host template it expects to be there, and a host never imports a plugin.
   See [Hosts and plugins](#hosts-and-plugins).
@@ -553,31 +635,31 @@ None of these is caught by the compiler. The ones marked _tested_ fail
 `dist/collection.json` and run against real `@schematics/angular` output
 (`baseWorkspace()`), never a hand-built tree.
 
-| Changed                                     | Test in                                                                                                      |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| policy entries, `applyPolicy`, version pins | `test/policy.spec.ts`                                                                                        |
-| `doctor`, `inferFeatures`                   | `test/doctor.spec.ts`                                                                                        |
-| gate, acceptances in `audit`                | `test/gate.spec.ts`                                                                                          |
-| catalog                                     | `test/catalog.spec.ts`, plus `test/schematics.spec.ts` for the wiring                                        |
-| a host schematic, its extension anchors     | `test/schematics.spec.ts`                                                                                    |
-| a plugin                                    | its own spec: `test/i18n.spec.ts`, `test/theming.spec.ts`; codegen and packages in `test/schematics.spec.ts` |
-| the registry, `src/extend/`                 | `test/plugins.spec.ts`                                                                                       |
-| a workspace command in `src/cli/`           | `test/cli.spec.ts`; the runner in `test/schematics.spec.ts`                                                  |
-| a runtime package                           | `packages/<id>/test/`, the `angular` Vitest project                                                          |
-| manifest versions, licence copies           | `test/release-line.spec.ts`                                                                                  |
-| a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts`                                      |
-| CLI args, prompts                           | `packages/create/test/`                                                                                      |
-| the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                                                        |
+| Changed                                     | Test in                                                                                                                           |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| policy entries, `applyPolicy`, version pins | `test/policy.spec.ts`                                                                                                             |
+| `doctor`, `inferFeatures`                   | `test/doctor.spec.ts`                                                                                                             |
+| gate, acceptances in `audit`                | `test/gate.spec.ts`                                                                                                               |
+| catalog                                     | `test/catalog.spec.ts`, plus `test/schematics.spec.ts` for the wiring                                                             |
+| a host schematic, its extension anchors     | `test/schematics.spec.ts`                                                                                                         |
+| a plugin                                    | its own spec: `test/auth.spec.ts`, `test/i18n.spec.ts`, `test/theming.spec.ts`; codegen and packages in `test/schematics.spec.ts` |
+| the registry, `src/extend/`                 | `test/plugins.spec.ts`                                                                                                            |
+| a workspace command in `src/cli/`           | `test/cli.spec.ts`; the runner in `test/schematics.spec.ts`                                                                       |
+| a runtime package                           | `packages/<id>/test/`, the `angular` Vitest project                                                                               |
+| manifest versions, licence copies           | `test/release-line.spec.ts`                                                                                                       |
+| a migration, `src/migrations/edit.ts`       | `test/migrations.spec.ts`; its `version` in `test/release-line.spec.ts`                                                           |
+| CLI args, prompts                           | `packages/create/test/`                                                                                                           |
+| the deprecation rule and issue              | `e2e/test/*.spec.mjs`                                                                                                             |
 
 Templates are compiled only by the matrix, which uses the live registry and
 takes minutes per row:
 
-| Row         | Compiles                                                                                                  |
-| ----------- | --------------------------------------------------------------------------------------------------------- |
-| `minimal`   | one app (runs on every PR)                                                                                |
-| `full`      | mobile, marketing, ui-lib, theming, codegen, i18n (en, fr, ar), `--with aria`, Storybook, every e2e suite |
-| `multi-app` | two apps, two sites, ports, per-project scripts, a design system without theming                          |
-| `lib-only`  | the library on its own, with theming, which is what `ng add` produces                                     |
+| Row         | Compiles                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `minimal`   | one app (runs on every PR)                                                                                                |
+| `full`      | mobile, marketing, ui-lib, theming, codegen, i18n (en, fr, ar), auth (cognito), `--with aria`, Storybook, every e2e suite |
+| `multi-app` | two apps, two sites, ports, per-project scripts, a design system without theming                                          |
+| `lib-only`  | the library on its own, with theming, which is what `ng add` produces                                                     |
 
 Run `node e2e/matrix.mjs --row <row>` for the rows your change touches. To see a
 change in a real workspace, run `npm run create -- ../ws <flags>`.

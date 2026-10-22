@@ -1,0 +1,91 @@
+// The sign-in screens' fields and messages, shared with the password fields.
+// Native inputs rather than the design system's field, because a password
+// manager needs `autocomplete` on each one to know which password is which.
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+
+  label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+  }
+
+  input {
+    min-block-size: 44px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    color: var(--text);
+    font: inherit;
+
+    &:focus-visible {
+      outline: 2px solid var(--accent-strong, var(--accent));
+      outline-offset: 0;
+    }
+
+    &[aria-invalid='true'] {
+      border-color: var(--danger-strong, var(--danger));
+    }
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+// Under a field: its rules, or what is wrong with it. The words are the
+// signal; the colour only repeats them.
+.hint {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+
+  &.invalid {
+    color: var(--danger-strong, var(--danger));
+    font-weight: 500;
+  }
+}
+
+ul.hint {
+  padding-inline-start: var(--space-4);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.error,
+.notice {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.error {
+  border: 1px solid var(--danger-strong, var(--danger));
+  color: var(--danger-strong, var(--danger));
+  font-weight: 500;
+}
+
+.notice {
+  border: 1px solid var(--border-strong);
+}
+
+.linkish {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}

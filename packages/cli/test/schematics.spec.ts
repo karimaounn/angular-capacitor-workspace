@@ -653,6 +653,10 @@ describe('app, in a workspace that already has a design system', () => {
     // spec, and a starter page that is a list of sections ending in "Next".
     expect(tree.readContent('/projects/shop/web/src/app/app.html')).toContain('</header>');
     expect(tree.readContent('/projects/shop/web/src/app/app.spec.ts')).toContain('providers: [');
+    // The route table, which the auth plugin adds its screens to.
+    expect(tree.readContent('/projects/shop/web/src/app/app.routes.ts')).toMatch(
+      /export const routes: Routes = \[/,
+    );
     const page = tree.readContent('/projects/shop/web/src/app/pages/home.page.html');
     expect(page.lastIndexOf('\n<section')).toBe(
       page.indexOf('\n<section aria-labelledby="next-heading"'),
@@ -1414,6 +1418,15 @@ describe('codegen', () => {
     expect(tree.files).toContain('/projects/shop/web/src/api/api-client.ts');
   });
 
+  it("sends the client's requests to the app's one API address", () => {
+    const client = tree.readContent('/projects/shop/web/src/api/api-client.ts');
+    expect(client).toContain("import { environment } from '../environments/environment';");
+    expect(client).toContain('`${environment.api.baseUrl}${request.url}`');
+    expect(tree.readContent('/projects/shop/web/src/environments/environment.ts')).toContain(
+      "  api: { baseUrl: '/api' },",
+    );
+  });
+
   it('reads the spec location from the environment rather than committing it', () => {
     expect(tree.readContent('/orval.config.ts')).toContain("process.env['OPENAPI_SPEC']");
   });
@@ -1500,12 +1513,31 @@ describe('codegen', () => {
     // schematic again — for an app added later — is regeneration too.
     const first = await codegenOnce();
     const path = '/projects/shop/web/src/api/api-client.ts';
-    const edited = edit(first, path, "'/api'", "'https://api.acme.example'");
+    const edited = edit(first, path, 'body: request.data,', 'body: wrap(request.data),');
+    const address = '/projects/shop/web/src/environments/environment.ts';
+    const moved = edit(
+      first,
+      address,
+      "api: { baseUrl: '/api' }",
+      "api: { baseUrl: 'https://api.acme.example' }",
+    );
     const config = first.readContent('/orval.config.ts');
 
     const again = await runner().runSchematic('codegen', { apps: ['shop'] }, first);
     expect(again.readContent(path)).toBe(edited);
+    expect(again.readContent(address)).toBe(moved);
     expect(again.readContent('/orval.config.ts')).toBe(config);
+  });
+
+  it('gives an api-client.ts an earlier release wrote no environment', async () => {
+    // That client holds its own BASE_URL, and is the user's; a setting it does
+    // not read would be a second address that looks like the one in use.
+    const first = await codegenOnce();
+    for (const file of first.files.filter((path) => path.includes('/src/environments/'))) {
+      first.delete(file);
+    }
+    const again = await runner().runSchematic('codegen', { apps: ['shop'] }, first);
+    expect(again.exists('/projects/shop/web/src/environments/environment.ts')).toBe(false);
   });
 
   it('adds an app to the config, keeping the entries and edits already there', async () => {

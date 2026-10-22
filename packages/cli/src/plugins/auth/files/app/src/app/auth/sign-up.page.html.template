@@ -1,0 +1,59 @@
+<h1>Create an account</h1>
+
+@if (step() === 'register') {
+  <form (submit)="register($event)">
+    <div class="field">
+      <label for="sign-up-email">Email address</label>
+      <input
+        #emailBox
+        id="sign-up-email"
+        type="email"
+        autocomplete="username"
+        required
+        [value]="email()"
+        (input)="email.set(emailBox.value)"
+      />
+    </div>
+
+    <<%= prefix %>-new-password [(password)]="password" />
+
+    @if (action.error(); as error) {
+      <p class="error" role="alert">{{ error.message }}</p>
+    }
+    <<%= libPrefix %>-button type="submit" [loading]="action.busy()">Create account</<%= libPrefix %>-button>
+  </form>
+
+  <p class="links">
+    <a routerLink="/auth/sign-in">Already have an account? Sign in</a>
+  </p>
+} @else {
+  <form aria-labelledby="confirm-heading" (submit)="confirm($event)">
+    <h2 id="confirm-heading">Confirm your email address</h2>
+    @if (action.notice(); as notice) {
+      <p class="notice" role="status">{{ notice }}</p>
+    } @else {
+      <p class="muted">Enter the code we sent to {{ email() }}.</p>
+    }
+
+    <div class="field">
+      <label for="sign-up-code">Code</label>
+      <input
+        #codeBox
+        id="sign-up-code"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        required
+        [value]="code()"
+        (input)="code.set(codeBox.value)"
+      />
+    </div>
+
+    @if (action.error(); as error) {
+      <p class="error" role="alert">{{ error.message }}</p>
+    }
+    <<%= libPrefix %>-button type="submit" [loading]="action.busy()">Confirm</<%= libPrefix %>-button>
+    <button type="button" class="linkish" [disabled]="action.busy()" (click)="resend()">
+      Send a new code
+    </button>
+  </form>
+}

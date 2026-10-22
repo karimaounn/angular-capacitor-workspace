@@ -7,6 +7,8 @@ import type { GenerateOptions } from '../src/api';
 import {
   addBootScript,
   addHeaderControl,
+  addHttpInterceptor,
+  addRoute,
   addShellTestProvider,
   addStarterSection,
 } from '../src/extend/shell';
@@ -16,6 +18,7 @@ import {
   requestedFeatures,
   requestedPlugins,
 } from '../src/plugins/registry';
+import { addEnvironmentGroups, API_SETTINGS, environmentFrom } from '../src/extend/environment';
 import { treeView } from '../src/utils/workspace-view';
 
 const collection = join(__dirname, '..', 'dist', 'collection.json');
@@ -55,6 +58,8 @@ const EVERYTHING: GenerateOptions = {
   uiLib: 'ui',
   codegen: 'orval',
   i18n: ['en', 'fr'],
+  auth: 'cognito',
+  authMethods: ['password'],
   packages: ['aria'],
 };
 
@@ -74,6 +79,7 @@ describe('the plugin registry', () => {
       'theming',
       'codegen',
       'i18n',
+      'auth',
       'packages',
     ]);
     expect(requestedPlugins({ directory: 'ws', apps: [{ name: 'shop' }] })).toEqual([]);
@@ -115,11 +121,29 @@ describe('the plugin registry', () => {
       expect(detectedFeatures(view)).toEqual(requestedFeatures(EVERYTHING));
     });
 
+    it('gives the API client and sign-in one API address', () => {
+      const app = '/projects/shop/web/src';
+      expect(tree.readContent(`${app}/api/api-client.ts`)).toContain(
+        '`${environment.api.baseUrl}${request.url}`',
+      );
+      expect(tree.readContent(`${app}/app/app.config.ts`)).toContain(
+        'provideAuthentication(environment)',
+      );
+      // One group, whichever plugin asked for it first.
+      const environment = tree.readContent(`${app}/environments/environment.ts`);
+      expect(environment.match(/^  api: /gm)).toHaveLength(1);
+      expect(environment).toMatch(/^  auth: cognito\(/m);
+      expect(environment).toContain("import { cognito } from 'ui';");
+    });
+
     it('puts the plugins’ header controls in registry order', () => {
       const header = tree.readContent('/projects/shop/web/src/app/app.html');
       expect(header.indexOf('<ui-theme-toggle />')).toBeGreaterThan(-1);
       expect(header.indexOf('<ui-theme-toggle />')).toBeLessThan(
         header.indexOf('<ui-language-picker />'),
+      );
+      expect(header.indexOf('<ui-language-picker />')).toBeLessThan(
+        header.indexOf('<app-account-link />'),
       );
       // One import from the design system, however many plugins import from it.
       expect(tree.readContent('/projects/shop/web/src/app/app.ts')).toContain(
@@ -136,6 +160,7 @@ describe('the plugin registry', () => {
         ['marketing', { name: 'site' }],
         ['theming', {}],
         ['i18n', { locales: ['en', 'fr'] }],
+        ['auth', { provider: 'cognito' }],
         ['packages', { packages: ['aria'] }],
         ['app', { name: 'shop' }],
       ]);
@@ -144,6 +169,7 @@ describe('the plugin registry', () => {
         'app/app.ts',
         'app/app.spec.ts',
         'app/app.config.ts',
+        'app/app.routes.ts',
         'app/pages/home.page.html',
         'app/pages/home.page.ts',
         'index.html',
@@ -269,5 +295,323 @@ describe('the shell extension points', () => {
     expect(html).toContain('<script>two</script>');
     expect(html).not.toContain('<script>one</script>');
     expect(html.split('<!-- x:boot').length - 1).toBe(1);
+  });
+
+  describe('addRoute', () => {
+    const route = {
+      key: './a/a.routes',
+      expression: "{\n  path: 'a',\n  loadChildren: () => import('./a/a.routes'),\n}",
+    };
+
+    it("fills Angular's empty table", () => {
+      const tree = shell({
+        'app/app.routes.ts':
+          "import { Routes } from '@angular/router';\n\nexport const routes: Routes = [];\n",
+      });
+      expect(addRoute(tree, 'shop', route)).toBe(true);
+      expect(addRoute(tree, 'shop', route)).toBe(true);
+      expect(tree.readText('/projects/shop/src/app/app.routes.ts')).toBe(
+        "import { Routes } from '@angular/router';\n\n" +
+          'export const routes: Routes = [\n' +
+          '  {\n' +
+          "    path: 'a',\n" +
+          "    loadChildren: () => import('./a/a.routes'),\n" +
+          '  },\n' +
+          '];\n',
+      );
+    });
+
+    it('goes after the routes there are, or before a wildcard', () => {
+      const filled = shell({
+        'app/app.routes.ts':
+          "export const routes: Routes = [\n  { path: '', component: Home }\n];\n",
+      });
+      addRoute(filled, 'shop', route);
+      expect(filled.readText('/projects/shop/src/app/app.routes.ts')).toBe(
+        'export const routes: Routes = [\n' +
+          "  { path: '', component: Home },\n" +
+          "  {\n    path: 'a',\n    loadChildren: () => import('./a/a.routes'),\n  },\n" +
+          '];\n',
+      );
+
+      const wildcard = shell({
+        'app/app.routes.ts':
+          "export const routes: Routes = [\n  { path: '', component: Home },\n  { path: '**', redirectTo: '' },\n];\n",
+      });
+      addRoute(wildcard, 'shop', route);
+      const routes = wildcard.readText('/projects/shop/src/app/app.routes.ts');
+      expect(routes.indexOf("path: 'a'")).toBeLessThan(routes.indexOf("path: '**'"));
+      expect(routes.indexOf("path: 'a'")).toBeLessThan(routes.indexOf("path: ''"));
+    });
+
+    it('says so when there is no table to add to', () => {
+      const tree = shell({ 'app/app.routes.ts': 'export const routes = makeRoutes();\n' });
+      expect(addRoute(tree, 'shop', route)).toBe(false);
+      expect(addRoute(shell({}), 'shop', route)).toBe(false);
+    });
+  });
+
+  describe('addHttpInterceptor', () => {
+    const interceptor = {
+      symbol: 'authInterceptor',
+      import: "import { authInterceptor } from 'ui';",
+    };
+    const config = (providers: string, imports = '') =>
+      "import { ApplicationConfig } from '@angular/core';\n" +
+      imports +
+      "import { provideRouter } from '@angular/router';\n\n" +
+      'export const appConfig: ApplicationConfig = {\n' +
+      `  providers: [${providers}],\n` +
+      '};\n';
+    const read = (tree: HostTree) => tree.readText('/projects/shop/src/app/app.config.ts');
+
+    it('provides HttpClient with the interceptor when the app has none', () => {
+      const tree = shell({ 'app/app.config.ts': config('provideRouter(routes)') });
+      addHttpInterceptor(tree, 'shop', interceptor);
+      addHttpInterceptor(tree, 'shop', interceptor);
+      const source = read(tree);
+      expect(source).toContain('provideHttpClient(withInterceptors([authInterceptor])),');
+      expect(source).toContain(
+        "import { provideHttpClient, withInterceptors } from '@angular/common/http';",
+      );
+      expect(source).toContain("import { authInterceptor } from 'ui';");
+      expect(source.split('authInterceptor]').length - 1).toBe(1);
+    });
+
+    it("adds interceptors to the app's own provideHttpClient, never a second one", () => {
+      const http = "import { provideHttpClient, withFetch } from '@angular/common/http';\n";
+      const bare = shell({ 'app/app.config.ts': config('provideHttpClient()', http) });
+      addHttpInterceptor(bare, 'shop', interceptor);
+      expect(read(bare)).toContain('provideHttpClient(withInterceptors([authInterceptor]))');
+      expect(read(bare)).toContain(
+        "import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';",
+      );
+
+      const fetch = shell({ 'app/app.config.ts': config('provideHttpClient(withFetch())', http) });
+      addHttpInterceptor(fetch, 'shop', interceptor);
+      expect(read(fetch)).toContain(
+        'provideHttpClient(withFetch(), withInterceptors([authInterceptor]))',
+      );
+      expect(read(fetch).split('provideHttpClient(').length - 1).toBe(1);
+
+      const listed = shell({
+        'app/app.config.ts': config(
+          'provideHttpClient(withInterceptors([logging]))',
+          "import { provideHttpClient, withInterceptors } from '@angular/common/http';\n",
+        ),
+      });
+      addHttpInterceptor(listed, 'shop', interceptor);
+      expect(read(listed)).toContain('withInterceptors([logging, authInterceptor])');
+    });
+  });
+});
+
+describe('the environment extension point', () => {
+  const root = '/projects/shop/src/environments';
+  const auth = {
+    key: 'auth',
+    doc: 'Where the app signs people in.',
+    defaults: "{ pool: '' }",
+  };
+
+  function app(configurations: Record<string, unknown> = {}): HostTree {
+    const tree = new HostTree();
+    tree.create(
+      '/angular.json',
+      JSON.stringify({
+        projects: {
+          shop: {
+            projectType: 'application',
+            root: 'projects/shop',
+            architect: {
+              build: { configurations: { production: {}, development: {}, ...configurations } },
+            },
+          },
+        },
+      }),
+    );
+    return tree;
+  }
+
+  it('gives the app its environments, and swaps them for ng serve', () => {
+    const tree = app();
+    expect(addEnvironmentGroups(tree, 'shop', [API_SETTINGS])).toBeUndefined();
+
+    for (const name of ['environment.ts', 'environment.development.ts']) {
+      expect(tree.readText(`${root}/${name}`), name).toContain(
+        'export const environment = {\n' +
+          '  /**\n' +
+          "   * Where the app's API is: '/api' behind a reverse proxy, or a URL such as\n" +
+          "   * 'https://api.example.com/v1'. The API client sends its requests here, and\n" +
+          "   * sign-in sends the session's token to requests under it and to no others.\n" +
+          '   */\n' +
+          "  api: { baseUrl: '/api' },\n" +
+          '};\n',
+      );
+      // Nothing for the generator to own beside them.
+      expect(tree.readText(`${root}/${name}`), name).not.toContain('import');
+    }
+    expect(tree.getDir(root).subfiles).toEqual(['environment.ts', 'environment.development.ts']);
+    const build = JSON.parse(tree.readText('/angular.json')).projects.shop.architect.build;
+    expect(build.configurations.development.fileReplacements).toEqual([
+      {
+        replace: 'projects/shop/src/environments/environment.ts',
+        with: 'projects/shop/src/environments/environment.development.ts',
+      },
+    ]);
+    expect(build.configurations.production.fileReplacements).toBeUndefined();
+  });
+
+  it('adds a group after what the environment has, and leaves what it has alone', () => {
+    const tree = app();
+    tree.create(
+      `${root}/environment.ts`,
+      'export const environment = {\n' +
+        "  api: { baseUrl: 'https://api.example.com' }, // ours\n" +
+        "  flags: { 'auth': true, nested: { auth: 1 } }\n" +
+        '} as const;\n',
+    );
+    addEnvironmentGroups(tree, 'shop', [API_SETTINGS, auth]);
+
+    // Its own keys only: `auth` inside a value is not the group.
+    expect(tree.readText(`${root}/environment.ts`)).toBe(
+      'export const environment = {\n' +
+        "  api: { baseUrl: 'https://api.example.com' }, // ours\n" +
+        "  flags: { 'auth': true, nested: { auth: 1 } },\n" +
+        '  /**\n' +
+        '   * Where the app signs people in.\n' +
+        '   */\n' +
+        "  auth: { pool: '' },\n" +
+        '} as const;\n',
+    );
+  });
+
+  it("adds to Angular's own empty environment", () => {
+    const tree = app();
+    tree.create(`${root}/environment.ts`, 'export const environment = {};\n');
+    addEnvironmentGroups(tree, 'shop', [auth]);
+    expect(tree.readText(`${root}/environment.ts`)).toBe(
+      'export const environment = {\n' +
+        '  /**\n' +
+        '   * Where the app signs people in.\n' +
+        '   */\n' +
+        "  auth: { pool: '' },\n" +
+        '};\n',
+    );
+  });
+
+  it('adds to every environment a build configuration swaps in', () => {
+    const tree = app({
+      staging: {
+        fileReplacements: [
+          {
+            replace: 'projects/shop/src/environments/environment.ts',
+            with: 'projects/shop/src/environments/environment.staging.ts',
+          },
+        ],
+      },
+    });
+    tree.create(`${root}/environment.staging.ts`, 'export const environment = {};\n');
+    addEnvironmentGroups(tree, 'shop', [auth]);
+    expect(tree.readText(`${root}/environment.staging.ts`)).toContain("auth: { pool: '' },");
+  });
+
+  it('changes nothing when run again', () => {
+    const tree = app();
+    addEnvironmentGroups(tree, 'shop', [API_SETTINGS, auth]);
+    const ours = tree
+      .readText(`${root}/environment.ts`)
+      .replace("baseUrl: '/api'", "baseUrl: 'https://api.example.com'");
+    tree.overwrite(`${root}/environment.ts`, ours);
+    const development = tree.readText(`${root}/environment.development.ts`);
+
+    expect(addEnvironmentGroups(tree, 'shop', [API_SETTINGS, auth])).toBeUndefined();
+    expect(tree.readText(`${root}/environment.ts`)).toBe(ours);
+    expect(tree.readText(`${root}/environment.development.ts`)).toBe(development);
+    const replacements = JSON.parse(tree.readText('/angular.json')).projects.shop.architect.build
+      .configurations.development.fileReplacements;
+    expect(replacements).toHaveLength(1);
+  });
+
+  it('leaves an environment it cannot read alone, and says what to add', () => {
+    const tree = app();
+    const own = 'export const environment = loadSettings();\n';
+    const spread = "import { base } from './base';\n\nexport const environment = { ...base };\n";
+    tree.create(`${root}/environment.ts`, own);
+    tree.create(`${root}/environment.development.ts`, spread);
+
+    const manual = addEnvironmentGroups(tree, 'shop', [API_SETTINGS, auth]);
+    expect(manual).toContain(
+      'projects/shop/src/environments/environment.ts: it is not `export const environment = { … }`',
+    );
+    expect(manual).toContain(
+      'projects/shop/src/environments/environment.development.ts: it spreads another environment',
+    );
+    expect(manual).toContain("  api: { baseUrl: '/api' },\n  auth: { pool: '' },");
+    expect(tree.readText(`${root}/environment.ts`)).toBe(own);
+    expect(tree.readText(`${root}/environment.development.ts`)).toBe(spread);
+  });
+
+  it('imports what a group’s default calls, once, beside the imports the file has', () => {
+    const typed = {
+      ...auth,
+      defaults: "cognito({ pool: '' })",
+      import: { symbol: 'cognito', from: 'ui' },
+    };
+
+    // A file with no imports: at the top, above the comment on `environment`.
+    const fresh = app();
+    addEnvironmentGroups(fresh, 'shop', [API_SETTINGS, typed]);
+    addEnvironmentGroups(fresh, 'shop', [typed]);
+    for (const name of ['environment.ts', 'environment.development.ts']) {
+      const source = fresh.readText(`${root}/${name}`);
+      expect(source.startsWith("import { cognito } from 'ui';\n\n/**\n"), name).toBe(true);
+      expect(source, name).toContain("  auth: cognito({ pool: '' }),\n");
+      expect(source.split("from 'ui'").length - 1, name).toBe(1);
+    }
+
+    // After the last import the file has.
+    const after = app();
+    after.create(
+      `${root}/environment.ts`,
+      "import { flags } from './flags';\n\nexport const environment = {\n  flags,\n};\n",
+    );
+    addEnvironmentGroups(after, 'shop', [typed]);
+    expect(after.readText(`${root}/environment.ts`)).toBe(
+      "import { flags } from './flags';\n" +
+        "import { cognito } from 'ui';\n\n" +
+        'export const environment = {\n' +
+        '  flags,\n' +
+        '  /**\n' +
+        '   * Where the app signs people in.\n' +
+        '   */\n' +
+        "  auth: cognito({ pool: '' }),\n" +
+        '};\n',
+    );
+
+    // Into the import the file already has from that module.
+    const shared = app();
+    shared.create(
+      `${root}/environment.ts`,
+      "import { palette } from 'ui';\n\nexport const environment = { palette };\n",
+    );
+    addEnvironmentGroups(shared, 'shop', [typed]);
+    expect(shared.readText(`${root}/environment.ts`)).toContain(
+      "import { palette, cognito } from 'ui';",
+    );
+
+    // And in the manual step, for an environment it could not read.
+    const own = app();
+    own.create(`${root}/environment.ts`, 'export const environment = loadSettings();\n');
+    expect(addEnvironmentGroups(own, 'shop', [API_SETTINGS, typed])).toContain(
+      "  api: { baseUrl: '/api' },\n  auth: cognito({ pool: '' }),\n\n" +
+        "with, at the top of the file:\n\n  import { cognito } from 'ui';",
+    );
+  });
+
+  it('says how to import the environment from anywhere in the app', () => {
+    expect(environmentFrom('src/app')).toBe('../environments/environment');
+    expect(environmentFrom('src/api')).toBe('../environments/environment');
+    expect(environmentFrom('src')).toBe('./environments/environment');
   });
 });

@@ -1,0 +1,43 @@
+<h1>Your account</h1>
+
+<section class="card" aria-labelledby="signed-in-heading">
+  <h2 id="signed-in-heading">Signed in</h2>
+  <p class="muted">As {{ email() ?? 'an account without an email address' }}.</p>
+
+  @if (leaving.error(); as error) {
+    <p class="error" role="alert">{{ error.message }}</p>
+  }
+  <<%= libPrefix %>-button variant="secondary" (activated)="signOut()">Sign out</<%= libPrefix %>-button>
+  <<%= libPrefix %>-button variant="ghost" [loading]="leaving.busy()" (activated)="signOutEverywhere()">
+    Sign out on every device
+  </<%= libPrefix %>-button>
+</section>
+
+@if (hasPassword) {
+  <form aria-labelledby="password-heading" (submit)="changePassword($event)">
+    <h2 id="password-heading">Change your password</h2>
+
+    <div class="field">
+      <label for="account-current">Current password</label>
+      <input
+        #currentBox
+        id="account-current"
+        type="password"
+        autocomplete="current-password"
+        required
+        [value]="current()"
+        (input)="current.set(currentBox.value)"
+      />
+    </div>
+
+    <<%= prefix %>-new-password label="New password" [(password)]="proposed" />
+
+    @if (changing.notice(); as notice) {
+      <p class="notice" role="status">{{ notice }}</p>
+    }
+    @if (changing.error(); as error) {
+      <p class="error" role="alert">{{ error.message }}</p>
+    }
+    <<%= libPrefix %>-button type="submit" [loading]="changing.busy()">Change password</<%= libPrefix %>-button>
+  </form>
+}

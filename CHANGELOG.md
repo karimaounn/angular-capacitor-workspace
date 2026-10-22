@@ -8,6 +8,78 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Sign-in, as a plugin: `--auth cognito`, or
+  `ng generate @angular-capacitor-workspace/cli:auth`.** Every app gets sign-in
+  screens under `/auth` (sign in, create an account, reset a password, the
+  account page), an account link in its header, `authGuard` and `guestGuard`
+  for its routes, and `authInterceptor` on its `HttpClient`, which sends the
+  token to the app's API and nowhere else. Prerendered sites are left out. Like
+  translation and theming, it needs a design system, and it reaches every app
+  generated after it.
+
+  The code is a new runtime package, `@angular-capacitor-workspace/auth`,
+  released with the others at the same version. Its main entry point works the
+  same with any identity provider; the provider is a backend from another entry
+  point, and Amazon Cognito (`@angular-capacitor-workspace/auth/cognito`, over
+  SRP, through `amazon-cognito-identity-js`) is the first. The SDK is an
+  optional peer, installed only where a workspace signs in with Cognito. What
+  the workspace keeps is the design system's `src/config/auth.ts` (the
+  provider, the ways to sign in, the routes, the token the API gets, the
+  password policy), each app's environments (the user pool, empty until filled
+  in, and the API that gets the token; below), the binding
+  `src/lib/auth/auth.ts`, and the screens.
+
+  `create` asks whether to add it when there is a design system and an app,
+  then which provider and which ways to sign in. Each question is asked even
+  while it has one answer, and offers only what is implemented: Cognito, and
+  email and password. `--auth-methods password` is the flag for the second.
+  The programmatic API takes `auth: 'cognito'` and `authMethods: ['password']`
+  in `GenerateOptions`, and the package exports `AUTH_PROVIDER_CHOICES`,
+  `isAuthProvider`, `isAuthMethod` and the `AuthProvider`, `AuthMethod` and
+  `AuthProviderChoice` types. Policy rules can be scoped with the new `auth` and
+  `auth:cognito` feature tokens. Apps gain three extension points for plugins:
+  a route in `app.routes.ts`, an interceptor on the app's one
+  `provideHttpClient`, and settings per environment (below).
+
+  Existing workspaces are left as they are; run
+  `ng generate @angular-capacitor-workspace/cli:auth` to adopt it. It works on
+  a design system from any 22.x release.
+
+### Changed
+
+- **An app's settings per environment are in `src/environments/`, and its API
+  address is one of them.** A plugin that needs a setting that differs between
+  `ng serve` and a production build creates the app's environments, the way
+  `ng generate environments` does: `environment.ts` and
+  `environment.development.ts`, swapped by `fileReplacements`, each a plain
+  `export const environment = { … }`, and yours. The plugin adds its group of
+  settings to each, at its defaults and with what it means, and a plugin added
+  later adds its own the same way, to every environment a build configuration
+  swaps in; nothing already there is changed, and the generator writes nothing
+  beside them. A group with a shape worth checking is a call to a function the
+  design system exports, imported at the top of the file: sign-in's is
+  `auth: cognito({ userPoolId: '', userPoolClientId: '' })`, so a field that is
+  missing or misspelt fails the build on that line, with the field's meaning
+  on hover, and nothing else about the shape is there to know. `api` is a
+  plain literal, typed by what reads it.
+
+  The API client codegen writes (`src/api/api-client.ts`) used to hold its own
+  `BASE_URL`. It now sends its requests to `environment.api.baseUrl`, which
+  sign-in reads too, to send the session's token only to requests under it.
+  With two copies, an app with both would send its API requests without the
+  token whenever the two disagreed, and nothing said so. It starts as `/api`,
+  as `BASE_URL` did.
+
+  Existing workspaces are left as they are: `api-client.ts` is yours, so its
+  `BASE_URL` stays, and an environment that is not a plain object literal, or
+  that spreads another, is left alone, with what to add printed. To have one
+  setting for both in an app with codegen that adopts sign-in, replace
+  `BASE_URL` in `api-client.ts` with
+  `import { environment } from '../environments/environment';` and
+  `environment.api.baseUrl`.
+
 ## [22.9.1] — 2026-10-10
 
 ### Fixed

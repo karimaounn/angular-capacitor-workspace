@@ -160,6 +160,14 @@ export const VERSIONS = {
   // ── OpenAPI codegen ─────────────────────────────────────────────────────
   orval: { range: '^8.34.0' },
 
+  // ── Sign-in ─────────────────────────────────────────────────────────────
+  'amazon-cognito-identity-js': {
+    range: '^6.3.20',
+    constraint:
+      'Optional peer of @angular-capacitor-workspace/auth (`^6.3.0`), for its cognito ' +
+      'entry point. Installed only where the auth plugin signs in with Cognito.',
+  },
+
   // ── Design system ───────────────────────────────────────────────────────
   '@fontsource/inter': {
     range: '^5.3.0',

@@ -218,6 +218,154 @@ export function addRootProvider(tree: Tree, project: string, provider: RootProvi
   tree.overwrite(path, next);
 }
 
+/** A route a plugin adds to the application's root routes. */
+export interface AppRoute {
+  /**
+   * The idempotency key: a route table that mentions it is left as it is. The
+   * module the route loads, such as `./auth/auth.routes`.
+   */
+  readonly key: string;
+  /** The route object, as it is written into the array. May span lines. */
+  readonly expression: string;
+}
+
+/**
+ * Adds a route to `app.routes.ts`, the table `provideRouter` is given.
+ *
+ * At the end, after the routes the app already has, unless the table has a
+ * wildcard: a route after `**` never matches, so then it goes first. Anchored
+ * on the `Routes` array rather than on a route the template happens to hold,
+ * so Angular's empty table and a table someone has filled both take it.
+ *
+ * False when the app has no `app.routes.ts`, or one without a `Routes` array,
+ * which is an app someone has restructured: the caller says what to add by
+ * hand.
+ */
+export function addRoute(tree: Tree, project: string, route: AppRoute): boolean {
+  const path = `/${projectRoot(tree, project)}/src/app/app.routes.ts`;
+  const source = read(tree, path);
+  const table = source?.match(/:\s*Routes\s*=\s*\[/);
+  if (source === undefined || !table || table.index === undefined) {
+    return false;
+  }
+  if (source.includes(route.key)) {
+    return true;
+  }
+
+  const from = table.index + table[0].length;
+  const end = closingBracket(source, from);
+  if (end === -1) {
+    throw new SchematicsException(`The Routes array in ${path} is not closed.`);
+  }
+  const content = source.slice(from, end);
+  const lineStart = source.lastIndexOf('\n', table.index) + 1;
+  const outer = source.slice(lineStart).match(/^[ \t]*/)![0];
+  const inner = `${outer}  `;
+  const entry = `${route.expression
+    .split('\n')
+    .map((line) => (line === '' ? line : `${inner}${line}`))
+    .join('\n')},`;
+
+  let next: string;
+  if (content.trim() === '') {
+    next = `${source.slice(0, from)}\n${entry}\n${outer}${source.slice(end)}`;
+  } else if (/path:\s*'\*\*'/.test(content)) {
+    next = `${source.slice(0, from)}\n${entry}${content.startsWith('\n') ? '' : '\n'}${content}${source.slice(end)}`;
+  } else {
+    const kept = content.replace(/\s+$/, '');
+    const comma = kept.endsWith(',') ? '' : ',';
+    next = `${source.slice(0, from)}${kept}${comma}\n${entry}\n${outer}${source.slice(end)}`;
+  }
+  tree.overwrite(path, next);
+  return true;
+}
+
+/** An HTTP interceptor a plugin adds to the application's `HttpClient`. */
+export interface HttpInterceptor {
+  /** The interceptor function, which is also the idempotency key. */
+  readonly symbol: string;
+  /** Its import line. */
+  readonly import: string;
+}
+
+/**
+ * Adds a functional interceptor to the application's `HttpClient`.
+ *
+ * Into `withInterceptors([…])` when the config has one; into
+ * `provideHttpClient(…)` as a new `withInterceptors` when it has that but no
+ * interceptors; and as `provideHttpClient(withInterceptors([…]))` when the app
+ * has no `HttpClient` yet. One `provideHttpClient` either way: a second would
+ * replace the first's features rather than add to them.
+ */
+export function addHttpInterceptor(
+  tree: Tree,
+  project: string,
+  interceptor: HttpInterceptor,
+): void {
+  const path = `/${projectRoot(tree, project)}/src/app/app.config.ts`;
+  const source = read(tree, path);
+  if (source === undefined) {
+    throw new SchematicsException(
+      `Expected "${project}" to have ${path}, which the Angular application ` +
+        `schematic writes for a standalone app.`,
+    );
+  }
+  if (mentions(source, interceptor.symbol)) {
+    return;
+  }
+
+  const http = '@angular/common/http';
+  const provide = source.indexOf('provideHttpClient(');
+  if (provide === -1) {
+    addRootProvider(tree, project, {
+      symbol: interceptor.symbol,
+      expression: `provideHttpClient(withInterceptors([${interceptor.symbol}]))`,
+      imports: [
+        `import { provideHttpClient, withInterceptors } from '${http}';`,
+        interceptor.import,
+      ],
+    });
+    return;
+  }
+
+  let next: string;
+  const list = source.indexOf('withInterceptors([', provide);
+  const argsFrom = provide + 'provideHttpClient('.length;
+  const argsEnd = closingBracket(source, argsFrom, '(', ')');
+  if (argsEnd === -1) {
+    throw new SchematicsException(`provideHttpClient( in ${path} is not closed.`);
+  }
+  if (list !== -1 && list < argsEnd) {
+    const from = list + 'withInterceptors(['.length;
+    const end = closingBracket(source, from);
+    const existing = source.slice(from, end).replace(/[\s,]+$/, '');
+    next = `${source.slice(0, from)}${existing}${existing === '' ? '' : ', '}${interceptor.symbol}${source.slice(end)}`;
+  } else {
+    const args = source.slice(argsFrom, argsEnd).replace(/[\s,]+$/, '');
+    next =
+      `${source.slice(0, argsFrom)}${args}${args.trim() === '' ? '' : ', '}` +
+      `withInterceptors([${interceptor.symbol}])${source.slice(argsEnd)}`;
+    next = /import \{[^}]*\bwithInterceptors\b[^}]*\} from '@angular\/common\/http';/.test(next)
+      ? next
+      : addNamedImport(next, path, http, 'withInterceptors');
+  }
+  tree.overwrite(path, addImports(next, [interceptor.import]));
+}
+
+/**
+ * The index of the bracket that closes the one opened just before `from`,
+ * counting nested pairs of the same kind, or -1.
+ */
+function closingBracket(source: string, from: number, open = '[', close = ']'): number {
+  let depth = 1;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (char === open) depth++;
+    else if (char === close && --depth === 0) return index;
+  }
+  return -1;
+}
+
 /**
  * Adds a provider to the TestBed in the shell's spec.
  *

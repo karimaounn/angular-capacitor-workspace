@@ -29,14 +29,14 @@ npm run create -- ../my-workspace    # same flags as npm create; asks when given
 ```
 
 It builds, packs the schematics package and the runtime packages
-(`@angular-capacitor-workspace/i18n`, `/theming`) into `.local/`, and points the
+(`@angular-capacitor-workspace/auth`, `/i18n`, `/theming`) into `.local/`, and points the
 workspace at those tarballs, so nothing needs publishing. The workspace keeps
 working only while its tarballs do: deleting `.local/` means regenerating.
 
 The runtime packages are Angular libraries, built with ng-packagr from
 `packages/<id>` and tested with `TestBed` in jsdom
-(`npx vitest run --project angular`). They are what a change to how translation
-or theming behaves edits; the plugin that installs one only writes the config
+(`npx vitest run --project angular`). They are what a change to how translation,
+theming or sign-in behaves edits; the plugin that installs one only writes the config
 and the binding beside it.
 
 ## Before opening a pull request

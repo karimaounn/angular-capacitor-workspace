@@ -22,7 +22,7 @@ const manifest = readManifest('package.json');
 const createManifest = readManifest('..', 'create', 'package.json');
 
 /** The runtime packages the plugins install, by directory. */
-const RUNTIME = ['i18n', 'theming'] as const;
+const RUNTIME = ['auth', 'i18n', 'theming'] as const;
 
 /**
  * The package's major is the Angular major it generates for: 22.x generates

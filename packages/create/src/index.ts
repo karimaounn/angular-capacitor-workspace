@@ -2,11 +2,14 @@
 import { writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import {
+  AUTH_PROVIDER_CHOICES,
   CATALOG,
   generateWorkspace,
   PLACEHOLDER_ORIGIN,
   style,
   type AppSpec,
+  type AuthMethod,
+  type AuthProvider,
   type GenerateOptions,
   type MarketingSpec,
 } from '@angular-capacitor-workspace/cli';
@@ -223,6 +226,33 @@ async function ask(
       }
     }
 
+    // Only with a design system, where its settings live, and an app to put
+    // the screens in. The provider and the methods are asked even while each
+    // has one answer, so the workspace says which it chose, and the questions
+    // keep their shape as more are built. Only what is implemented is offered.
+    // `--auth` and `--auth-methods` are the flags for the same.
+    let auth: AuthProvider | undefined;
+    let authMethods: AuthMethod[] | undefined;
+    if (uiLib && apps.length > 0 && (await prompter.confirm('Add sign-in?', false))) {
+      const [first] = AUTH_PROVIDER_CHOICES;
+      const chosen = await prompter.select(
+        'Sign in with which provider?',
+        AUTH_PROVIDER_CHOICES.map((choice) => ({ value: choice.id, label: choice.label })),
+        first!.id,
+      );
+      const methods = AUTH_PROVIDER_CHOICES.find((choice) => choice.id === chosen)!.methods;
+      let picked: AuthMethod[] = [];
+      while (picked.length === 0) {
+        picked = await prompter.multi(
+          'How can people sign in?',
+          methods.map((method) => ({ value: method.id, label: method.label })),
+          [methods[0]!.id],
+        );
+      }
+      auth = chosen;
+      authMethods = picked;
+    }
+
     const e2e = (await prompter.confirm('Wire up Playwright end-to-end tests?', true))
       ? ('playwright' as const)
       : false;
@@ -267,6 +297,7 @@ async function ask(
       auditLevel,
       ...(uiLib && !theming ? { theming: false } : {}),
       ...(i18n && i18n.length > 0 ? { i18n } : {}),
+      ...(auth ? { auth, authMethods } : {}),
     };
   } finally {
     prompter.close();

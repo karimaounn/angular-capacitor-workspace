@@ -40,6 +40,7 @@ export const OWN_PACKAGE = '@angular-capacitor-workspace/cli';
  * generator's own version.
  */
 export const RUNTIME_PACKAGES = {
+  auth: '@angular-capacitor-workspace/auth',
   i18n: '@angular-capacitor-workspace/i18n',
   theming: '@angular-capacitor-workspace/theming',
 } as const;

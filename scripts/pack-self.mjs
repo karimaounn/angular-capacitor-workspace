@@ -3,8 +3,8 @@
  * for anything that generates one from this checkout.
  *
  * A generated workspace depends on `@angular-capacitor-workspace/cli`, and on the
- * runtime package of each plugin it has — `@angular-capacitor-workspace/i18n`,
- * `/theming` — at versions that do not exist on the registry until they are
+ * runtime package of each plugin it has — `@angular-capacitor-workspace/auth`,
+ * `/i18n`, `/theming` — at versions that do not exist on the registry until they are
  * published. So the e2e matrix, the advisory sweep and `npm run create` pack
  * the local builds and hand the generator a `file:` spec for each tarball:
  * `--self-spec` for the generator, `--package-spec <name>=<spec>` for the rest.
@@ -22,6 +22,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** The runtime packages, and the directory each publishes from. */
 export const RUNTIME_PACKAGES = [
+  { name: '@angular-capacitor-workspace/auth', dir: 'packages/auth/dist' },
   { name: '@angular-capacitor-workspace/i18n', dir: 'packages/i18n/dist' },
   { name: '@angular-capacitor-workspace/theming', dir: 'packages/theming/dist' },
 ];

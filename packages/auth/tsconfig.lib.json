@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../../out-tsc/auth",
+    "declaration": true,
+    "declarationMap": true,
+    "paths": {}
+  },
+  "angularCompilerOptions": {
+    "compilationMode": "partial"
+  },
+  "include": ["src/**/*.ts", "cognito/src/**/*.ts"],
+  "exclude": ["**/*.spec.ts"]
+}

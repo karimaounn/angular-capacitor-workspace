@@ -56,6 +56,7 @@ ng generate @angular-capacitor-workspace/cli:theming
 ng generate @angular-capacitor-workspace/cli:mobile shop --platforms ios
 ng generate @angular-capacitor-workspace/cli:codegen
 ng generate @angular-capacitor-workspace/cli:i18n --locales en,fr,ar
+ng generate @angular-capacitor-workspace/cli:auth
 ng generate @angular-capacitor-workspace/cli:packages cdk
 ```
 
@@ -69,6 +70,7 @@ ng generate @angular-capacitor-workspace/cli:packages cdk
 | `mobile`    | a Capacitor sibling registered as its own npm workspace member                                           |
 | `codegen`   | orval config, a per-app client seam, and `pre*` hooks on every build entry point                         |
 | `i18n`      | runtime translation in the design system, catalogs per app, one prerendered build per locale per site    |
+| `auth`      | sign-in screens, a session, route guards and an HTTP interceptor in every app, with Amazon Cognito       |
 | `packages`  | curated packages — the CDK, Angular Aria, a service worker — at ranges resolved against the Angular line |
 
 `ng generate @angular-capacitor-workspace/cli:<schematic> --help` lists every
@@ -82,35 +84,37 @@ every script it creates, so that table lists what the workspace can run.
 ### Hosts and plugins
 
 `app`, `marketing` and `ui-lib` are hosts: they create projects. `theming`,
-`codegen`, `i18n` and `packages` are plugins: they extend the projects that
+`codegen`, `i18n`, `auth` and `packages` are plugins: they extend the projects that
 exist, and every project generated after them. Add translation to a workspace
 with three apps and all three are translated; generate a fourth afterwards and
 it comes up translated too, the same as if it had been there first.
 
 A plugin edits a host's files only through the extension points the host
 declares — a control at the end of the shell's `<header>`, a provider in
-`app.config.ts`, a script before the first paint, a section on the starter
-page, an extension of a site's `PageMetaStrategy` — and never by finding a line
+`app.config.ts`, an HTTP interceptor, a route, a script before the first paint,
+a section on the starter page, an extension of a site's `PageMetaStrategy` —
+and never by finding a line
 of a template it expects to be there. A shell you have rewritten without a
 `<header>` gets no controls dropped into it.
 
-Translation and theme switching run in your apps, and that code is a package,
-not a copy: [`@angular-capacitor-workspace/i18n`](../i18n/README.md) and
-[`@angular-capacitor-workspace/theming`](../theming/README.md), released with
-this one at the same version. The plugin installs it and writes the three kinds
-of file a workspace keeps:
+Translation, theme switching and sign-in run in your apps, and that code is a
+package, not a copy: [`@angular-capacitor-workspace/i18n`](../i18n/README.md),
+[`@angular-capacitor-workspace/theming`](../theming/README.md) and
+[`@angular-capacitor-workspace/auth`](../auth/README.md), released with this one
+at the same version. The plugin installs it and writes the three kinds of file
+a workspace keeps:
 
-- **config** in the design system's `src/config/` — the locales, the palettes —
-  which is yours to edit;
-- a **binding** in the design system (`lib/i18n/i18n.ts`, `lib/theme/theme.ts`)
-  that hands the config to the package and re-exports it, so apps import from
-  the design system as they always have. It is the generator's, rewritten on
-  every run;
-- what you restyle — the language picker, the theme toggle, the showcases —
-  which is yours.
+- **config** in the design system's `src/config/` — the locales, the palettes,
+  how sign-in behaves — which is yours to edit;
+- a **binding** in the design system (`lib/i18n/i18n.ts`, `lib/theme/theme.ts`,
+  `lib/auth/auth.ts`) that hands the config to the package and re-exports it,
+  so apps import from the design system as they always have. It is the
+  generator's, rewritten on every run;
+- what you restyle — the language picker, the theme toggle, the showcases, the
+  sign-in screens — which is yours.
 
-So `npm update` changes how translation and theming work in every workspace
-that has them, and nothing generated needs editing to configure them.
+So `npm update` changes how translation, theming and sign-in work in every
+workspace that has them, and nothing generated needs editing to configure them.
 
 ### Theming
 
@@ -295,6 +299,70 @@ source locale is the first tag unless `--default-locale` names another, and it
 has to be one of the tags being generated: it is what every untranslated key
 falls back to.
 
+### Sign-in
+
+`--auth cognito`, or `ng generate @angular-capacitor-workspace/cli:auth`, gives
+every app sign-in screens under `/auth` — sign in, create an account, reset a
+password, the account page — and an account link at the end of its header.
+Behind them is [`@angular-capacitor-workspace/auth`](../auth/README.md): a
+session, `authGuard` and `guestGuard`, and `authInterceptor`, which sends the
+token to the app's API and nowhere else. Prerendered sites are left out: their
+pages are served to everyone.
+
+The package is the same whichever identity provider a workspace uses; the
+provider is a backend from one of its entry points, and Amazon Cognito is the
+first. Its SDK, `amazon-cognito-identity-js`, is installed only where the
+workspace signs in with Cognito, and loaded only by the apps that sign in.
+
+What each part is:
+
+- `src/config/auth.ts` in the design system — the provider, the ways to sign
+  in (`methods`: email and password is the only one so far), the routes the
+  guards send people to, the token the API gets, the password policy the forms
+  check. Yours. Change the provider there and run the schematic again.
+- `src/environments/environment.ts` and `environment.development.ts` in each
+  app — the user pool (`auth: cognito({ … })`) and the API (`api.baseUrl`),
+  for a production build and for `ng serve`. Yours, and the pool is empty until
+  you set it: the app runs signed out meanwhile, and signing in says what is
+  missing. The token goes to requests under `api.baseUrl` and to no others, and
+  the API client sends its requests there, so the two cannot disagree. See
+  [Environments](#environments).
+- `src/lib/auth/auth.ts` in the design system — the binding, which exports
+  `provideAuthentication(environment)`. The generator's.
+- `src/app/auth/` in each app — the screens and their routes. Yours.
+
+`--auth` needs a design system, since that is where its settings go.
+
+### Environments
+
+A setting that differs between `ng serve` and a production build — where the
+API is, which user pool to sign in against — is in the app's
+`src/environments/`, which a plugin creates the first time it needs one:
+
+```ts
+// environment.ts (production), and environment.development.ts for ng serve
+import { cognito } from "ui";
+
+export const environment = {
+  api: { baseUrl: "https://api.example.com" },
+  auth: cognito({ userPoolId: "us-east-1_…", userPoolClientId: "…" }),
+};
+```
+
+They are yours, Angular's own pair, swapped through `fileReplacements` in
+`angular.json` as `ng generate environments` sets it up. A plugin that needs a
+setting adds its group to each, at its defaults and with what it means, when
+it is missing, and changes nothing else; so does every environment another
+build configuration swaps in. Set the values, and keep settings of your own
+beside them. A group with a shape to get right is a call to a function the
+design system exports, `cognito(…)` here, which returns what it is given and
+types it: a field that is missing or misspelt fails the build on that line,
+with what the field means on hover. The rest is typed by what reads it.
+
+Everything in an environment is bundled into the app, so none of it may be a
+secret. An environment that is not `export const environment = { … }`, or that
+spreads another, is left as it is, and the generator prints what to add.
+
 ### Mobile
 
 An app generated with `--mobile`, or given one later with the `mobile`
@@ -383,8 +451,10 @@ snapshot of it. For each app, orval writes an Angular client to
 `projects/<app>/web/src/api/generated/`, which is gitignored.
 
 Every generated request goes through `projects/<app>/web/src/api/api-client.ts`.
-That file is yours, and regeneration never touches it. Set the base URL there
-(it starts as `/api`), along with auth headers and error mapping.
+That file is yours, and regeneration never touches it: headers and error
+mapping go there. The base URL is `api.baseUrl` in the app's environments (it
+starts as `/api`; see [Environments](#environments)), which sign-in reads too,
+so it is set once for both.
 
 Build, serve and test scripts run codegen first. When `OPENAPI_SPEC` is unset
 they skip it with a message rather than failing, so a fresh clone without

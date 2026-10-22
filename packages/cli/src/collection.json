@@ -52,6 +52,12 @@
       "schema": "./plugins/i18n/schema.json",
       "aliases": ["translate"]
     },
+    "auth": {
+      "description": "Sign-in: sign-in screens in every app, a session, guards and an HTTP interceptor, with Amazon Cognito as the identity provider.",
+      "factory": "./plugins/auth/index#auth",
+      "schema": "./plugins/auth/schema.json",
+      "aliases": ["sign-in"]
+    },
     "packages": {
       "description": "Curated extra packages — the Angular CDK and friends — at a version resolved against the Angular line.",
       "factory": "./plugins/packages/index#packages",

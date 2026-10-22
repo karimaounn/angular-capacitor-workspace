@@ -74,6 +74,49 @@ describe('--no-theming', () => {
   });
 });
 
+describe('--auth', () => {
+  it('signs in with the provider it names', () => {
+    expect(parseArguments(['ws', '--ui-lib', '--auth', 'cognito']).options.auth).toBe('cognito');
+  });
+
+  it('refuses a provider it does not know, naming the ones it does', () => {
+    expect(() => parseArguments(['ws', '--ui-lib', '--auth', 'okta'])).toThrow(ArgError);
+    expect(() => parseArguments(['ws', '--ui-lib', '--auth', 'okta'])).toThrow(/"cognito"/);
+  });
+
+  it('refuses it without a design system, where its settings live', () => {
+    expect(() => parseArguments(['ws', '--app', 'shop', '--auth', 'cognito'])).toThrow(/--ui-lib/);
+  });
+});
+
+describe('--auth-methods', () => {
+  const auth = ['ws', '--ui-lib', '--auth', 'cognito'];
+
+  it('takes the methods repeated or comma-separated, once each', () => {
+    expect(
+      parseArguments([...auth, '--auth-methods', 'password', '--auth-methods', 'password']).options
+        .authMethods,
+    ).toEqual(['password']);
+  });
+
+  it('leaves the default to the generator when not given', () => {
+    expect(parseArguments(auth).options).not.toHaveProperty('authMethods');
+  });
+
+  it('refuses a method the provider does not implement, naming the ones it does', () => {
+    expect(() => parseArguments([...auth, '--auth-methods', 'passwordless'])).toThrow(
+      /cognito offers "password", not "passwordless"/,
+    );
+    expect(() => parseArguments([...auth, '--auth-methods', ','])).toThrow(/needs a method/);
+  });
+
+  it('refuses it without --auth', () => {
+    expect(() => parseArguments(['ws', '--ui-lib', '--auth-methods', 'password'])).toThrow(
+      /there is no --auth/,
+    );
+  });
+});
+
 describe('--marketing', () => {
   it('takes the flag repeated, one site per name', () => {
     expect(

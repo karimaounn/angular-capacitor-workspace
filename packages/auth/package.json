@@ -1,0 +1,45 @@
+{
+  "name": "@angular-capacitor-workspace/auth",
+  "version": "22.9.1",
+  "description": "Sign-in for an angular-capacitor-workspace: a session, guards and an HTTP interceptor that work the same with every identity provider, and Amazon Cognito as the first.",
+  "keywords": [
+    "angular",
+    "auth",
+    "authentication",
+    "cognito",
+    "capacitor"
+  ],
+  "license": "MIT",
+  "author": "Karim Aoun",
+  "homepage": "https://github.com/karimaounn/angular-capacitor-workspace/tree/main/packages/auth#readme",
+  "bugs": {
+    "url": "https://github.com/karimaounn/angular-capacitor-workspace/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karimaounn/angular-capacitor-workspace.git",
+    "directory": "packages/auth"
+  },
+  "scripts": {
+    "build": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
+  },
+  "peerDependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/router": "^22.0.0",
+    "amazon-cognito-identity-js": "^6.3.0",
+    "rxjs": "^7.4.0"
+  },
+  "peerDependenciesMeta": {
+    "amazon-cognito-identity-js": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}

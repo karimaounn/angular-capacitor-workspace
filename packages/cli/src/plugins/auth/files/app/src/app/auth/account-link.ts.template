@@ -1,0 +1,33 @@
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { AuthSession, stringClaim } from '<%= importName %>';
+
+/**
+ * The header's way in: "Sign in", or the signed-in user's address, which
+ * opens their account.
+ */
+@Component({
+  selector: '<%= prefix %>-account-link',
+  imports: [RouterLink],
+  template: `
+    @if (session.isAuthenticated()) {
+      <a routerLink="/auth/account">{{ name() }}</a>
+    } @else {
+      <a routerLink="/auth/sign-in">Sign in</a>
+    }
+  `,
+  styles: `
+    a {
+      color: inherit;
+      font-weight: 500;
+    }
+  `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class AccountLink {
+  protected readonly session = inject(AuthSession);
+
+  protected readonly name = computed(
+    () => stringClaim(this.session.idClaims(), 'email') ?? 'Your account',
+  );
+}

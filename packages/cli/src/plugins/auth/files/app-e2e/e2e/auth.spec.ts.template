@@ -1,0 +1,32 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * Sign-in, as far as it goes without a <%= backend.label %> setup to sign in against.
+ *
+ * What the unit tests cannot reach: that the app boots with the provider's SDK
+ * in a real browser, and that the routes, the guards and the screens are
+ * joined up. Once `src/environments/environment.development.ts` names a real
+ * setup, add a test that signs in with an account kept for testing.
+ */
+
+test('the header offers sign-in, and it opens the sign-in screen', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('banner').getByRole('link', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/auth\/sign-in$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible();
+});
+
+test('the account page sends a visitor to sign in, and remembers where they were going', async ({
+  page,
+}) => {
+  await page.goto('/auth/account');
+  await expect(page).toHaveURL(/\/auth\/sign-in\?returnUrl=%2Fauth%2Faccount$/);
+});
+
+test('signing in before the app is connected says what is missing', async ({ page }) => {
+  await page.goto('/auth/sign-in');
+  await page.getByLabel('Email address').fill('someone@example.com');
+  await page.getByLabel('Password', { exact: true }).fill('Password1');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toContainText('configured');
+});

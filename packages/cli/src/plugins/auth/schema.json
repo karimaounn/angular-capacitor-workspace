@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "acw-auth",
+  "title": "Sign-in",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "The identity provider to sign in with, on the first run, which writes it into the design system's src/config/auth.ts. Defaults to cognito. Later runs read the config: change the provider there, then run without this.",
+      "enum": ["cognito"]
+    },
+    "methods": {
+      "type": "array",
+      "description": "How people sign in, on the first run, which writes them into the design system's src/config/auth.ts. Defaults to password, the only method so far. Later runs read the config: change the methods there, then run without this.",
+      "items": { "type": "string", "enum": ["password"] },
+      "minItems": 1
+    },
+    "runtimeSpec": {
+      "type": "string",
+      "description": "What to install @angular-capacitor-workspace/auth from instead of the range this release depends on, such as a file: path to a local build. Used by the integration matrix before a release is published."
+    },
+    "apps": {
+      "type": "array",
+      "description": "Applications to give sign-in screens. Defaults to every application except prerendered sites, whose pages are served to everyone.",
+      "items": { "type": "string" },
+      "default": []
+    }
+  },
+  "additionalProperties": false
+}

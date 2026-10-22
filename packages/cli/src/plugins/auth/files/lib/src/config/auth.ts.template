@@ -1,0 +1,51 @@
+/**
+ * How this workspace's apps sign people in.
+ *
+ * This file is the design system's to edit, like everything in `src/config/`.
+ * `src/lib/auth/auth.ts` hands it to `@angular-capacitor-workspace/auth`, so
+ * sign-in changes here and nowhere else. After changing `provider`, run
+ * `ng generate @angular-capacitor-workspace/cli:auth`, which rewrites that
+ * binding for the new provider and installs its SDK.
+ *
+ * Where each app signs in — the provider's settings and the API that gets the
+ * token — is not here. It is each app's `src/environments/environment.ts` (and
+ * `environment.development.ts` for `ng serve`), because it differs between
+ * apps and between environments.
+ *
+ * Plain values only: the generator reads the literal below without compiling
+ * this file.
+ */
+export const AUTH = {
+  /** The identity provider: '<%= provider %>' (<%= backend.label %>). */
+  provider: '<%= provider %>',
+  /**
+   * The ways people sign in, which decide the screens each app gets. The ones
+   * <%= backend.label %> offers here: <%= offered.map((method) => `'${method}'`).join(', ') %>.
+   */
+  methods: [<%= methods.map((method) => `'${method}'`).join(', ') %>],
+  /**
+   * Where the guards send people: a visitor who is not signed in, to
+   * `signIn`; someone signed in who opens a sign-in screen, and a sign-in that
+   * has nowhere else to return to, to `afterSignIn`. The screens are under
+   * `/auth` in each app.
+   */
+  routes: { signIn: '/auth/sign-in', afterSignIn: '/' },
+  /**
+   * The token your API receives: 'access', or 'id'. API Gateway's Cognito
+   * user-pool authorizer accepts the ID token, and access tokens only for
+   * methods that name OAuth scopes; an HTTP API's JWT authorizer takes either.
+   */
+  bearerToken: 'id',
+  /**
+   * The provider's password policy, restated so the sign-up form checks a
+   * password as it is typed. The provider enforces its own whatever this says,
+   * so keep the two the same: these are Cognito's defaults.
+   */
+  passwordPolicy: {
+    minLength: 8,
+    requireUppercase: true,
+    requireLowercase: true,
+    requireDigits: true,
+    requireSymbols: false,
+  },
+} as const;

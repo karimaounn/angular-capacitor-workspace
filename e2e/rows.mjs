@@ -26,7 +26,11 @@
  * language, each prerendered into its own directory — with `verify-prerender`
  * checking `<html lang>`, the hreflang alternates and route parity across all
  * of them. Arabic specifically, because it is the row's only RTL locale and the
- * only one whose plural categories go past `one`/`other`;
+ * only one whose plural categories go past `one`/`other`. And `--auth cognito`,
+ * the only place the sign-in screens are compiled and the Cognito SDK meets a
+ * browser bundle: the app has to boot with it, the site has to build beside a
+ * design system that binds it, and the app's e2e suite walks the screens, the
+ * guards and the unconfigured pool's error;
  * `multi-app` proves per-project ports and script naming survive more than one
  * app *and* more than one marketing site — two sites are two sets of canonical
  * URLs, a shared postbuild script and two entries in `npm run build` — and that
@@ -61,6 +65,8 @@ export const ROWS = {
       'aria',
       '--i18n',
       'en,fr,ar',
+      '--auth',
+      'cognito',
     ],
     checks: [
       'build:libs',
