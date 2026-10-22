@@ -31,7 +31,7 @@ export const ANGULAR_LINE = '22';
 /** Accepted `@angular/cli` range for the `ng new` bootstrap. */
 export const ANGULAR_CLI_RANGE = `^${ANGULAR_LINE}`;
 
-export const VERSIONS_SYNCED_AT = '2026-09-24';
+export const VERSIONS_SYNCED_AT = '2026-10-22';
 
 export const VERSIONS = {
   // ── Unit testing ────────────────────────────────────────────────────────
@@ -41,19 +41,30 @@ export const VERSIONS = {
   // next vitest patch — and it is what @angular/cli 22.2 shipped, which emits
   // `vitest: ^5.0.0`. See the overwrite in schematics/ui-lib.
   vitest: {
-    range: '5.0.1',
+    range: '5.0.5',
     constraint:
       'Exact, and identical to @vitest/browser-playwright, whose vitest peer is ' +
       'exact. @angular/build:unit-test peers `^4.0.8 || ^5.0.0`, so the 5.x ' +
-      'line is available as of Angular 22.2.',
+      'line is available as of Angular 22.2. Not below 5.0.5: 5.0.1-5.0.4 ' +
+      'carry GHSA-p458-7748-mcp3 (`server.fs.deny` misapplied), ' +
+      'GHSA-qxg6-89mg-rqv8 (code injection through unauthenticated mock ' +
+      'registration) and GHSA-xp26-3454-mjgp, all in the dev server, fixed ' +
+      'in 5.0.5 (verified 2026-10-22). No floor carries this into existing ' +
+      'workspaces: a floor judges by a range’s minimum, so one at 5.0.5 would ' +
+      'move a 4.x workspace across a major that Angular 22.1’s unit-test ' +
+      'builder does not peer. Nor an override: the sweep proposes pinning ' +
+      '@vitest/browser beneath @vitest/browser-playwright, but 5.0.5 of it ' +
+      'peers `vitest: 5.0.5` exactly, so under a 5.0.1 pin that is an ' +
+      'ERESOLVE. In a workspace on 5.0.1, `audit` reports the three, and the ' +
+      'edit is this pair.',
   },
   // Browser-mode testing. @angular/build's unit-test builder probes for
   // `@vitest/browser-<provider>` and silently falls back to jsdom when it finds
   // none — so this package being present is the difference between "component
   // tests run in a real engine" and "component tests claim to".
   '@vitest/browser-playwright': {
-    range: '5.0.1',
-    constraint: 'Peers `vitest: 5.0.1` exactly, not a range. Pinned, not caret.',
+    range: '5.0.5',
+    constraint: 'Peers `vitest: 5.0.5` exactly, not a range. Pinned, not caret.',
   },
 
   // ── End-to-end ──────────────────────────────────────────────────────────

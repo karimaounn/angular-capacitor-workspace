@@ -80,6 +80,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `import { environment } from '../environments/environment';` and
   `environment.api.baseUrl`.
 
+### Fixed
+
+- **Every workspace failed the audit gate on vite 8.3.0.** `@angular/build`
+  22.2 pins vite at exactly `8.3.0`, and six advisories landed against
+  8.3.0–8.3.2 (GHSA-rq7h-c2jc-7f22, GHSA-vfpm-58rq-9qcg, GHSA-9jrq-w75r-8gcw
+  and three in the bundled launch-editor), all in the dev server and all fixed
+  in 8.3.3. The gate suggested accepting them, because no version satisfies
+  both the pin and the fix; the policy overrides vite to `^8.3.3` beneath
+  `@angular/build` instead, the stronger rung, and every row audits clean
+  again. `doctor --fix` writes the override into existing workspaces.
+
+- **`vitest` and `@vitest/browser-playwright` are pinned at 5.0.5.** 5.0.1,
+  the pin since 22.9.0, carries GHSA-p458-7748-mcp3, GHSA-qxg6-89mg-rqv8 and
+  GHSA-xp26-3454-mjgp in the dev server, all fixed in 5.0.5. Existing
+  workspaces are left as they are: a floor judges by a range's minimum, so one
+  at 5.0.5 would also move a 4.x workspace across a major that Angular 22.1's
+  unit-test builder does not peer, and the override the sweep proposes, on
+  `@vitest/browser` beneath `@vitest/browser-playwright`, cannot resolve under
+  a 5.0.1 pin, because 5.0.5 of it peers vitest at exactly 5.0.5. In a
+  workspace on 5.0.1, `npx @angular-capacitor-workspace/cli audit` reports the
+  three; set both pins to `5.0.5`, which is the one edit that resolves.
+
 ## [22.9.1] — 2026-10-10
 
 ### Fixed

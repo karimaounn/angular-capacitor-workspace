@@ -164,6 +164,42 @@ export const POLICY: Policy = {
         'drop it once 0.15.3 is old enough not to matter.',
       onlyWhen: ['codegen'],
     },
+    {
+      spec: { '@angular/build': { vite: '^8.3.3' } },
+      advisories: [
+        'GHSA-rq7h-c2jc-7f22',
+        'GHSA-vfpm-58rq-9qcg',
+        'GHSA-9jrq-w75r-8gcw',
+        'GHSA-698v-4r3x-3vcv',
+        'GHSA-r825-w8mm-5pxw',
+        'GHSA-587h-7wmj-h5pm',
+      ],
+      reason:
+        '@angular/build -> vite. The 22.2 line pins vite at exactly 8.3.0, not a ' +
+        'range, so npm cannot move it, and six advisories landed against ' +
+        '8.3.0-8.3.2: files outside `server.fs.allow` served when a project path ' +
+        'matches a system path (GHSA-rq7h-c2jc-7f22), the first bytes of files ' +
+        'outside `server.fs` exposed through `?vite-wasm-instance` ' +
+        '(GHSA-vfpm-58rq-9qcg), cross-origin script execution through custom ' +
+        'middleware (GHSA-9jrq-w75r-8gcw), and three in the bundled launch-editor ' +
+        'on Windows (GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw, ' +
+        'GHSA-587h-7wmj-h5pm). All are fixed in 8.3.3, published 2026-10-06, and ' +
+        'all are the dev server: nothing reaches production output. Every other ' +
+        'parent in the tree (vitest, @storybook/builder-vite, ' +
+        "@analogjs/vite-plugin-angular) already resolves 8.3.5; Angular's pin is " +
+        'the one holding it back, and its own 22.3.0-next.2 moves to 8.3.4, so a ' +
+        'patch of vite is what Angular ships next anyway. Verified 2026-10-22: ' +
+        'the sweep reported the six on every row, the gate having suggested ' +
+        'accepting them because no version satisfies both `8.3.0` and the fix; ' +
+        'with this override every row audits clean, and the `minimal` row ' +
+        'installs, builds and tests. Once a 22.x @angular/build pins >= 8.3.3 ' +
+        'itself and the 22.2 line is old enough not to matter, move this to ' +
+        '`retired`.',
+      // Where @angular/build runs, which is every workspace this generator has
+      // written; the guard is what keeps it from being written somewhere it
+      // has no parent.
+      onlyWhen: ['@angular/build:*'],
+    },
   ],
 
   /**

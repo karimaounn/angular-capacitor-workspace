@@ -324,6 +324,25 @@ describe('the shipped policy', () => {
     });
   });
 
+  it('pins vite past 8.3.2 under @angular/build, where its builders run', () => {
+    // Every workspace this generator writes builds with @angular/build, whose
+    // 22.2 line pins vite at exactly 8.3.0. The guard is the builders, so a
+    // tree without that parent is not given an override for it.
+    const built = applyPolicy(
+      {},
+      ctx({ builders: new Set(['@angular/build:application', '@angular/build:unit-test']) }),
+      POLICY,
+    );
+    expect(built.manifest.overrides?.['@angular/build']).toEqual({ vite: '^8.3.3' });
+
+    const webpack = applyPolicy(
+      {},
+      ctx({ builders: new Set(['@angular-devkit/build-angular:browser']) }),
+      POLICY,
+    );
+    expect(webpack.manifest.overrides?.['@angular/build']).toBeUndefined();
+  });
+
   it('prunes the devkit packages when Storybook is off', () => {
     const { manifest } = applyPolicy(
       { devDependencies: { '@angular-devkit/build-angular': '^22.1.8' } },
