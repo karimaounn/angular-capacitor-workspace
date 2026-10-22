@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyFix, diagnose, inferFeatures } from '../src/cli/doctor';
+import { POLICY as SHIPPED } from '../src/policy/advisories';
 import type { Policy } from '../src/policy/types';
 
 let cwd: string;
@@ -300,6 +301,33 @@ describe('diagnose — overrides that pin nothing', () => {
     writeLockfile();
 
     expect(overrideDrifts()).toHaveLength(0);
+  });
+});
+
+describe('diagnose — the shipped policy', () => {
+  it('leaves the retired undici override while json-magic is in the lockfile', () => {
+    // The later of the two shapes a release wrote. The pin stays while its
+    // parent is in the tree, where it floats nothing past what json-magic now
+    // chooses itself, and goes once the parent has left.
+    write('package.json', {
+      name: 'ws',
+      overrides: { '@scalar/json-magic': { undici: '^7.29.1' } },
+    });
+    const overrideDrifts = () =>
+      diagnose(cwd, SHIPPED).drifts.filter((drift) => drift.tier === 'override');
+
+    writeLockfile('node_modules/orval', 'node_modules/@scalar/json-magic');
+    expect(overrideDrifts()).toHaveLength(0);
+
+    writeLockfile('node_modules/orval');
+    expect(overrideDrifts()).toContainEqual(
+      expect.objectContaining({
+        kind: 'unnecessary',
+        actual: 'overrides.@scalar/json-magic = {"undici":"^7.29.1"}',
+      }),
+    );
+    applyFix(diagnose(cwd, SHIPPED));
+    expect(readManifest()['overrides']).toBeUndefined();
   });
 });
 

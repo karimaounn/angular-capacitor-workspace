@@ -102,6 +102,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   workspace on 5.0.1, `npx @angular-capacitor-workspace/cli audit` reports the
   three; set both pins to `5.0.5`, which is the one edit that resolves.
 
+### Removed
+
+- **The `undici` override beneath `@scalar/json-magic` is no longer written.**
+  orval reaches undici through `@scalar/openapi-parser` and
+  `@scalar/json-magic`, which pinned it at an exact version with advisories
+  open against it, and the override floated the tree past them: `^7.29.0` from
+  22.0.0, `^7.29.1` from 22.5.0. Since 2026-10-02 `@scalar/json-magic` pins
+  7.29.1 or later itself (orval 8.44.0 resolves 0.15.7 and 0.16.1, at undici
+  7.29.1 and 7.30.1), so a fresh workspace audits clean without it, and an
+  override kept past its need would hold undici on the 7.x line once upstream
+  moves to 8. Both shapes are in `POLICY.retired`.
+
+  Existing workspaces are left as they are: `doctor --fix` removes the override
+  only where `@scalar/json-magic` has left the lockfile, and keeps it while
+  orval still brings it, where it pins nothing above what upstream chooses. A
+  workspace whose lockfile still holds undici below 7.29.1, one generated
+  before 22.5.0 and not run through `doctor --fix` since, is reported by
+  `npx @angular-capacitor-workspace/cli audit`; `npm update undici` moves it.
+
 ## [22.9.1] — 2026-10-10
 
 ### Fixed

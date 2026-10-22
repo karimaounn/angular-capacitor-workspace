@@ -11,8 +11,8 @@
  *
  * Each row exists because it exercises a policy path the others do not:
  * `minimal` proves the baseline is clean without any of our remedies;
- * `full` is the only row where Storybook, Capacitor's xcode and orval's undici
- * all land in one tree — the most policy at once, and the only row that runs
+ * `full` is the only row where Storybook, Capacitor's xcode and orval all land
+ * in one tree — the most policy at once, and the only row that runs
  * the e2e suites, including the marketing site's AXE crawl. It also carries
  * `--with aria`, which is where a catalog range meets the real resolver: a CDK
  * or an Aria the registry does not have at the Angular line fails the install

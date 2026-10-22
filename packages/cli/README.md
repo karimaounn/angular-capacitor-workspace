@@ -579,9 +579,9 @@ workspace, and reports the delta:
   [floor/stale] vitest sits below the policy floor.
       now  vitest@^4.0.8
       want vitest@^4.1.11
-  [override/stale] The override under @scalar/json-magic no longer matches the policy.
-      now  overrides.@scalar/json-magic = {"undici":"^7.29.0"}
-      want overrides.@scalar/json-magic = {"undici":"^7.29.1"}
+  [override/unnecessary] sockjs is not in the lockfile, so the override this generator wrote under it pins nothing.
+      now  overrides.sockjs = {"uuid":"^11.1.1"}
+      want (removed)
   [allowScripts/missing] lmdb needs an install script and is not yet allowlisted.
       now  (absent)
       want true

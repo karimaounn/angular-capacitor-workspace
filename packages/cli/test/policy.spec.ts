@@ -343,6 +343,21 @@ describe('the shipped policy', () => {
     expect(webpack.manifest.overrides?.['@angular/build']).toBeUndefined();
   });
 
+  it('retires the undici override under @scalar/json-magic, in both shapes it wrote', () => {
+    // orval resolves @scalar/json-magic 0.15.7 and 0.16.1, which pin undici
+    // 7.29.1 and 7.30.1 themselves, past the advisories the override floated
+    // the tree over (verified 2026-10-22). Releases wrote it in two shapes,
+    // `^7.29.0` up to 22.4.0 and `^7.29.1` from 22.5.0, and doctor removes a
+    // retired override only on an exact match, so both are listed.
+    const { manifest } = applyPolicy({}, ctx({ features: new Set(['codegen']) }), POLICY);
+    expect(manifest.overrides?.['@scalar/json-magic']).toBeUndefined();
+
+    const shapes = POLICY.retired
+      .filter((entry) => '@scalar/json-magic' in entry.spec)
+      .map((entry) => entry.spec['@scalar/json-magic']);
+    expect(shapes).toEqual([{ undici: '^7.29.0' }, { undici: '^7.29.1' }]);
+  });
+
   it('prunes the devkit packages when Storybook is off', () => {
     const { manifest } = applyPolicy(
       { devDependencies: { '@angular-devkit/build-angular': '^22.1.8' } },

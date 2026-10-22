@@ -159,7 +159,7 @@ not installing it.
 | Tier | Remedy                          | Applies when                             | Live example                              |
 | ---- | ------------------------------- | ---------------------------------------- | ----------------------------------------- |
 | 1    | **Prune** — never install it    | the dependency is unused or optional     | `express` in a static marketing workspace |
-| 2    | **Override** — pin a transitive | a real dependency drags in a bad version | `xcode → uuid`, `json-magic → undici`     |
+| 2    | **Override** — pin a transitive | a real dependency drags in a bad version | `xcode → uuid`, `@angular/build → vite`   |
 | 3    | **Floor** — raise a minimum     | the direct range permits a bad version   | `vitest ^4.0.8` → `^4.1.11`               |
 | 4    | **Accept** — record and expire  | no fix exists and the path is dev-only   | `braces`, on the webpack Storybook only   |
 
