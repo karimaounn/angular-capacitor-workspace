@@ -1,6 +1,6 @@
 {
   "name": "@angular-capacitor-workspace/auth",
-  "version": "22.10.0",
+  "version": "22.10.1",
   "description": "Sign-in for an angular-capacitor-workspace: a session, guards and an HTTP interceptor that work the same with every identity provider, and Amazon Cognito as the first.",
   "keywords": [
     "angular",

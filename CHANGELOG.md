@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [22.10.1] — 2026-10-25
+
 ### Fixed
 
 - **The `undici` override beneath `@scalar/json-magic` is written again, at
@@ -1100,7 +1102,8 @@ that user a usable message.
 
 Initial release.
 
-[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.10.0...HEAD
+[unreleased]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.10.1...HEAD
+[22.10.1]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.10.0...v22.10.1
 [22.10.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.9.1...v22.10.0
 [22.9.1]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.9.0...v22.9.1
 [22.9.0]: https://github.com/karimaounn/angular-capacitor-workspace/compare/v22.8.0...v22.9.0
