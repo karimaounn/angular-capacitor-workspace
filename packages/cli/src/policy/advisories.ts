@@ -16,7 +16,7 @@ import { VERSIONS } from './versions';
  * unverified remedy is indistinguishable from a superstition six months later.
  */
 export const POLICY: Policy = {
-  reviewed: '2026-10-22',
+  reviewed: '2026-10-25',
 
   /**
    * Tier 1 — never installed.
@@ -167,6 +167,38 @@ export const POLICY: Policy = {
       // has no parent.
       onlyWhen: ['@angular/build:*'],
     },
+    {
+      spec: { '@scalar/json-magic': { undici: '^7.30.1' } },
+      advisories: ['GHSA-xjj6-f33q-929c', 'GHSA-4qv8-2p9j-2685', 'GHSA-f72v-6w45-q472'],
+      reason:
+        'orval -> @scalar/json-magic -> undici. Three advisories landed against ' +
+        'undici 7.x on 2026-10-23, one high (a denial of service through an ' +
+        'unhandled error on excessive content-encodings) and two moderate ' +
+        '(unbounded memory in the EventSource parser, and a Subresource ' +
+        'Integrity bypass through non-lowercase algorithm tokens), all fixed in ' +
+        '7.30.1. orval 8.44.0 and below depend on @scalar/json-magic ^0.15.6 ' +
+        'themselves, beside the copy @scalar/openapi-parser pins, and 0.15.7 ' +
+        'pins undici at exactly 7.29.1, which `npm update undici` cannot move. ' +
+        'So the override 22.10.0 retired is back: every codegen workspace that ' +
+        'release generated has the three. Verified 2026-10-25: a lockfile of ' +
+        'orval 8.44.0 reports all of them, and the `full` row has failed the ' +
+        'sweep on them since 2026-10-24; with this entry both copies of ' +
+        'json-magic in that tree (0.15.7 and 0.17.0) resolve undici 7.30.1 and ' +
+        'the audit is clean. That holds 0.17.0 below the 8.12.3 it pins itself, ' +
+        'which is harmless: both versions import only `Agent` and `fetch` from ' +
+        'undici, which 7.30.1 has, and orval generates a client under it. orval ' +
+        '8.45.0 (2026-10-25) moves its own json-magic to ^0.16.1, which pins ' +
+        '7.30.1, so a fresh resolve is clean without this entry; it stays for ' +
+        'the lockfiles that hold 8.44.0 and below, which `doctor --fix` reaches, ' +
+        'and it rewrites the ^7.29.0 and ^7.29.1 shapes earlier releases wrote, ' +
+        'which is why the two retired entries 22.10.0 listed for them are gone: ' +
+        'doctor skips a retired entry wherever a live rule owns the parent. ' +
+        'Retire it again only once json-magic below 0.16.1 is old enough not to ' +
+        'matter, one retired entry per shape it has had, as 22.10.0 did.',
+      // Where orval is. It never reaches a workspace without codegen, and the
+      // guard is what keeps the pin from being written where it has no parent.
+      onlyWhen: ['codegen'],
+    },
   ],
 
   /**
@@ -267,39 +299,6 @@ export const POLICY: Policy = {
         'workspace from 22.0.0. build-angular 22.2 moved to webpack-dev-server ' +
         '6, which dropped sockjs, so a lockfile past 22.1 has nothing for it to ' +
         'pin. One still on 22.1 has sockjs, and keeps the override.',
-    },
-    {
-      spec: { '@scalar/json-magic': { undici: '^7.29.0' } },
-      lastShipped: '22.4.0',
-      reason:
-        'orval -> @scalar/openapi-parser -> @scalar/json-magic -> undici@7.x, ' +
-        'written into every codegen workspace from 22.0.0. json-magic pinned ' +
-        'undici at an exact version with advisories open against it: five, ' +
-        'fixed in 7.29.0, when this shipped, then seven more fixed in 7.29.1 ' +
-        '(GHSA-rfgv-xxqx-mfg5, GHSA-w293-vg96-wgc3, GHSA-3wwx-pv8p-q78v, ' +
-        'GHSA-pmjh-fq2x-6v4x, GHSA-3xpg-4rpp-hhhm, GHSA-2jfj-6hjv-fm6j, ' +
-        'GHSA-rx4f-c7p8-82vq), and the override floated the tree past them. ' +
-        '22.5.0 raised it to ^7.29.1, the entry below, which says why both ' +
-        'leave now. Listed separately because doctor removes an exact match ' +
-        'only, and a workspace from before 22.5.0 that never ran `doctor ' +
-        '--fix` still holds this shape.',
-    },
-    {
-      spec: { '@scalar/json-magic': { undici: '^7.29.1' } },
-      lastShipped: '22.9.1',
-      reason:
-        'The entry above, raised past the seven advisories fixed in undici ' +
-        '7.29.1. Since 2026-10-02 @scalar/json-magic pins 7.29.1 or later ' +
-        'itself, and orval 8.44.0 resolves 0.15.7 (undici 7.29.1) and 0.16.1 ' +
-        '(7.30.1). Verified 2026-10-22: a lockfile of orval ^8.34.0 audits ' +
-        'clean without this entry, and `npm run sweep` is clean on every row. ' +
-        'What a caret kept past its need does next is hold undici on 7.x once ' +
-        'json-magic moves to 8, so it leaves while it still pins nothing. A ' +
-        'workspace keeps it while json-magic is in its lockfile, where it ' +
-        "floats nothing above upstream's own choice; one whose lockfile still " +
-        'holds undici below 7.29.1 (generated before 22.5.0 and not run ' +
-        'through `doctor --fix` since) is reported by `audit`, and ' +
-        '`npm update undici` moves it.',
     },
   ],
 

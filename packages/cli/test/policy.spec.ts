@@ -343,19 +343,29 @@ describe('the shipped policy', () => {
     expect(webpack.manifest.overrides?.['@angular/build']).toBeUndefined();
   });
 
-  it('retires the undici override under @scalar/json-magic, in both shapes it wrote', () => {
-    // orval resolves @scalar/json-magic 0.15.7 and 0.16.1, which pin undici
-    // 7.29.1 and 7.30.1 themselves, past the advisories the override floated
-    // the tree over (verified 2026-10-22). Releases wrote it in two shapes,
-    // `^7.29.0` up to 22.4.0 and `^7.29.1` from 22.5.0, and doctor removes a
-    // retired override only on an exact match, so both are listed.
-    const { manifest } = applyPolicy({}, ctx({ features: new Set(['codegen']) }), POLICY);
-    expect(manifest.overrides?.['@scalar/json-magic']).toBeUndefined();
+  it('pins undici past 7.30.0 under @scalar/json-magic, where orval brings it', () => {
+    // orval 8.44.0 and below bring a json-magic that pins undici at exactly
+    // 7.29.1, under three advisories fixed in 7.30.1 (verified 2026-10-25).
+    // Scoped to codegen, where orval is. The shapes 22.0.0 and 22.5.0 wrote
+    // are rewritten rather than kept, which is how `doctor --fix` reaches a
+    // workspace that has one, so no retired entry lists them.
+    const codegen = ctx({ features: new Set(['codegen']) });
+    expect(applyPolicy({}, codegen, POLICY).manifest.overrides?.['@scalar/json-magic']).toEqual({
+      undici: '^7.30.1',
+    });
+    expect(
+      applyPolicy({}, ctx(), POLICY).manifest.overrides?.['@scalar/json-magic'],
+    ).toBeUndefined();
 
-    const shapes = POLICY.retired
-      .filter((entry) => '@scalar/json-magic' in entry.spec)
-      .map((entry) => entry.spec['@scalar/json-magic']);
-    expect(shapes).toEqual([{ undici: '^7.29.0' }, { undici: '^7.29.1' }]);
+    for (const shape of ['^7.29.0', '^7.29.1']) {
+      const { manifest } = applyPolicy(
+        { overrides: { '@scalar/json-magic': { undici: shape } } },
+        codegen,
+        POLICY,
+      );
+      expect(manifest.overrides?.['@scalar/json-magic']).toEqual({ undici: '^7.30.1' });
+    }
+    expect(POLICY.retired.filter((entry) => '@scalar/json-magic' in entry.spec)).toEqual([]);
   });
 
   it('prunes the devkit packages when Storybook is off', () => {

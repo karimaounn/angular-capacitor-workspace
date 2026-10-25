@@ -8,6 +8,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The `undici` override beneath `@scalar/json-magic` is written again, at
+  `^7.30.1`, in workspaces with `--codegen`.** Three advisories landed against
+  undici 7.x on 2026-10-23 (GHSA-xjj6-f33q-929c, high; GHSA-4qv8-2p9j-2685
+  and GHSA-f72v-6w45-q472, moderate), all fixed in 7.30.1. orval 8.44.0 and
+  below bring their own `@scalar/json-magic` at `^0.15.6`, beside the one
+  `@scalar/openapi-parser` pins, and 0.15.7 pins undici at exactly 7.29.1,
+  which `npm update undici` cannot move. So the override 22.10.0 retired is
+  back, three days later: every codegen workspace that release generated
+  reports the three, and the `full` row has failed the sweep on them since
+  2026-10-24. orval 8.45.0, published 2026-10-25, moves its own json-magic to
+  `^0.16.1`, which pins 7.30.1, so a fresh resolve is clean without the
+  override; it stays for the lockfiles that hold 8.44.0 and below. The one
+  thing it changes beside the fix is `@scalar/json-magic` 0.17.0's undici,
+  8.12.3 upstream, held at 7.30.1: both versions import only `Agent` and
+  `fetch` from it, and orval generates a client under it.
+
+  `doctor --fix` adds it, and rewrites the `^7.29.0` and `^7.29.1` shapes
+  earlier releases wrote. The two entries 22.10.0 put in `POLICY.retired` for
+  those shapes are gone: the live rule reaches every workspace they covered,
+  and `doctor` skips a retired entry wherever a live rule owns the parent.
+
 ## [22.10.0] — 2026-10-22
 
 ### Added

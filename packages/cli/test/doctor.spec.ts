@@ -305,25 +305,48 @@ describe('diagnose — overrides that pin nothing', () => {
 });
 
 describe('diagnose — the shipped policy', () => {
-  it('leaves the retired undici override while json-magic is in the lockfile', () => {
-    // The later of the two shapes a release wrote. The pin stays while its
-    // parent is in the tree, where it floats nothing past what json-magic now
-    // chooses itself, and goes once the parent has left.
+  const overrideDrifts = () =>
+    diagnose(cwd, SHIPPED).drifts.filter((drift) => drift.tier === 'override');
+
+  it('raises the undici override under @scalar/json-magic wherever orval is', () => {
+    // Each shape a release wrote, and 22.10.0's none. orval is the witness for
+    // codegen, and the live rule rewrites whatever is there, so the pin moves
+    // in every workspace generated before this release without a retired
+    // entry per shape.
+    for (const shape of ['^7.29.0', '^7.29.1', undefined]) {
+      write('package.json', {
+        name: 'ws',
+        devDependencies: { orval: '^8.34.0' },
+        ...(shape ? { overrides: { '@scalar/json-magic': { undici: shape } } } : {}),
+      });
+      writeLockfile('node_modules/orval', 'node_modules/@scalar/json-magic');
+
+      expect(overrideDrifts()).toContainEqual(
+        expect.objectContaining({
+          kind: shape ? 'stale' : 'missing',
+          expected: 'overrides.@scalar/json-magic = {"undici":"^7.30.1"}',
+        }),
+      );
+      applyFix(diagnose(cwd, SHIPPED));
+      expect(readManifest()['overrides']).toEqual({ '@scalar/json-magic': { undici: '^7.30.1' } });
+    }
+  });
+
+  it('removes it once orval has gone, and json-magic with it', () => {
+    // Out of its scope the live rule is judged like a retired one: an exact
+    // match to what was written, and no copy of the parent in the lockfile.
     write('package.json', {
       name: 'ws',
-      overrides: { '@scalar/json-magic': { undici: '^7.29.1' } },
+      overrides: { '@scalar/json-magic': { undici: '^7.30.1' } },
     });
-    const overrideDrifts = () =>
-      diagnose(cwd, SHIPPED).drifts.filter((drift) => drift.tier === 'override');
-
-    writeLockfile('node_modules/orval', 'node_modules/@scalar/json-magic');
+    writeLockfile('node_modules/@scalar/json-magic');
     expect(overrideDrifts()).toHaveLength(0);
 
-    writeLockfile('node_modules/orval');
+    writeLockfile();
     expect(overrideDrifts()).toContainEqual(
       expect.objectContaining({
         kind: 'unnecessary',
-        actual: 'overrides.@scalar/json-magic = {"undici":"^7.29.1"}',
+        actual: 'overrides.@scalar/json-magic = {"undici":"^7.30.1"}',
       }),
     );
     applyFix(diagnose(cwd, SHIPPED));
